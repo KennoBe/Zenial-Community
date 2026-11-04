@@ -1,0 +1,226 @@
+-- One modal for all activity sources, retaining their existing action authority.
+local Z,U,A,B,S=ZenialCommunity,ZenialCommunity.UI,ZenialCommunity.Adapter,ZenialCommunity.ActivityBoard,ZenialCommunity.ScheduledGroups
+local H
+local function tr(s)return Z.T(s)end
+local function current()
+    local r=U.activityDetailKey and B.Get(U.activityDetailKey);if not r then return end
+    if r.kind=='EVENT'and not S.Get(r.owner,r.id)then return end
+    if r.own and r.kind=='LIVE'and(not Z.db.lfg[1]or Z.db.lfg[1].id~=r.id)then return end
+    if r.own and r.kind=='QUEST'and(not Z.db.quest or Z.db.quest.id~=r.id)then return end
+    return r
+end
+local function state(r)
+    if r.kind=='EVENT'then return S.Participation(r.owner,r.id)end
+    if r.kind=='PVP'then return tr(r.data and r.data.response=='coming'and'Coming'or'No application')end
+    local bucket=r.kind=='QUEST'and Z.db.sentQuestApplications or Z.db.sentApplications
+    local p=bucket[r.id]and bucket[r.id][r.owner];return p and Z.Locale.State(p.state)or tr('No application'),p
+end
+local function whisperTarget(r)
+    if not r then return end
+    local key=r.own and U.activityParticipantKey or r.owner
+    if not key or key==Z.me.key or Z.db.blocked[key]then return end
+    local c=Z.db.contacts[key]
+    local target=c and c.target or not r.own and r.data and r.data.ownerTarget
+    if target and Z.Logic.Identity(target)and Z.ResolvePeerKey(target)==key then return target end
+end
+local function canInviteParticipant(r,e,p,key,revision)
+    local pending=U.activityInvitePending and U.activityInvitePending[r.key..':'..tostring(key)]
+    return p~=nil and p.state=='CONFIRMED'and e.status=='OPEN'and e.endsAt>A.Now()
+        and p.revision==revision and Z.db.contacts[key]~=nil and not Z.db.blocked[key]
+        and Z.IsOnline(key)and A.GroupState().canInvite==true and not A.GroupMembers()[key]
+        and not(pending and pending>A.Clock())
+end
+local function pendingInvite(r,key)
+    U.activityInvitePending=U.activityInvitePending or{};local now=A.Clock();local oldest,untilAt
+    for token,expiry in pairs(U.activityInvitePending)do
+        if expiry<=now then U.activityInvitePending[token]=nil elseif not untilAt or expiry<untilAt then oldest,untilAt=token,expiry end
+    end
+    if Z.Logic.Count(U.activityInvitePending)>=256 and oldest then U.activityInvitePending[oldest]=nil end
+    U.activityInvitePending[r.key..':'..key]=now+30
+end
+function U.InviteConfirmedParticipants(all)
+    local r=current();local e=r and r.own and r.kind=='EVENT'and S.GetOwned(r.id);if not e then return end
+    local keys={};if all then for key,p in pairs(e.participants)do if p.state=='CONFIRMED'then keys[#keys+1]={key=key,revision=p.revision}end end
+    elseif U.activityParticipantKey then keys[1]={key=U.activityParticipantKey,revision=U.activityParticipantRevision}end
+    table.sort(keys,function(a,b)return a.key<b.key end)
+    local sent,failed,last=0,0,nil
+    for _,item in ipairs(keys)do local p=e.participants[item.key]
+        if canInviteParticipant(r,e,p,item.key,item.revision)then
+            local ok,why=A.Invite(Z.db.contacts[item.key].target)
+            if ok then pendingInvite(r,item.key);sent=sent+1 else failed=failed+1;last=why end
+        end
+    end
+    U.Message(all and Z.T('%d invitations sent; %d failed.',sent,failed)or sent>0 and tr('Invitation submitted; awaiting response.')or tr(last or'Inviting is temporarily unavailable.'))
+    U.RefreshActivityDetails()
+end
+function U.LayoutActivityDetails(r,infoHeight,peopleHeight)
+    local own=r and r.own;local controls=r and not own and(r.kind=='EVENT'or r.kind=='LIVE'or r.kind=='QUEST')
+    local available=(own and 438 or controls and 480 or 492)-90
+    local participants=own and peopleHeight>0 and math.min(peopleHeight,math.max(44,available-math.min(infoHeight,260)-24))or 0
+    local height=available-(participants>0 and participants+24 or controls and 76 or 0)
+    U.activityInformation:SetHeight(height);U.activityInformation.height=height
+    U.activityParticipants:SetShown(participants>0);U.activityParticipantLabel:SetShown(participants>0)
+    if participants>0 then
+        U.activityParticipantLabel:ClearAllPoints();U.activityParticipantLabel:SetPoint('TOPLEFT',16,-90-height-6)
+        U.activityParticipants:ClearAllPoints();U.activityParticipants:SetPoint('TOPLEFT',16,-90-height-24);U.activityParticipants:SetHeight(participants);U.activityParticipants.height=participants
+    end
+    if controls then
+        for _,f in ipairs({U.activityDetailRole,U.activityDetailNote})do
+            local x=f==U.activityDetailRole and 16 or 224;local y=-90-height-12
+            f.caption:ClearAllPoints();f.caption:SetPoint('TOPLEFT',x,y)
+            local control=f.button or f;control:ClearAllPoints();control:SetPoint('TOPLEFT',x,y-30)
+        end
+    end
+    for _,f in ipairs({U.activityInformation,U.activityParticipants})do if f.zenialRender then f.zenialRender()end end
+end
+function U.OpenActivity(key)
+    local r=B.Get(key);if not r then U.Message(tr('This activity is no longer available.'));return end
+    U.CloseDialogs();U.activityDetailKey=key;U.activityParticipantKey=nil;U.activityDetailNote:SetText('')
+    U.activityDetailRole:SetText(Z.Logic.Role(Z.db.roles)or'DAMAGER')
+    if r.kind=='EVENT'and not r.own then S.Query(r.owner,r.id)elseif r.kind=='PVP'and not r.own then Z.PvPHelp.RequestDetails(r.owner,r.id)end
+    U.activityDetails:Show();U.RefreshActivityDetails()
+end
+function U.RefreshActivityDetails()
+    if not U.activityDetails then return end
+    local r=current()
+    for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction})do b:SetEnabled(false)end
+    U.activityArchiveAction:SetShown(r~=nil and r.own and r.kind~='PVP'and(r.kind~='EVENT'or S.GetOwned(r.id).status=='OPEN'))
+    if not r then U.activityDetailTitle:SetText(tr('This activity is no longer available.'));H.rows(U.activityInformation,{},44);H.rows(U.activityParticipants,{},42);U.LayoutActivityDetails(nil,0,0);return end
+    local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
+    U.activityDetailTitle:SetText(Z.Locale.Activity(r.title))
+    -- Opening a chat does not require a current addon-presence report.
+    U.activityWhisper:SetEnabled(whisperTarget(r)~=nil)
+    local details={{text=r.ownerName..' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now'),height=32}}
+    local party=Z.ActivityParty.Info(r)
+    local capacity=r.kind=='EVENT'and(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)or e and e.size
+    details[#details+1]={text=tr('Current party size')..': '..(party and party.total or tr('Unknown'))..(capacity and' / '..capacity or''),height=32}
+    if r.kind=='EVENT'then
+        details[#details+1]={text=Z.ScheduleTime.Format(e.startsAt),height=42}
+        details[#details+1]={text=S.Participation(r.owner,r.id)..' · '..S.StateLabel(e.status),height=48}
+        local used=party and party.used or e.participants and S.Counts(e)or e.used;local roles={}
+        for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
+        details[#details+1]={text=tr('Free roles: ')..table.concat(roles,' · '),height=40}
+    elseif e then
+        if e.min then details[#details+1]={text=tr('Level')..' '..e.min..' – '..e.max..(e.size and' · '..tr('Target size')..': '..e.size or''),height=32}end
+        if r.kind=='LIVE'then details[#details+1]={text=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER'),height=36}end
+        details[#details+1]={text=state(r),height=32}
+    else details[#details+1]={text=tr('Saved application; organizer data is unavailable.'),height=42}end
+    if e and e.note and e.note~=''then details[#details+1]={text=e.note,height=math.max(42,math.ceil(#e.note/65)*16+12)}end
+    local infoHeight=0
+    for _,item in ipairs(details)do
+        U.activityInformationMeasure:SetText(item.text)
+        item.height=math.max(28,(A.Call(U.activityInformationMeasure.GetStringHeight,U.activityInformationMeasure)or item.height-14)+14)
+        infoHeight=infoHeight+item.height
+    end
+    H.rows(U.activityInformation,details,42)
+    H.showControl(U.activityDetailRole,not r.own and(r.kind=='LIVE'or r.kind=='EVENT'))
+    H.showControl(U.activityDetailNote,not r.own and(r.kind=='LIVE'or r.kind=='QUEST'))
+    U.activityJoin:SetShown(not r.own);U.activityWithdraw:SetShown(not r.own);U.activityEdit:SetShown(r.own and r.kind~="PVP")
+    U.activityParticipants:SetShown(r.own)
+    U.activityAccept:SetShown(r.own);U.activityReject:SetShown(r.own and r.kind~='PVP')
+    U.activityWaitlist:SetShown(r.own and r.kind=='EVENT')
+    U.activityInvite:SetShown(r.own and r.kind=='EVENT')
+    U.activityInviteAll:SetShown(r.own and r.kind=='EVENT')
+    if not r.own then
+        local _,p=state(r)
+        local can=r.kind=='EVENT'and S.CanApply(r.owner,r.id)==true or r.kind~='EVENT'and not r.saved and Z.IsOnline(r.owner)and(not p or p.state=='withdrawn')
+        if r.kind=='PVP'then can=e and e.response~='coming'and Z.IsOnline(r.owner)end
+        U.activityJoin:SetEnabled(can==true)
+        local withdraw=r.kind=='EVENT'and S.CanWithdraw(r.owner,r.id)or r.kind~='EVENT'and(p and p.state~='withdrawn'or r.kind=='PVP'and e and e.response=='coming')
+        U.activityWithdraw:SetEnabled(withdraw and true or false)
+        U.LayoutActivityDetails(r,infoHeight,0);return
+    end
+    U.activityEdit:SetEnabled(r.kind~='PVP'and(r.kind~='EVENT'or(e.status=='OPEN'or e.status=='DRAFT')and e.startsAt>A.Now()))
+    U.activityArchiveAction:SetEnabled(r.kind~='PVP'and(r.kind~='EVENT'or e.status=='OPEN'))
+    local source=r.kind=='EVENT'and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e.responses or Z.db.interests[r.id]
+    local people={};local keys={};for key in pairs(source or{})do keys[#keys+1]=key end;table.sort(keys)
+    for _,key in ipairs(keys)do local p=source[key];local who=key;local c=Z.db.contacts[key]
+        people[#people+1]={selected=key==U.activityParticipantKey,text=(c and c.target or key)..' · '..(r.kind=='EVENT'and S.StateLabel(p.state)or Z.Locale.State(p.state))..'\n'..(p.role and Z.Locale.Role(p.role)or''),height=44,click=function()
+            U.SelectActivityParticipant(who)
+        end}
+    end
+    H.rows(U.activityParticipants,people,44);U.LayoutActivityDetails(r,infoHeight,#people*44)
+    local p=source and source[U.activityParticipantKey]
+    local ready=false
+    if p and not Z.db.blocked[U.activityParticipantKey]then
+        if r.kind=='EVENT'then ready=p.revision==U.activityParticipantRevision and e.status=='OPEN'and e.startsAt>A.Now()and S.Enabled()and(p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST')
+        elseif r.kind=='PVP'then ready=p.state=='coming'
+        else ready=p.state=='applied'end
+    end
+    if r.kind=='EVENT'then
+        U.activityAccept:SetEnabled(S.CanDecide(r.id,U.activityParticipantKey,'CONFIRMED',U.activityParticipantRevision)==true)
+        U.activityReject:SetEnabled(S.CanDecide(r.id,U.activityParticipantKey,'DECLINED',U.activityParticipantRevision)==true)
+        U.activityWaitlist:SetEnabled(S.CanDecide(r.id,U.activityParticipantKey,'WAITLIST',U.activityParticipantRevision)==true)
+        U.activityInvite:SetEnabled(canInviteParticipant(r,e,p,U.activityParticipantKey,U.activityParticipantRevision)==true)
+        for key,participant in pairs(e.participants)do if canInviteParticipant(r,e,participant,key,participant.revision)then U.activityInviteAll:SetEnabled(true);break end end
+    else U.activityAccept:SetEnabled(ready and true or false);U.activityReject:SetEnabled(ready and true or false);U.activityWaitlist:SetEnabled(false)end
+    U.activityAccept:SetText(tr(r.kind=='EVENT'and'Confirm participant'or r.kind=='PVP'and'Invite'or'Accept & invite'))
+end
+function U.SelectActivityParticipant(key)
+    local r=current();if not r or not r.own or not key then return end
+    local e=r.kind=='EVENT'and S.GetOwned(r.id)or r.data
+    local source=r.kind=='EVENT'and e and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e and e.responses or Z.db.interests[r.id]
+    local p=source and source[key];if not p then return end
+    U.activityParticipantKey=key;U.activityParticipantRevision=p.revision
+    if r.kind=='EVENT'then Z.Notifications.Read('schedule:'..Z.me.key..':'..r.id..':'..key)
+    elseif r.kind=='LIVE'or r.kind=='QUEST'then Z.Logic.MarkApplicationsRead(Z.db,r.kind=='QUEST'and'quest'or'group',r.id,key)end
+    if r.kind=='LIVE'or r.kind=='QUEST'then Z.Notifications.Read('application:'..(r.kind=='QUEST'and'quest'or'group')..':'..r.id..':'..key)end
+    U.RefreshActivityDetails();U.UpdateBadges()
+end
+function U.JoinActivity()
+    local r=current();if not r or r.own then return end
+    local ok,why
+    if r.kind=='EVENT'then ok,why=S.Apply(r.owner,r.id,U.activityDetailRole:GetText())
+    elseif r.kind=='LIVE'then ok,why=Z.ApplyGroup(r.owner,r.id,U.activityDetailRole:GetText(),U.activityDetailNote:GetText())
+    elseif r.kind=='QUEST'then ok,why=Z.ApplyQuest(r.owner,r.id,U.activityDetailNote:GetText())
+    else ok,why=Z.PvPHelp.Respond(r.owner,r.id,'coming')end
+    U.Message(ok and tr('Application submitted; awaiting response.')or tr(why));U.RefreshActivityDetails();U.Refresh()
+end
+function U.WithdrawActivity()
+    local r=current();if not r or r.own then return end;local ok,why
+    if r.kind=='EVENT'then ok,why=S.Withdraw(r.owner,r.id)elseif r.kind=='LIVE'then ok,why=Z.WithdrawGroup(r.owner,r.id)elseif r.kind=='QUEST'then ok,why=Z.WithdrawQuest(r.owner,r.id)else ok,why=Z.PvPHelp.Respond(r.owner,r.id,'withdrawn')end
+    U.Message(ok and tr('Withdrawal submitted.')or tr(why));U.RefreshActivityDetails();U.Refresh()
+end
+function U.DecideActivity(decision)
+    local r=current();if not r or not r.own or not U.activityParticipantKey or Z.db.blocked[U.activityParticipantKey]then return end
+    if r.kind=='EVENT'then
+        local ok,why=S.Decide(r.id,U.activityParticipantKey,decision,U.activityParticipantRevision)
+        if ok then U.activityParticipantRevision=S.GetOwned(r.id).participants[U.activityParticipantKey].revision end
+        U.Message(ok and tr('Scheduled change saved.')or tr(why))
+    elseif r.kind=='LIVE'then U.groupApplicantKey=U.activityParticipantKey;U.DecideGroupApplicant(decision=='CONFIRMED'and'invited'or'rejected')
+    elseif r.kind=='QUEST'then U.questApplicantKey=U.activityParticipantKey;U.DecideQuestApplicant(decision=='CONFIRMED'and'invited'or'rejected')elseif r.kind=='PVP'and decision=='CONFIRMED'then local ok,why=Z.PvPHelp.InviteHelper(U.activityParticipantKey);if not ok then U.Message(tr(why))end end
+    U.RefreshActivityDetails()
+end
+function U.CreateActivityDetails(helpers)
+    H=helpers;local f=H.panel(U.frame);U.activityDetails=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,550)
+    U.activityDetailTitle=H.label(f,'',16,-18,442,'GameFontNormalLarge');U.activityDetailTitle:SetHeight(40)
+    U.activityWhisper=H.button(f,tr('Whisper'),474,-18,160,function()
+        local target=whisperTarget(current());if not target then return end
+        -- Release the modal's keyboard capture before focusing native chat.
+        U.CloseDialogs()
+        if not A.Whisper(target)then U.Message(tr('Whisper is unavailable.'))end
+    end)
+    U.activityArchiveAction=H.button(f,tr('Archive activity'),474,-50,160,function()
+        local r=current();if r and r.own then U.RequestActivityArchive(r.kind,r.id)end
+    end,'danger')
+    U.activityInformation=H.list(f,16,-90,594,180)
+    U.activityInformationMeasure=H.label(f,'',16,0,570);U.activityInformationMeasure:SetWordWrap(true);U.activityInformationMeasure:Hide()
+    U.activityDetailRole=H.selector(f,'My role',16,-290,196,{'TANK','HEALER','DAMAGER'})
+    U.activityDetailNote=H.edit(f,'Message (optional)',224,-290,410,64)
+    U.activityParticipants=H.list(f,16,-286,594,144)
+    U.activityParticipantLabel=H.label(f,'Participants',16,-270,594)
+    U.activityAccept=H.button(f,tr('Confirm participant'),16,-448,196,function()U.DecideActivity('CONFIRMED')end,'primary')
+    U.activityWaitlist=H.button(f,tr('Waitlist'),224,-448,196,function()U.DecideActivity('WAITLIST')end)
+    U.activityReject=H.button(f,tr('Decline'),432,-448,202,function()U.DecideActivity('DECLINED')end,'danger')
+    U.activityJoin=H.button(f,tr('Apply'),432,-512,202,U.JoinActivity,'primary')
+    U.activityWithdraw=H.button(f,tr('Withdraw'),224,-512,196,U.WithdrawActivity)
+    U.activityInvite=H.button(f,tr('Invite'),224,-512,196,function()U.InviteConfirmedParticipants(false)end)
+    U.activityInviteAll=H.button(f,tr('Invite all confirmed'),224,-480,196,function()U.InviteConfirmedParticipants(true)end)
+    U.activityEdit=H.button(f,tr('Edit'),432,-512,202,function()
+        local r=current();if not r or not r.own then return end;f:Hide();U.creatorFlow=false
+        if r.kind=='EVENT'then U.OpenScheduledEditor(S.GetOwned(r.id))elseif r.kind=='LIVE'then U.OpenGroupEditor(r.data)elseif r.kind=='QUEST'then U.OpenQuestEditor(r.data)end
+    end)
+    H.button(f,tr('Close'),16,-512,196,function()f:Hide()end)
+    H.makeModal(f);f:Hide()
+end
+return U

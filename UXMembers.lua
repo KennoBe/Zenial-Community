@@ -1,0 +1,615 @@
+local Z = ZenialCommunity
+local U = Z.UI
+local L = Z.Logic
+local A = Z.Adapter
+local T = Z.Theme
+local S = U.Shared
+local tr = S.tr
+local rows, peerOnline, faction, age, roleName = S.rows, S.peerOnline, S.faction, S.age, S.roleName
+
+local mapNames, mapNameOrder = {}, {}
+local function mapName(id)
+    local now = A.Clock()
+    local cached = mapNames[id]
+    if cached and now < cached.retryAt then
+        return cached.name
+    end
+    local info = A.Call(C_Map and C_Map.GetMapInfo, id)
+    local name = A.PublicTable(info) and L.Text(info.name, 64) and info.name or ''
+    if not cached then
+        if #mapNameOrder >= 512 then
+            mapNames[table.remove(mapNameOrder, 1)] = nil
+        end
+        mapNameOrder[#mapNameOrder + 1] = id
+    end
+    mapNames[id] = { name = name, retryAt = name ~= '' and math.huge or now + 5 }
+    return name
+end
+local function modernLocation(p)
+    if not p then
+        return nil
+    end
+    if not p.cap30 or not p.presence then
+        return p.location
+    end
+    local id = p.presence.mapID or 0
+    if id == 0 then
+        return nil
+    end
+    local name = mapName(id)
+    return { mapID = id, area = name, subzone = '', at = p.presence.at }
+end
+local MEMBER_LIST_MAX_AGE = 90 * 86400
+local function memberSeen(peer)
+    if not peer then
+        return 0
+    end
+    -- Relaying an old public bundle must not extend a member's visible lifetime.
+    return math.max(peer.memberSeenAt or 0, peer.lastContact or 0, peer.reportedAt or 0, not peer.cap4 and (peer.received or 0) or 0)
+end
+local function visibleMember(m, query, now)
+    -- This is a view filter only: archived contacts, notes and history stay intact.
+    -- Search still exposes older contacts so their notes remain accessible.
+    return not Z.db.blocked[m.key]
+        and (
+            m.own
+            or m.online
+            or Z.Social.IsFavorite(m.key)
+            or Z.SocialCategories.Has(m.key)
+            or query ~= ''
+            or U.memberCategoryFilter and U.memberCategoryFilter:GetText() == 'RECONTACT' and Z.SocialCategories.LastTogether(m.key)
+            or m.seen > 0 and now - m.seen <= MEMBER_LIST_MAX_AGE
+        )
+end
+local function profText(s)
+    local a = {}
+    for _, p in ipairs(s and s.professions or {}) do
+        a[#a + 1] = tr(p.name)
+    end
+    return table.concat(a, ', ')
+end
+local function locationText(o)
+    if not o then
+        return ''
+    end
+    local area, sub = o.area or '', o.subzone or ''
+    if sub ~= '' and sub ~= area then
+        return area ~= '' and (area .. ' · ' .. sub) or sub
+    end
+    return area
+end
+local function presenceDeadline(peer, clock, now)
+    if not peer then
+        return math.huge
+    end
+    local deadline = math.huge
+    if peer.cap30 or peer.cap4 then
+        local at = math.max(peer.lastContactClock or -1000, peer.reportedClock or -1000)
+        if clock >= at and at + 300 > clock then
+            deadline = at + 300
+        end
+    end
+    if not peer.cap4 and peer.lastContact and peer.lastContact <= now and peer.lastContact + 300 > now then
+        deadline = math.min(deadline, clock + peer.lastContact + 300 - now)
+    end
+    return deadline
+end
+S.presenceDeadline = presenceDeadline
+local function memberEntries(ownOnly)
+    local clock, now = A.Clock(), A.Now()
+    local revision = Z.memberRevision or 0
+    if not S.memberModel or S.memberModel.db ~= Z.db or S.memberModel.revision ~= revision or clock >= S.memberModel.deadline then
+        local previous = S.memberModel and S.memberModel.db == Z.db and S.memberModel.byKey or {}
+        local own = {
+            class = Z.me.class,
+            classFile = Z.me.classFile,
+            level = Z.me.level,
+            guild = Z.me.guild,
+            professions = Z.db.professions,
+            community = Z.db.community,
+            faction = Z.me.faction,
+            roles = Z.db.roles,
+            note = Z.db.note,
+        }
+        local model =
+            { db = Z.db, revision = revision, deadline = math.huge, entries = {}, byKey = {}, professions = { 'ALL_PROFESSIONS' } }
+        local seenProfessions = {}
+        local ownMain = Z.PublicLinks().main
+        local function add(m, peer)
+            local s = m.data
+            local old = previous[m.key]
+            m.sourceRevision = s and s.rev
+            m.sourcePresence = peer and peer.presence
+            m.sourceReceived = peer and peer.received
+            m.sourceMain = s and s.linkMain
+            m.sourceLinkVersion = s and s.linkVersion
+            m.layerID = Z.CommunityLayer and (m.own and Z.CommunityLayer.Own() or not m.own and Z.CommunityLayer.Member(m.key)) or nil
+            m.where = locationText(m.location)
+            if
+                not m.own
+                and old
+                and old.data == s
+                and old.sourceRevision == m.sourceRevision
+                and old.sourcePresence == m.sourcePresence
+                and old.sourceReceived == m.sourceReceived
+                and old.sourceMain == m.sourceMain
+                and old.sourceLinkVersion == m.sourceLinkVersion
+                and old.target == m.target
+                and old.where == m.where
+                and (not old.main or not m.sourceReceived or now <= m.sourceReceived + 604800)
+            then
+                m.main, m.cn, m.prof, m.hay, m.professionNames = old.main, old.cn, old.prof, old.hay, old.professionNames
+            else
+                m.main = m.own and ownMain or Z.ConfirmedMain(m.key)
+                m.cn, m.prof = L.ClassName(s and s.class, s and s.classFile), profText(s)
+                m.hay = string.lower(
+                    m.target
+                        .. ' '
+                        .. (m.main or '')
+                        .. ' '
+                        .. m.cn
+                        .. ' '
+                        .. m.prof
+                        .. ' '
+                        .. m.where
+                        .. ' '
+                        .. (s and s.guild or '')
+                        .. ' '
+                        .. (s and s.community or '')
+                        .. ' '
+                        .. (s and s.roles or '')
+                        .. ' '
+                        .. (s and s.note or '')
+                )
+                m.professionNames = {}
+                for _, p in ipairs(s and s.professions or {}) do
+                    local name = L.ProfessionName(p.name)
+                    if name then
+                        m.professionNames[#m.professionNames + 1] = name
+                    end
+                end
+            end
+            model.entries[#model.entries + 1] = m
+            model.byKey[m.key] = m
+            for _, name in ipairs(m.professionNames) do
+                if not seenProfessions[name] then
+                    seenProfessions[name] = true
+                    model.professions[#model.professions + 1] = name
+                end
+            end
+            model.deadline = math.min(model.deadline, presenceDeadline(peer, clock, now))
+            if not m.own and m.seen > 0 and m.seen + MEMBER_LIST_MAX_AGE >= now then
+                model.deadline = math.min(model.deadline, clock + m.seen + MEMBER_LIST_MAX_AGE + 1 - now)
+            end
+            if m.main and m.sourceReceived and m.sourceReceived + 604800 >= now then
+                model.deadline = math.min(model.deadline, clock + m.sourceReceived + 604801 - now)
+            end
+            local mapID = peer and peer.presence and peer.presence.mapID
+            local cached = mapID and mapNames[mapID]
+            if cached then
+                model.deadline = math.min(model.deadline, cached.retryAt)
+            end
+        end
+        add({ key = Z.me.key, target = Z.me.target, data = own, location = Z.location, online = true, seen = now, own = true })
+        for key, c in pairs(Z.db.contacts) do
+            if key ~= Z.me.key then
+                local p = Z.db.peers[key]
+                add(
+                    { key = key, target = c.target, data = p and p.data, location = modernLocation(p), online = peerOnline(key), seen = memberSeen(
+                        p
+                    ) },
+                    p
+                )
+            end
+        end
+        -- Shared private contacts remain accessible on another own character.
+        -- These view entries do not discover peers or trigger profile traffic.
+        for key, c in pairs(Z.SocialCategories.store.contacts) do
+            if key ~= Z.me.key and not model.byKey[key] and not Z.db.blocked[key] then
+                add({ key = key, target = c.target, online = false, seen = 0 })
+            end
+        end
+        table.sort(model.professions, function(a, b)
+            if a == 'ALL_PROFESSIONS' then
+                return b ~= 'ALL_PROFESSIONS'
+            elseif b == 'ALL_PROFESSIONS' then
+                return false
+            else
+                return a < b
+            end
+        end)
+        S.memberModel = model
+    end
+    return ownOnly and { S.memberModel.entries[1] } or S.memberModel.entries
+end
+S.memberEntries = memberEntries
+local function peerLocation(key)
+    local p = key and Z.db.peers[key]
+    local where = locationText(modernLocation(p))
+    local online = key and peerOnline(key)
+    return where, online == true
+end
+S.peerLocation = peerLocation
+local function peerLocationLine(key, label)
+    local where, online = peerLocation(key)
+    label = tr(label or 'Location')
+    if where == '' then
+        return label .. ': ' .. string.lower(tr('Unknown'))
+    end
+    return (online and label or tr('Last known location')) .. ': ' .. where
+end
+S.peerLocationLine = peerLocationLine
+local function memberFor(key)
+    memberEntries()
+    return S.memberModel.byKey[key]
+end
+S.memberFor = memberFor
+local function bindPrivateNote(key)
+    if not U.memberPrivateNote then
+        return
+    end
+    U.noteDrafts = U.noteDrafts or {}
+    U.memberNoteBinding = true
+    if U.memberNoteOwner ~= key then
+        if U.memberNoteOwner then
+            U.noteDrafts[U.memberNoteOwner] = U.memberPrivateNote:GetText()
+        end
+        U.memberPrivateNote:ClearFocus()
+        U.memberNoteOwner = key
+        U.memberPrivateNote:SetText(key and (U.noteDrafts[key] or Z.Social.GetNote(key)) or '')
+    elseif not U.memberPrivateNote:HasFocus() then
+        U.memberPrivateNote:SetText(key and (U.noteDrafts[key] or Z.Social.GetNote(key)) or '')
+    end
+    U.memberNoteBinding = false
+end
+function U.SavePrivateNote()
+    if not U.memberKey or U.memberNoteOwner ~= U.memberKey then
+        bindPrivateNote(U.memberKey)
+        return nil, "Select the note's member before saving."
+    end
+    local ok, err = Z.Social.Note(U.memberNoteOwner, U.memberPrivateNote:GetText())
+    if ok then
+        U.noteDrafts[U.memberNoteOwner] = nil
+    end
+    U.Message(ok and 'Private note saved.' or err)
+    if ok then
+        U.Toast('Private note saved.')
+    end
+    return ok, err
+end
+function U.RefreshCategoryPanel()
+    local C = Z.SocialCategories
+    local key = U.categoryKey
+    if not U.categoryPanel then
+        return
+    end
+    local m = memberFor(key)
+    local valid = m and not m.own and not Z.db.blocked[key]
+    U.categorySummary:SetText(valid and (m.target .. '\n\n' .. C.Reason(key)) or tr('Select a contact to mark. Categories stay private.'))
+    if C.readOnly then
+        U.categorySummary:SetText(tr('Private categories use a newer format.'))
+    end
+    for id, b in pairs(U.categoryChecks) do
+        b:SetChecked(C.Has(key, id))
+        b:SetEnabled(valid and not C.readOnly)
+    end
+end
+function U.OpenPrivateCategories()
+    local peers = {}
+    U.categoryKey = U.memberKey
+    if #peers == 0 and U.categoryKey then
+        peers = { U.categoryKey }
+    end
+    -- Dropdowns use TOOLTIP strata; dismiss background popups before the dialog.
+    if S.openPopup then
+        S.openPopup:Hide()
+        S.openPopup = nil
+    end
+    U.categoryContact:SetOptions(peers, U.categoryKey)
+    U.RefreshCategoryPanel()
+    U.categoryPanel:Show()
+end
+-- Palette access for the member card (white when the shared theme is missing).
+local function paletteHex(key)
+    return T and T.PaletteHex and T.PaletteHex(key) or 'ffffff'
+end
+local function dimText(value)
+    return '|cff' .. paletteHex('dim') .. value .. '|r'
+end
+local function stripColors(value)
+    return (tostring(value or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''))
+end
+-- Plain text of the whole card (header lines, layer chip and fact list) as shown to the player.
+function U.MemberCardText()
+    local card = U.memberCard
+    local parts = {}
+    if card then
+        for _, region in ipairs({ card.name, card.classLine, card.status }) do
+            if region:IsShown() and region:GetText() ~= '' then
+                parts[#parts + 1] = region:GetText()
+            end
+        end
+        if card.layerTag and card.layerTag:IsShown() then
+            parts[#parts + 1] = card.layerTag.text:GetText()
+        end
+    end
+    parts[#parts + 1] = U.memberDetail:GetText()
+    return stripColors(table.concat(parts, '\n'))
+end
+-- Header of the member card: portrait, class-coloured name, class line, presence and the known layer chip.
+local function updateMemberHeader(m, s, layerText)
+    local card = U.memberCard
+    if not card then
+        return
+    end
+    local has = m ~= nil
+    U.memberCardHasMember = has
+    for _, region in ipairs({ card.portrait, card.name, card.classLine, card.status, card.statusDot, card.divider }) do
+        region:SetShown(has)
+    end
+    if not has then
+        card.layerTag:Hide()
+        return
+    end
+    local r, g, b
+    if T and T.ClassColor and s then
+        r, g, b = T.ClassColor(s.classFile, s.class)
+    end
+    if r then
+        card.name:SetTextColor(r, g, b)
+    else
+        card.name:SetTextColor(1, 0.827, 0.42)
+    end
+    card.name:SetText(m.target)
+    local icon = T and (s and T.ClassIcon(s.classFile, s.class) or { file = T.assets.neutralIcon })
+    card.portrait:SetTexCoord(0, 1, 0, 1)
+    if icon then
+        T.SetTexture(card.portrait, icon)
+    end
+    card.classLine:SetText(s and (L.ClassName(s.class, s.classFile) .. ' · ' .. tr('Level') .. ' ' .. (s.level or 0) .. ' · ' .. faction(
+        s.faction or Z.me.faction
+    )) or '')
+    card.status:SetText(m.online and tr('Online') or age(m.seen))
+    if T and T.Tint then
+        T.Tint(card.status, 'SetTextColor', m.online and 'online' or 'dim')
+        T.Tint(card.statusDot, 'SetColorTexture', m.online and 'online' or 'dim')
+    end
+    if s and layerText then
+        card.layerTag:SetLabel(layerText)
+        card.layerTag:ClearAllPoints()
+        local width = card.status.GetStringWidth and card.status:GetStringWidth()
+        card.layerTag:SetPoint('LEFT', card.status, 'LEFT', (type(width) == 'number' and width or 40) + 10, 0)
+        card.layerTag:Show()
+    else
+        card.layerTag:Hide()
+    end
+end
+local function refreshMemberDetail()
+    local m = memberFor(U.memberKey)
+    bindPrivateNote(m and m.key)
+    if not m then
+        updateMemberHeader(nil)
+        U.memberDetail:SetText(dimText(tr('Select a member.')))
+        U.memberWhisper:SetEnabled(false)
+        U.memberInvite:SetEnabled(false)
+        if U.memberFavorite then
+            U.memberFavorite:SetEnabled(false)
+            if T then
+                T.SetSelected(U.memberFavorite, false)
+            end
+        end
+        if U.memberPrivateNote then
+            U.memberPrivateNote:SetText('')
+        end
+        return
+    end
+    U.memberWhisper:SetEnabled(not m.own)
+    U.memberInvite:SetEnabled(not m.own and m.online)
+    if U.memberFavorite then
+        local favorite = Z.Social.IsFavorite(m.key)
+        U.memberFavorite:SetEnabled(not m.own)
+        U.memberFavorite:SetText(tr('Favorite'))
+        if T then
+            T.SetSelected(U.memberFavorite, favorite)
+        end
+    end
+    local s = m.data
+    if not s then
+        updateMemberHeader(m, nil, nil)
+        U.memberDetail:SetText(dimText(tr('Profile not received yet')))
+        return
+    end
+    local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
+    updateMemberHeader(m, s, layerText)
+    -- Fact list: every line the plain detail used to carry, with a dim caption in front of the value.
+    local function fact(caption, value)
+        return dimText(caption) .. ' ' .. value
+    end
+    local lines = {}
+    if s.community and s.community ~= '' then
+        lines[#lines + 1] = fact(tr('Display name') .. ':', s.community)
+    end
+    local where = locationText(m.location)
+    if where ~= '' then
+        lines[#lines + 1] = fact(m.online and tr('Current location:') or (tr('Last known location') .. ':'), where)
+    end
+    if s.roles and s.roles ~= '' then
+        lines[#lines + 1] = fact(tr('Preferred role') .. ':', roleName(s.roles))
+    end
+    if s.guild and s.guild ~= '' then
+        lines[#lines + 1] = fact(tr('Guild') .. ':', s.guild)
+    end
+    local prof = profText(s)
+    if prof ~= '' then
+        lines[#lines + 1] = fact(tr('Professions') .. ':', prof)
+    end
+    if s.note and s.note ~= '' then
+        lines[#lines + 1] = '\n|cff' .. paletteHex('textSoft') .. s.note .. '|r'
+    end
+    local main = m.own and Z.PublicLinks().main or Z.ConfirmedMain(m.key)
+    if main then
+        lines[#lines + 1] = fact(tr('Main') .. ':', main)
+    end
+    if not layerText then
+        lines[#lines + 1] = '\n|cff' .. paletteHex('muted') .. Z.CommunityLayer.Label(nil) .. '|r'
+    end
+    U.memberDetail:SetText(table.concat(lines, '\n'))
+    U.memberWhisper:SetEnabled(not m.own)
+    U.memberInvite:SetEnabled(not m.own and m.online)
+end
+local function refreshMembers()
+    local query = string.lower(U.memberSearch:GetText() or '')
+    local status, class, profession = U.memberStatus:GetText(), U.memberClass:GetText(), U.memberProfession:GetText()
+    if status ~= 'ONLINE' then
+        status = 'ALL'
+        U.memberStatus:SetText(status)
+    end
+    if Z.uiCharacter then
+        Z.uiCharacter.memberStatus = status
+    end
+    local favoriteOnly = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() == 'FAVORITES'
+    local filtered = {}
+    local now = A.Now()
+    local C = Z.SocialCategories
+    if U.SyncCategoryControls then
+        U.SyncCategoryControls()
+    end
+    local selected = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() or 'ALL'
+    local category = selected ~= 'FAVORITES' and selected ~= 'MY_GUILD' and selected or 'ALL'
+    for _, m in ipairs(memberEntries()) do
+        local s = m.data
+        local cn, prof, where, hay = m.cn, m.prof, m.where, m.hay
+        hay = hay .. ' ' .. string.lower(C.Text(m.key))
+        if
+            visibleMember(m, query, now)
+            and (query == '' or hay:find(query, 1, true))
+            and (status == 'ALL' or status == 'ONLINE' and m.online)
+            and (class == 'ALL_CLASSES' or s and s.classFile == class)
+            and (profession == 'ALL_PROFESSIONS' or prof:find(tr(profession), 1, true))
+            and (not favoriteOnly or Z.Social.IsFavorite(m.key))
+            and (selected ~= 'MY_GUILD' or Z.Social.IsGuildMember(m.key))
+            and C.Matches(m.key, category)
+        then
+            m.cn, m.prof, m.where = cn, prof, where
+            filtered[#filtered + 1] = m
+        end
+    end
+    local sort = U.memberSort:GetText()
+    table.sort(filtered, function(a, b)
+        local af = a.online == true and Z.Social.IsFavorite(a.key)
+        local bf = b.online == true and Z.Social.IsFavorite(b.key)
+        if af ~= bf then
+            return af == true
+        end
+        if sort == 'ONLINE_FIRST' then
+            if a.online ~= b.online then
+                return a.online == true
+            end
+            if not a.online and a.seen ~= b.seen then
+                return a.seen > b.seen
+            end
+            if a.target ~= b.target then
+                return a.target > b.target
+            end
+            return a.key > b.key
+        end
+        local av, bv = a.data and a.data.level or 0, b.data and b.data.level or 0
+        if sort == 'LEVEL_ASC' and av ~= bv then
+            return av < bv
+        elseif sort == 'LEVEL_DESC' and av ~= bv then
+            return av > bv
+        elseif sort == 'LAST_SEEN' and a.seen ~= b.seen then
+            return a.seen > b.seen
+        end
+        if a.target ~= b.target then
+            return a.target < b.target
+        end
+        return a.key < b.key
+    end)
+    local items = {}
+    for _, m in ipairs(filtered) do
+        local s = m.data
+        local name = m.target .. (s and s.community and s.community ~= '' and ' (' .. s.community .. ')' or '')
+        -- Class colour where the class is known; otherwise the previous colours (own gold, others white).
+        local classHex = T and T.ClassColorHex and s and T.ClassColorHex(s.classFile, s.class)
+        local title = '|cff'
+            .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
+            .. name
+            .. '|r'
+            .. (m.own and ' |cff' .. paletteHex('gold') .. '[' .. tr('You') .. ']|r' or '')
+            .. '    '
+            .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
+        local info = s and (m.cn .. ' · ' .. tr('Level') .. ' ' .. (s.level or 0) .. (s.roles and s.roles ~= '' and ' · ' .. roleName(
+            s.roles
+        ) or '')) or tr('Profile not received yet')
+        local location = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where) or ''
+        if m.main and m.main ~= '' then
+            if location ~= '' then
+                location = location .. ' · ' .. tr('Main') .. ': ' .. m.main
+            else
+                info = info .. ' · ' .. tr('Main') .. ': ' .. m.main
+            end
+        end
+        local tooltip = title .. '\n' .. info .. (location ~= '' and '\n' .. location or '')
+        if Z.Social.IsFavorite(m.key) then
+            tooltip = tooltip .. '\n' .. tr('Favorite')
+        end
+        if Z.Social.IsGuildMember(m.key) then
+            tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.me.guild
+        end
+        local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
+        if not layerText then
+            tooltip = tooltip .. '\n' .. Z.CommunityLayer.Label(nil)
+        end
+        local level = s and type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
+        local where = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where)
+            or (tr('Location') .. ': ' .. string.lower(tr('Unknown')))
+        local at = category == 'RECONTACT' and C.LastTogether(m.key)
+        if at then
+            tooltip = tooltip .. '\n' .. Z.T('Last together %d days ago.', math.floor((now - at) / 86400))
+        end
+        local memberKey = m.key
+        items[#items + 1] = {
+            iconTop = true,
+            noWrap = true,
+            ageAt = not m.online and m.seen or nil,
+            ageText = not m.online and age(m.seen) or nil,
+            selected = memberKey == U.memberKey,
+            icon = T and T.ClassIcon(s and s.classFile, s and s.class),
+            text = title,
+            subtitle = tr('Level') .. ' ' .. level .. ' · ' .. (layerText and ('|cff' .. paletteHex('accentBlue') .. layerText .. '|r · ') or '') .. where,
+            tooltip = tooltip,
+            favorite = Z.Social.IsFavorite(m.key),
+            sameGuild = Z.Social.IsGuildMember(m.key),
+            click = function()
+                U.memberKey = memberKey
+                if not m.own and s and s.publicOnly then
+                    Z.RequestProfile(memberKey)
+                end
+                refreshMembers()
+                refreshMemberDetail()
+                U.OpenCompactArea('members')
+            end,
+        }
+    end
+    local filtering = query ~= ''
+        or status ~= 'ALL'
+        or class ~= 'ALL_CLASSES'
+        or profession ~= 'ALL_PROFESSIONS'
+        or favoriteOnly
+        or selected ~= 'ALL'
+    U.SetEmptyHint(
+        U.memberList,
+        filtering and 'No members match your filters. Reset the filters or press Refresh.'
+            or 'No community members found yet. Press Refresh to search again.'
+    )
+    rows(U.memberList, items, 48)
+    U.memberCount:SetText(#filtered .. ' ' .. tr(#filtered == 1 and 'member' or 'members'))
+    refreshMemberDetail()
+    U.RefreshCategoryPanel()
+    if U.RefreshMemberCategories then
+        U.RefreshMemberCategories()
+    end
+end
+
+S.refreshMembers = refreshMembers

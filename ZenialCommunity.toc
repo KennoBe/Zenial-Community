@@ -1,0 +1,96 @@
+## Interface: 16001
+## Title: ZenialCommunity
+## Notes: ZENIAL members, crafting, groups, PvP help, quest help and trade
+## Notes-deDE: ZENIAL-Mitglieder, Handwerk, Gruppen, PvP-Hilfe, Questhilfe und Handel
+## Author: ZENIAL contributors
+## Version: 5.2.3
+## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
+## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
+## SavedVariables: ZenialCommunityDB
+## X-License: MIT
+Core.lua
+Adapter.lua
+Network3.lua
+CommunityLayer.lua
+CommunityDirectory.lua
+BattleNetTransport.lua
+WhisperGuard.lua
+CommunityMesh.lua
+QuestHelper.lua
+QuestGroups.lua
+UpdateNotice.lua
+CommunityMap.lua
+CommunityMap.xml
+Items.lua
+Locale.lua
+PvPHelp.lua
+History.lua
+UIState.lua
+Notifications.lua
+Social.lua
+SocialCategories.lua
+TradeManager.lua
+GroupFinder.lua
+SessionPlans.lua
+Diagnostics.lua
+ProfessionScan.lua
+RecipeSearch.lua
+CraftOrders.lua
+MaterialPlanner.lua
+ScheduleTime.lua
+ScheduledGroups.lua
+ActivityParty.lua
+ActivityBoard.lua
+CompanionProtocol.lua
+DungeonData.lua
+CompanionQuestLocations.lua
+CompanionTelemetry.lua
+CompanionViews.lua
+CompanionItemDetails.lua
+CompanionMapCatalog.lua
+Companion.lua
+CompanionProgress.lua
+CompanionPixel.lua
+CompanionVitals.lua
+CompanionQuestAreas.lua
+Theme.lua
+ThemeCommunity.lua
+UI.lua
+NoticeUI.lua
+UX.lua
+UXAddons.lua
+UXNotices.lua
+UXMembers.lua
+UXSessions.lua
+UXGroups.lua
+UXQuests.lua
+UXCrafting.lua
+UXTrade.lua
+UXViews.lua
+UXLayout.lua
+UXPageMembers.lua
+UXPageCraft.lua
+UXPageGroups.lua
+UXPageQuests.lua
+UXPageTrade.lua
+UXPageProfile.lua
+UXCreate.lua
+ScheduledGroupsUI.lua
+CommunityHomeUI.lua
+FormLayoutUI.lua
+SchedulePickersUI.lua
+CategorySettingsUI.lua
+ActivityDetailsUI.lua
+ActivityArchiveUI.lua
+NotificationInboxUI.lua
+PvPHelpUI.lua
+ResponsiveUI.lua
+ProfessionHistoryUI.lua
+NetworkSetup.lua
+CompanionUI.lua
+RealmMigration.lua
+AccountPreferences.lua
+ForeverLiveMigration.lua
+Main.lua
+Launcher.lua
+LauncherSpec.lua
