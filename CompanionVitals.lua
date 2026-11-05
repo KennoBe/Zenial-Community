@@ -5,6 +5,7 @@ local C,P=Z.Companion,Z.CompanionProtocol
 local V={ROWS=17};C.Vitals=V
 local MAGIC=string.char(90,67,86,84,1,254,129,126)
 local function byte(cell,value)local r,g,b=C.Pixel.Color(value);cell:SetColorTexture(r,g,b,1)end
+function V.Hide()for _,cell in ipairs(V.cells or{})do cell:Hide()end end
 local function u32(n)return string.char(n%256,math.floor(n/256)%256,math.floor(n/65536)%256,math.floor(n/16777216)%256)end
 function V.Render()
     local X=C.Pixel;if not X.frame or V.failed or A.Clock()<(V.due or 0)then return end;V.due=A.Clock()+.25
@@ -48,6 +49,7 @@ function V.Render()
                 end
             end
         end
+        for _,cell in ipairs(V.cells)do cell:Show()end
     end)
     if not ok then V.failed=true end
 end

@@ -29,7 +29,7 @@ function C.Status()
 end
 function C.Stop(reason)
     if C.QuestAreas then C.QuestAreas.Reset()end
-    if C.Pixel then C.Pixel.Stop()end
+    if C.Pixel and not C.debugPixel then C.Pixel.Stop()end
     local probe=C.flushProbe
     -- Late server echoes can arrive after an automatic timeout. Keep only the
     -- exact own lines for a short, callback-only drain; manual OFF removes it.
@@ -39,7 +39,7 @@ function C.Stop(reason)
         C.retiredUntil=A.Clock()+60
     else C.retiredLines=nil;C.retiredUntil=nil end
     C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.waiting={};C.due={};C.signatures={};C.finished={};C.seenEcho={};C.pendingCount=0
-    if C.SetActive then C.SetActive(false,C.retiredUntil~=nil)end
+    if C.SetActive then C.SetActive(C.debugPixel==true,C.retiredUntil~=nil)end
     if C.flushFrame then C.flushFrame:UnregisterAllEvents();C.flushFrame:SetScript('OnEvent',nil);C.flushFrame:SetScript('OnUpdate',nil)end
     C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.clubChatBlocked=false;C.positionRenewAt=0
     -- Restore only logging enabled by this module. Pre-existing user logging stays on.
@@ -92,7 +92,7 @@ function C.BeginSession()
     C.questPoints={}
     C.filterStats={calls=0,hidden=0,unmatched=0,foreign=0,unreadable=0};C.flushProbe=nil
     C.retiredLines=nil;C.retiredUntil=nil
-    if C.Pixel then C.Pixel.Stop();C.Pixel.packets=0 end
+    if C.Pixel and not C.debugPixel then C.Pixel.Stop();C.Pixel.packets=0 end
     C.cursor=1;C.state='logging-required';C.reason='';C.running=true;C.nextSend=0;C.loggingAttempted=false;C.loggingDue=A.Clock()+1;C.startedAt=A.Clock();C.blockedCall=nil
     C.SetActive(true)
     changed();return true
@@ -304,6 +304,7 @@ function C.FlushTick(clock)
     changed()
 end
 function C.Tick()
+    if C.debugPixel then C.DebugTick();return end
     if not C.running or not C.settings or not C.settings.enabled then return end
     local clock=A.Clock()
     if C.QuestAreas then C.QuestAreas.Tick()end
@@ -368,7 +369,71 @@ function C.Tick()
     if C.IsPixel()then C.Pixel.Commit()end
     C.pendingCount=L.Count(C.jobs)+L.Count(C.latest);changed()
 end
+local function debugSnapshot()
+    local me=Z.me or{};local directory=Z.CommunityDirectory or{};local status=C.Status()
+    local candidates=P.Array();local ids={}
+    for id in pairs(directory.candidates or{})do if type(id)=="number"and id==id then ids[#ids+1]=id end end
+    table.sort(ids);for i=1,math.min(#ids,20)do
+        local row=directory.candidates[ids[i]];local g=row and row.info
+        if A.PublicTable(g)and A.Safe(g.gameAccountID,g.characterName,g.playerGuid,g.realmName,g.wowProjectID,g.regionID)then
+            candidates[#candidates+1]={gameAccountID=type(g.gameAccountID)=="number"and g.gameAccountID or nil,
+                name=type(g.characterName)=="string"and g.characterName:sub(1,128)or nil,guid=type(g.playerGuid)=="string"and g.playerGuid:sub(1,80)or nil,
+                realm=type(g.realmName)=="string"and g.realmName:sub(1,64)or nil,project=type(g.wowProjectID)=="number"and g.wowProjectID or nil,
+                region=type(g.regionID)=="number"and g.regionID or nil}
+        end
+    end
+    local events=P.Array();local diagnostics=Z.Diagnostics
+    for i=math.max(1,#(diagnostics and diagnostics.events or{})-29),#(diagnostics and diagnostics.events or{})do
+        local raw=diagnostics.events[i]
+        if A.Safe(raw)and type(raw)=="string"then events[#events+1]=raw:sub(1,240)end
+    end
+    local network=Z.Network3 and Z.Network3.Status()or{};local directoryStatus=directory.Status and directory.Status()or{}
+    local bnet=Z.BattleNetTransport or{};local bnetStatus=bnet.Status and bnet.Status()or{}
+    return{version=1,addonVersion=Z.ADDON_VERSION,identity={key=me.key,name=me.target or me.name,guid=me.guid,world=me.world or me.realm,class=me.classFile or me.class,faction=me.faction},
+        directory={status=directoryStatus,reasons=directory.scanReasons or{},candidates=candidates},
+        transport={state=status.state,reason=status.reason,transport=status.transport,sent=status.sent,automatic=status.automatic,queued=status.queued,
+            pixelPackets=status.pixelPackets,network={queue=network.queue,bytes=network.bytes,assemblies=network.assemblies,inbound=network.inbound,
+                throttle=network.throttle,throttled=network.throttled,sent=network.sent,received=network.received},
+            battleNet={status=bnetStatus,stats=bnet.stats or{}}},events=events}
+end
+function C.DebugTick()
+    if not C.debugPixel or not C.Pixel then return end
+    local clock=A.Clock()
+    if not C.debugLines and clock>=(C.debugRefreshAt or 0)then
+        C.debugRefreshAt=clock+1;C.debugSequence=(C.debugSequence or 0)+1
+        local ok,body=pcall(function()return P.Json({origin="timer",data=debugSnapshot()})end)
+        if ok then
+            local lines=P.Frames(C.source or P.Source(Z.me and Z.me.key or"debug"),C.debugSession,C.debugSequence,"debug",A.Now(),body)
+            if lines then C.debugLines=lines;C.debugNext=1 end
+        end
+    end
+    if clock<(C.debugSendAt or 0)then return end
+    C.debugSendAt=clock+.18;C.Pixel.BeginBatch()
+    for _=1,3 do
+        local line=C.debugLines and C.debugLines[C.debugNext];if not line then break end
+        C.Pixel.Publish(line);C.debugNext=C.debugNext+1
+        if C.debugNext>#C.debugLines then C.debugLines=nil;C.debugNext=1;break end
+    end
+    C.Pixel.Commit(true)
+end
+function C.SetDebugPixel(enabled)
+    enabled=enabled==true
+    if enabled==C.debugPixel then return true end
+    if enabled then
+        if not C.settings or not Z.me then return false end
+        C.debugPixel=true;C.debugSession=string.format("%.0f.%d.%.0f",A.Now(),math.floor(A.Clock()*1000)%1000000000,math.floor(A.Clock()*1000))
+        C.debugSequence=0;C.debugLines=nil;C.debugNext=1;C.debugRefreshAt=0;C.debugSendAt=0
+        C.Pixel.Stop();if C.Vitals then C.Vitals.Hide()end;C.SetActive(true);return true
+    end
+    C.debugPixel=false;C.debugLines=nil;C.Pixel.Stop();if C.Vitals then C.Vitals.due=0 end;C.SetActive(C.running);return true
+end
 function C.OnEvent(event,...)
+    if C.debugPixel then
+        if event=='ADDON_ACTION_BLOCKED'or event=='ADDON_ACTION_FORBIDDEN'then
+            local addon,fn=...;if A.Safe(addon,fn)and Z.Diagnostics then Z.Diagnostics.Record('debug:'..event,addon,fn)end
+        end
+        return
+    end
     if event=='CLUB_MESSAGE_ADDED'then C.CaptureClub(...);return end
     if incomingSet[event]then C.CaptureChat(event,...)end
     if event=='CHAT_MSG_WHISPER'or event=='CHAT_MSG_WHISPER_INFORM'then C.OnEcho(...)
@@ -420,6 +485,12 @@ function C.SetActive(active,keepFilters)
     end
     C.filterReady=false
     if not active then return end
+    if C.debugPixel then
+        for _,event in ipairs({'ADDON_ACTION_BLOCKED','ADDON_ACTION_FORBIDDEN'})do pcall(frame.RegisterEvent,frame,event)end
+        frame:SetScript('OnEvent',function(_,event,...)C.OnEvent(event,...)end)
+        local elapsed=0;frame:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>=.05 then elapsed=0;C.DebugTick()end end)
+        return
+    end
     for _,event in ipairs({'ADDON_ACTION_BLOCKED','ADDON_ACTION_FORBIDDEN','BAG_UPDATE_DELAYED','PLAYER_EQUIPMENT_CHANGED','GET_ITEM_INFO_RECEIVED','QUEST_LOG_UPDATE','QUEST_ACCEPTED','QUEST_REMOVED','QUEST_TURNED_IN'})do pcall(frame.RegisterEvent,frame,event)end
     -- Only the player's stats feed the character view. Prefer a player-only
     -- registration; OnEvent still filters the unit if only RegisterEvent works.

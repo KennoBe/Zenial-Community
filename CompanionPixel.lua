@@ -38,7 +38,7 @@ function X.Layout(force)
     X.layoutScale=pixel/scale;X.frame:SetScale(pixel/scale)
     X.frame:ClearAllPoints();X.frame:SetPoint('TOPLEFT',root,'TOPLEFT',8,-8)
 end
-function X.Commit()
+function X.Commit(skipVitals)
     if not X.lines or#X.lines==0 then return end
     X.counter=((X.counter or 0)+1)%4294967296
     local bytes=X.Pack(X.lines,X.counter);X.lines=nil
@@ -59,7 +59,7 @@ function X.Commit()
     -- All cells change within this call, so the frame still shows one packet.
     local last=X.lastPacket;X.Layout(not last)
     for i=1,#bytes do local v=bytes:byte(i);if not last or v~=last:byte(i)then local r,g,b=X.Color(v);X.cells[i]:SetColorTexture(r,g,b,1)end end
-    if C.Vitals then C.Vitals.Render()end
+    if not skipVitals and C.Vitals then C.Vitals.Render()end
     X.lastPacket=bytes;X.packets=(X.packets or 0)+1;X.frame:Show()
 end
 function X.Stop()

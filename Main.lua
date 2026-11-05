@@ -583,6 +583,8 @@ SLASH_ZENIALCOMMUNITY1="/zenial"
 SlashCmdList.ZENIALCOMMUNITY=function(text)
     Z.Initialize();if not Z.db then return end; text=type(text)=="string" and string.lower(text:match("^%s*(.-)%s*$") or "") or ""
     if text=="discover" or text=="finden" then Z.CommunityDirectory.RequestScan();A.DiscoveryTick(true)
+    elseif text=="debug on"then Z.Companion.SetDebugPixel(true)
+    elseif text=="debug off"then Z.Companion.SetDebugPixel(false)
     elseif text=="companion"then Z.Companion.Show()
     elseif text=="setup advanced"then Z.NetworkSetup.ShowAdvanced()
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
