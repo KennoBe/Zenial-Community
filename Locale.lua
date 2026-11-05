@@ -233,6 +233,7 @@ local DE={
     ["Everyone"]="Alle",
     ["Coverage: at least one fellow player. Shared by all: you and every proposed player. No guarantee of quest completion or reachability. Other party members are not counted."]="Abdeckung: mindestens ein Mitspieler. Von allen geteilt: du und alle vorgeschlagenen Spieler. Keine Garantie für Questabschluss oder Erreichbarkeit. Weitere Gruppenmitglieder sind nicht mitgezählt.",
     ["Enemy targeting and observed stealth alerts with nearby players and local history."]="Gegner-Target- und beobachtete Stealth-Warnungen mit Gegnerliste und lokalem Verlauf.",
+    ["Macro browser, hidden graphics settings, map reveal and small everyday helpers."]="Makro-Browser, versteckte Grafikeinstellungen, Karte aufdecken und kleine Alltagshelfer.",
     ["Class colors for player nameplates and group level settings."]="Klassenfarben für Spieler-Nameplates und Einstellungen für Gruppenlevel.",
     ["This player is offline."]="Dieser Spieler ist offline.",
     ["Invalid character."]="Ungültiger Charakter.",

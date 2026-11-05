@@ -241,6 +241,13 @@ local ADDON_CATALOG = {
         slash = 'ZENIALWATCH',
         icon = 'Interface\\AddOns\\ZenialWatch\\Media\\Icon.tga',
     },
+    {
+        addon = 'ZenialUtility',
+        label = 'Utility',
+        description = 'Macro browser, hidden graphics settings, map reveal and small everyday helpers.',
+        slash = 'ZENIALUTILITY',
+        icon = 'Interface\\AddOns\\ZenialUtility\\Media\\Icon.tga',
+    },
 }
 S.ADDON_CATALOG = ADDON_CATALOG
 U.AddonCatalog = ADDON_CATALOG

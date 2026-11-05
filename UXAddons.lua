@@ -73,7 +73,7 @@ function U.RefreshAddonAvailability()
         end
     end
     -- Manager pages use an 856-pixel logical canvas at every window scale.
-    -- Five installed providers must fit without pushing Watch off the right edge.
+    -- All installed providers must fit without pushing the last tab off the right edge.
     local tabWidth = math.min(170, (856 - math.max(0, count - 1) * 8) / math.max(1, count))
     local slot = 0
     for _, tab in ipairs(U.addonTabs) do
