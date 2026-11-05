@@ -490,7 +490,7 @@ function U.Refresh(all, revisionDriven)
             end
         end
         if U.profileView == 'network' then
-            U.profileNetworkText:SetText(table.concat(Z.Diagnostics.Lines(), '\n'))
+            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
         end
     end
     if all or U.page == 9 then

@@ -89,7 +89,7 @@ function U.SetProfileView(v)
     if U.profileNetworkFrame then
         U.profileNetworkFrame:SetShown(U.profileView == 'network')
         if U.profileNetworkText then
-            U.profileNetworkText:SetText(table.concat(Z.Diagnostics.Lines(), '\n'))
+            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
         end
     end
     selectNav(U.profilePublicTab, U.profileView == 'public')

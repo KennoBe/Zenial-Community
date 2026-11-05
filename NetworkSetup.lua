@@ -95,6 +95,50 @@ function S.Refresh()
         S.confirmed:SetText(table.concat(lines,"\n"))
     end
 end
+function S.UserSummary()
+    if not Z.db or not Z.db.consent then return tr("Community exchange is disabled.")end
+    if not Z.db.autoDiscovery then return tr("Community member search is paused.")end
+    local missing,ready=S.MissingGroup()
+    if missing then return tr("Join the community to connect.")end
+    if not ready then return tr("Checking community membership.")end
+    local transport=B.Status()
+    if(transport.bnet or 0)+(transport.whisper or 0)>0 then return tr("Connected to the community.")end
+    return tr("Searching for active community members.")
+end
+function S.RefreshOverview()
+    if not S.overviewStatus then return end
+    S.overviewStatus:SetText(S.UserSummary())
+    S.overviewMessage:SetText(tr(S.overviewMessageKey or ""))
+end
+function S.CreateOverview()
+    if S.overviewFrame then return end
+    local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
+    f:SetSize(560,315);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
+    if Z.Theme then Z.Theme.Panel(f,"stone")end
+    label(f,"Community connection",24,-24,500,32)
+    S.overviewStatus=label(f,"",24,-82,500,56)
+    label(f,"Connect with other players to find members and community activity.",24,-145,500,48)
+    S.overviewMessage=label(f,"",24,-196,500,36)
+    S.overviewRefresh=button(f,"Refresh connection",24,-245,210,function()
+        S.overviewMessageKey="Connection check started. It may take a moment."
+        D.RequestScan();local ok=B.Test()
+        if not ok then S.overviewMessageKey="The connection cannot be checked yet. Please try again shortly."end
+        S.RefreshOverview()
+    end)
+    if Z.Theme then Z.Theme.StyleButton(S.overviewRefresh,"primary")end
+    S.overviewInvite=button(f,"Invitation link",244,-245,128,function()S.ShowInvite()end)
+    S.overviewAdvanced=button(f,"Technical details",382,-245,154,function()S.ShowAdvanced()end)
+    button(f,"Close",406,-282,130,function()f:Hide()end)
+    f:SetScript("OnHide",function()S.overviewMessageKey=nil;if S.linkFrame then S.linkFrame:Hide()end end)
+    local elapsed=0;f:SetScript("OnUpdate",function(_,dt)elapsed=elapsed+dt;if elapsed>=1 then elapsed=0;S.RefreshOverview()end end)
+    f:Hide()
+end
+function S.ShowOverview()
+    if S.IsUnsupportedBeta()then return S.ShowBetaNotice()end
+    if S.frame then S.frame:Hide()end;if S.joinFrame then S.joinFrame:Hide()end
+    if S.linkFrame then S.linkFrame:Hide()end
+    S.CreateOverview();S.RefreshOverview();S.overviewFrame:Show()
+end
 function S.ShowCatalog()
     if not S.catalogFrame then
         local f=CreateFrame("Frame",nil,S.frame,BackdropTemplateMixin and"BackdropTemplate"or nil);S.catalogFrame=f;f:SetSize(760,300);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true)
@@ -119,7 +163,7 @@ function S.RefreshInvite()
 end
 function S.ShowInvite()
     if not S.linkFrame then
-        local f=CreateFrame("Frame",nil,S.frame,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
+        local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
         label(f,"Click the text field, then press Ctrl+A and Ctrl+C.",15,-15,720,35)
         S.linkName=label(f,"",15,-52,620,24)
         S.linkPrevious=button(f,"<",655,-49,32,function()S.linkGroupIndex=(S.linkGroupIndex-2)%#S.invitationRows+1;S.RefreshInvite()end)
@@ -218,19 +262,20 @@ function S.ShowJoin(row)
     end
     S.joinGroup=row.id;S.joinLink=row.invite~=""and row.invite or D.BOOTSTRAP_INVITE;S.joinEdit:SetText(S.joinLink);S.joinMessage:SetText("")
     S.joinFrame:ClearAllPoints();S.joinFrame:SetPoint("CENTER")
-    if S.frame then S.frame:Hide()end
+    if S.frame then S.frame:Hide()end;if S.overviewFrame then S.overviewFrame:Hide()end;if S.linkFrame then S.linkFrame:Hide()end
     S.joinFrame:Show();S.prompted=true;Z.db.networkSetupSeen=true
     if Z.Companion then Z.Companion.MarkIntroductionSeen();Z.Companion.RefreshUI()end
 end
 function S.ShowAdvanced()
     if S.IsUnsupportedBeta()then return S.ShowBetaNotice()end
-    if S.joinFrame then S.joinFrame:Hide()end
+    if S.joinFrame then S.joinFrame:Hide()end;if S.overviewFrame then S.overviewFrame:Hide()end
+    if S.linkFrame then S.linkFrame:Hide()end
     S.Create();S.Refresh();S.frame:Show()
 end
 function S.Show()
     if S.IsUnsupportedBeta()then return S.ShowBetaNotice()end
     local row=S.MissingGroup()
-    if row then S.ShowJoin(row)else S.ShowAdvanced()end
+    if row then S.ShowJoin(row)else S.ShowOverview()end
 end
 function S.Tick()
     local now=Z.Adapter.Clock();S.loginReadyAt=S.loginReadyAt or now+5
