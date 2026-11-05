@@ -133,6 +133,29 @@ function U.Create()
     if T then
         T.Panel(U.contentBackground, 'parchment')
     end
+    -- Notice while ZENIAL Community membership is missing; U.RefreshJoinBanner shows it and U.Layout makes room.
+    U.joinBanner = CreateFrame('Frame', nil, f, BackdropTemplateMixin and 'BackdropTemplate' or nil)
+    U.joinBanner:SetHeight(U.JOIN_BANNER_HEIGHT - 2)
+    if T then
+        T.Panel(U.joinBanner, 'parchment')
+        T.Tint(U.joinBanner, 'SetBackdropColor', 'noticeBg')
+        T.Tint(U.joinBanner, 'SetBackdropBorderColor', 'gold')
+    end
+    U.joinBannerButton = button(U.joinBanner, tr('Join now'), 0, 0, 130, function()
+        f:Hide()
+        Z.NetworkSetup.Show()
+    end)
+    U.joinBannerButton:ClearAllPoints()
+    U.joinBannerButton:SetPoint('RIGHT', -5, 0)
+    if T then
+        T.StyleButton(U.joinBannerButton, 'primary')
+    end
+    U.joinBannerText = label(U.joinBanner, tr('You are not in ZENIAL Community yet. Join to find members and offers.'), 0, 0, 500, 'GameFontHighlightSmall')
+    U.joinBannerText:ClearAllPoints()
+    U.joinBannerText:SetPoint('LEFT', 10, 0)
+    U.joinBannerText:SetPoint('RIGHT', U.joinBannerButton, 'LEFT', -10, 0)
+    tone(U.joinBannerText, 'goldText', 1, 0.95, 0.8)
+    U.joinBanner:Hide()
     U.navSeparator = f:CreateTexture(nil, 'ARTWORK')
     if T and T.Tint then
         T.Tint(U.navSeparator, 'SetColorTexture', 'edge', 0.72)

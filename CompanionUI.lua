@@ -79,15 +79,15 @@ function C.TickIntroduction()
     if S and S.MissingGroup then local _,ready=S.MissingGroup();if not ready and A.Clock()<C.introductionDue+10 then return end end
     C.Show(true)
 end
-function C.AddIntroductionToJoin(f)
-    label(f,tr('ZENIAL Companion · optional','ZENIAL Companion · optional'),20,-258,480,22)
-    label(f,tr('Karte, Quests, Ausrüstung und Community im Browser oder auf externen Geräten. Nur lesend; Export umfasst auch Chat und private Planungen.','Map, quests, gear and community in a browser or on external devices. Read only; export includes chat and private plans.'),20,-284,480,38)
-    local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.companionEnable=check;check:SetPoint('TOPLEFT',20,-324);check:SetSize(26,26)
-    label(f,tr('Companion-Export aktivieren','Enable companion export'),52,-328,440,22)
+function C.AddIntroductionToJoin(f,top)
+    label(f,tr('ZENIAL Companion · optional','ZENIAL Companion · optional'),20,top,480,22)
+    label(f,tr('Karte, Quests, Ausrüstung und Community im Browser oder auf externen Geräten. Nur lesend; Export umfasst auch Chat und private Planungen.','Map, quests, gear and community in a browser or on external devices. Read only; export includes chat and private plans.'),20,top-26,480,38)
+    local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.companionEnable=check;check:SetPoint('TOPLEFT',20,top-66);check:SetSize(26,26)
+    label(f,tr('Companion-Export aktivieren','Enable companion export'),52,top-70,440,22)
     check:SetScript('OnClick',function(self)C.SetExportEnabled(self:GetChecked()==true);C.RefreshUI()end)
     if Z.Theme then Z.Theme.StyleCheckbox(check)end
-    label(f,tr('Companion herunterladen:','Download companion:'),20,-358,480,22)
-    local link=CreateFrame('EditBox',nil,f,'InputBoxTemplate');f.companionDownload=link;link:SetPoint('TOPLEFT',26,-384);link:SetSize(470,24);link:SetAutoFocus(false);link:SetText('https://discord.zenial.net/zenial-companion')
+    label(f,tr('Companion herunterladen:','Download companion:'),20,top-100,480,22)
+    local link=CreateFrame('EditBox',nil,f,'InputBoxTemplate');f.companionDownload=link;link:SetPoint('TOPLEFT',26,top-126);link:SetSize(470,24);link:SetAutoFocus(false);link:SetText('https://discord.zenial.net/zenial-companion')
     link:SetScript('OnEditFocusGained',function(self)self:HighlightText()end);link:SetScript('OnEscapePressed',function(self)self:ClearFocus()end)
-    button(f,tr('Companion einrichten','Set up companion'),20,-424,220,function()C.Show()end)
+    button(f,tr('Companion einrichten','Set up companion'),20,top-166,220,function()C.Show()end)
 end

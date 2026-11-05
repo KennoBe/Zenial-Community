@@ -67,6 +67,26 @@ function U.SetAddonManagerNavigation(shown)
     U.LayoutMainTabs()
 end
 
+U.JOIN_BANNER_HEIGHT = 36
+
+-- Shows the membership notice only while it applies; the layout changes only when that flips.
+function U.RefreshJoinBanner()
+    if not U.joinBanner then
+        return
+    end
+    local active = Z.NetworkSetup.NeedsJoin()
+    if active == (U.joinBannerActive == true) then
+        return
+    end
+    U.joinBannerActive = active
+    if active then
+        U.joinBanner:Show()
+    else
+        U.joinBanner:Hide()
+    end
+    U.Layout()
+end
+
 function U.Layout(activeOnly, geometryOnly)
     if not U.frame or not U.pages then
         return
@@ -77,7 +97,8 @@ function U.Layout(activeOnly, geometryOnly)
     local pageX = compact and 158 or 188
     local contentX = pageX + 8
     local available = math.max(620, width - contentX - 16)
-    local pageHeight = math.max(1, height - 146)
+    local bannerHeight = U.joinBannerActive and U.JOIN_BANNER_HEIGHT or 0
+    local pageHeight = math.max(1, height - 146 - bannerHeight)
     local scale = math.min(available / 856, pageHeight / 500)
     local wasCompact = U.compactContent
     if not geometryOnly then
@@ -97,8 +118,13 @@ function U.Layout(activeOnly, geometryOnly)
     U.navSeparator:SetWidth(available)
     if U.contentBackground then
         U.contentBackground:ClearAllPoints()
-        U.contentBackground:SetPoint('TOPLEFT', pageX - 8, -112)
+        U.contentBackground:SetPoint('TOPLEFT', pageX - 8, -112 - bannerHeight)
         U.contentBackground:SetPoint('BOTTOMRIGHT', -12, 28)
+    end
+    if U.joinBanner then
+        U.joinBanner:ClearAllPoints()
+        U.joinBanner:SetPoint('TOPLEFT', pageX - 8, -112)
+        U.joinBanner:SetPoint('TOPRIGHT', -12, -112)
     end
     -- A scaled frame also scales its own anchor offsets on Forever. Compensate
     -- those offsets so only the page contents grow; the page origin stays on
@@ -107,7 +133,7 @@ function U.Layout(activeOnly, geometryOnly)
         if not activeOnly or i == U.page then
             page:SetScale(scale)
             page:ClearAllPoints()
-            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / scale, -118 / scale)
+            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / scale, (-118 - bannerHeight) / scale)
             page:SetSize(available / scale, pageHeight / scale)
         end
     end
@@ -358,6 +384,7 @@ function U.Refresh(all, revisionDriven)
         U.UpdateBadges()
         return
     end
+    U.RefreshJoinBanner()
     -- Explicit user refreshes also support callers that changed local data
     -- directly. Network/timer refreshes reuse the revisioned member snapshot.
     if not revisionDriven then

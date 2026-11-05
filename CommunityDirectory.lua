@@ -1,7 +1,8 @@
 -- Account-wide, explicitly configured Battle.net lounge directory.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local D={MAX_GROUPS=64,SCAN_BATCH=25,MAX_CANDIDATES=5000,candidates={},groups={},available={}}
-D.BOOTSTRAP_NAME="Zenial Network"
+D.BOOTSTRAP_NAME="Zenial Network" -- Name of the lounge in the client; used to recognise it. Never shown to players.
+D.DISPLAY_NAME="ZENIAL Community"
 D.BOOTSTRAP_ID=200669412 -- Live lounge confirmed by the operator in the Forever client.
 D.BOOTSTRAP_INVITE="https://launch.battle.net/invite/EWYKlz5SAj2"
 local BETA_BOOTSTRAP_ID=23099311
@@ -129,7 +130,7 @@ function D.SetupIssue()
     if not C_Club or type(C_Club.GetSubscribedClubs)~="function"then return"The client's lounge API is unavailable."end
     if not D.clubsReady then return"Group roster loading"end
     for _,row in ipairs(D.clientClubs or{})do
-        if row.name:lower()==D.BOOTSTRAP_NAME:lower()and row.clubType==1 then return"Zenial Network is a WoW character community. A Battle.net lounge is required."end
+        if row.name:lower()==D.BOOTSTRAP_NAME:lower()and row.clubType==1 then return"ZENIAL Community is a WoW character community here. A Battle.net lounge is required."end
     end
     if D.loungesAllowed==false then return"This client does not allow Battle.net lounges. Copy diagnostics."end
     return"Group setup required"

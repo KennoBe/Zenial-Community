@@ -56,7 +56,7 @@ end
 function S.Refresh()
     if not S.frame or not D.config then return end
     local state,transport=D.Status(),B.Status();local parts={tr("Assigned lounges: %d/%d joined",state.joined,math.max(1,state.assigned))}
-    if state.assigned==0 then parts[#parts+1]=D.BOOTSTRAP_NAME.." · "..tr("Join the lounge to resolve its ID.")end
+    if state.assigned==0 then parts[#parts+1]=D.DISPLAY_NAME.." · "..tr("Join the lounge to resolve its ID.")end
     for _,id in ipairs(D.config.assignment)do for _,row in ipairs(D.config.groups)do if row.id==id then parts[#parts+1]=row.name.." ("..string.format("%.0f",id)..")"end end end
     S.assignment:SetText(table.concat(parts,"\n"))
     local available=D.AvailableGroups();S.available=available
@@ -117,7 +117,7 @@ function S.ShowInvite()
         button(f,"Close",625,-153,110,function()f:Hide()end);f:SetScript("OnHide",function()S.linkEdit:ClearFocus()end)
     end
     local links={};for _,id in ipairs(D.config.assignment)do for _,row in ipairs(D.config.groups)do if row.id==id then links[#links+1]=row end end end
-    if#links==0 then links[1]={name=D.BOOTSTRAP_NAME,invite=D.BOOTSTRAP_INVITE}end
+    if#links==0 then links[1]={name=D.DISPLAY_NAME,invite=D.BOOTSTRAP_INVITE}end
     S.invitationRows=links;S.linkGroupIndex=1
     for i,row in ipairs(links)do if row.id==S.inviteGroup then S.linkGroupIndex=i;break end end
     S.RefreshInvite();S.linkFrame:Show();S.SelectText(S.linkEdit)
@@ -127,7 +127,7 @@ function S.Create()
     local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.frame=f;f:SetSize(810,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag("LeftButton");f:SetScript("OnDragStart",f.StartMoving);f:SetScript("OnDragStop",f.StopMovingOrSizing)
     if Z.Theme then Z.Theme.Panel(f,"stone")end
     label(f,"Battle.net network · 4.0",15,-15,740,24)
-    label(f,"Set up Zenial Network to find members and offers. Public entries are shared; private requests go directly to their owner.",15,-44,775,48)
+    label(f,"Set up ZENIAL Community to find members and offers. Public entries are shared; private requests go directly to their owner.",15,-44,775,48)
     S.assignment=label(f,"",15,-98,555,64);button(f,"Invitation links",590,-100,190,S.ShowInvite)
     button(f,"Next group pair",590,-132,190,function()D.ChoosePair(true);D.CatalogChanged();S.Refresh()end)
     label(f,"Operator: choose a joined Battle.net group and add its invite link.",15,-171,760,24)
@@ -161,23 +161,42 @@ function S.MissingGroup()
     if #D.config.groups==0 then return{id=0,name=D.BOOTSTRAP_NAME,invite=D.BOOTSTRAP_INVITE},true end
     return nil,true
 end
+-- Same conditions as the automatic prompt in S.Tick: no membership is needed without consent or discovery.
+function S.NeedsJoin()
+    if not D.config or not Z.db or not Z.identityReady or S.IsUnsupportedBeta()then return false end
+    if not Z.db.consent or not Z.db.autoDiscovery then return false end
+    local row,ready=S.MissingGroup()
+    return ready==true and row~=nil
+end
 function S.ShowJoin(row)
     if S.IsUnsupportedBeta()then return S.ShowBetaNotice()end
     if not S.joinFrame then
         local f=CreateFrame("Frame","ZenialCommunityJoin",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.joinFrame=f
-        f:SetSize(520,466);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
+        f:SetSize(520,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
         if Z.Theme then Z.Theme.Panel(f,"stone")end
-        S.joinTitle=label(f,"Join Zenial",20,-18,440,24)
-        S.joinReason=label(f,"Join the Zenial community in game to find members and offers.",20,-53,480,42)
-        S.joinEdit=edit(f,22,-102,476,180,false)
+        local function gold(region)if Z.Theme then Z.Theme.Tint(region,"SetTextColor","gold")end;return region end
+        S.joinTitle=gold(label(f,"Welcome to ZENIAL Community",20,-18,440,24));S.joinTitle:SetFontObject("GameFontNormalLarge")
+        S.joinReason=label(f,"To see members, groups and offers, join ZENIAL Community once.",20,-50,480,34)
+        S.joinStepTitles={}
+        local function step(index,y,height,title)
+            local p=CreateFrame("Frame",nil,f,BackdropTemplateMixin and"BackdropTemplate"or nil);p:SetPoint("TOPLEFT",16,y);p:SetSize(488,height)
+            if Z.Theme then Z.Theme.Panel(p,"surface")end
+            S.joinStepTitles[index]=gold(label(p,"",12,-8,464,18));S.joinStepTitles[index]:SetText(index.."  "..tr(title))
+            return p
+        end
+        local copy=step(1,-88,88,"Copy the link")
+        S.joinEdit=edit(copy,16,-30,336,180,false)
         S.joinEdit:SetScript("OnEditFocusGained",function(self)self:HighlightText()end)
         S.joinEdit:SetScript("OnMouseUp",function(self)self:HighlightText();S.Message("Press Ctrl+C. Then open the join window and press Ctrl+V.")end)
         S.joinEdit:SetScript("OnTextChanged",function(self)if S.joinLink and self:GetText()~=S.joinLink then self:SetText(S.joinLink)end end)
-        S.joinCopy=button(f,"Select link",20,-138,225,function()S.SelectText(S.joinEdit);S.Message("Click the link field and press Ctrl+C.")end)
-        S.joinOpen=button(f,"Open join window",255,-138,245,S.OpenJoinDialog)
-        S.joinSteps=label(f,"Click the link and press Ctrl+C. Open the join window, paste and join.",20,-178,480,35)
-        S.joinMessage=label(f,"",20,-218,480,24)
-        if Z.Companion and Z.Companion.AddIntroductionToJoin then Z.Companion.AddIntroductionToJoin(f)end
+        S.joinCopy=button(copy,"Select link",360,-29,116,function()S.SelectText(S.joinEdit);S.Message("Click the link field and press Ctrl+C.")end)
+        label(copy,"Click the field and press Ctrl+C.",12,-62,464,20)
+        S.joinOpen=button(step(2,-182,66,"Open the join window"),"Open join window",12,-30,250,S.OpenJoinDialog)
+        if Z.Theme then Z.Theme.StyleButton(S.joinOpen,"primary")end
+        S.joinSteps=label(step(3,-254,66,"Paste and join"),"Press Ctrl+V in the join window and confirm. This window then closes by itself.",12,-30,464,32)
+        S.joinStatus=gold(label(f,"Not joined yet",20,-326,480,18))
+        S.joinMessage=label(f,"",20,-346,480,20)
+        if Z.Companion and Z.Companion.AddIntroductionToJoin then Z.Companion.AddIntroductionToJoin(f,-372)end
         S.joinClose=Z.UI.CloseButton(f,-4,-4,function()f:Hide()end)
         f:SetScript("OnHide",function()S.joinEdit:ClearFocus()end)
         if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityJoin"end
@@ -201,6 +220,7 @@ end
 function S.Tick()
     local now=Z.Adapter.Clock();S.loginReadyAt=S.loginReadyAt or now+5
     if now<(S.nextCheck or 0)then return end;S.nextCheck=now+1
+    if Z.UI and Z.UI.frame and Z.UI.frame:IsShown()then Z.UI.RefreshJoinBanner()end
     if not D.config or not Z.db or not Z.identityReady then return end
     if S.IsUnsupportedBeta()then
         if not Z.db.betaUnsupportedNoticeSeen and now>=S.loginReadyAt then S.ShowBetaNotice()end
