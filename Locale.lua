@@ -358,6 +358,7 @@ local DE={
     ["Waiting for lounge membership"]="Warte auf Lounge-Beitritt",
     ["No matching players in lounge"]="Keine passenden Spieler in der Lounge",
     ["Excluded accounts: %s"]="Ausgefilterte Spielkonten: %s",
+    ["Sent: %d · received: %d · rejected: %d · timeouts: %d"]="Gesendet: %d · empfangen: %d · verworfen: %d · abgelaufen: %d",
     ["Diagnostic report"]="Diagnosebericht",["Copy diagnostics"]="Diagnose kopieren",["Select all"]="Alles markieren",
     ["Select all, then Ctrl+C. Refresh updates this snapshot. Escape closes the window."]="Alles markieren, dann Strg+C. Aktualisieren erneuert den Bericht. Escape schließt das Fenster.",
     ["Members"]="Mitglieder",["Crafting"]="Handwerk",["Groups"]="Gruppen",["Quest Help"]="Questhilfe",["Trade"]="Handel",["Profile"]="Profil",["History"]="Historie",["Addon Manager"]="Addon Manager",

@@ -84,7 +84,16 @@ function S.Refresh()
     end
     local rows={};for _,route in pairs(B.routes or{})do rows[#rows+1]=route.name.." · "..route.transport end;table.sort(rows)
     while#rows>4 do table.remove(rows)end
-    S.confirmed:SetText(table.concat(rows,"\n"))
+    if #rows>0 then S.confirmed:SetText(table.concat(rows,"\n"))
+    else
+        local stats=B.stats or{}
+        local lines={"BNET registered="..tostring(transport.registered).." · available="..tostring(B.Available()),
+            tr("Sent: %d · received: %d · rejected: %d · timeouts: %d",stats.sent or 0,stats.received or 0,stats.rejected or 0,stats.timeouts or 0)}
+        if transport.lastError~=""then lines[#lines+1]=tr("Last error")..": "..transport.lastError end
+        local events=Z.Diagnostics and Z.Diagnostics.events or{}
+        for i=#events,1,-1 do if events[i]:find(" bnet:rejected ",1,true)then lines[#lines+1]=events[i];break end end
+        S.confirmed:SetText(table.concat(lines,"\n"))
+    end
 end
 function S.ShowCatalog()
     if not S.catalogFrame then
