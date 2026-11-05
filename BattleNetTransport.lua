@@ -323,8 +323,17 @@ local function send(job)
         if not job.name then local info,reason=freshAccount(job.target);if not info then return "error","Game account unavailable: "..reason end end
         if not C_BattleNet or type(C_BattleNet.SendGameData)~="function"or type(securecall)~="function"then return "error","Battle.net data API unavailable."end
         trace("attempt","BNET",job.target,job.kind,job.reason,math.max(0,A.Clock()-(job.queuedAt or A.Clock())))
-        local ok,result=pcall(securecall,C_BattleNet.SendGameData,job.target,B.PREFIX,job.wire)
-        if not ok then return "error","Battle.net send failed."end
+        -- securecall can handle an inner failure without raising to our pcall.
+        -- Capture the native outcome inside it; wrapper success is not delivery.
+        local nativeOK,result
+        local ok=pcall(securecall,function()
+            nativeOK,result=pcall(C_BattleNet.SendGameData,job.target,B.PREFIX,job.wire)
+        end)
+        if not ok or not nativeOK then
+            trace("native_send_error",result)
+            return "error","Battle.net send failed."
+        end
+        trace("native_send_result",result)
         if not A.Safe(result)then return "error","Unreadable send result."end
         local e=Enum and Enum.SendAddonMessageResult or{}
         if result==nil or result==true or result==e.Success then return "ok"end
