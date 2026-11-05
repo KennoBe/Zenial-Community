@@ -519,16 +519,32 @@ function C.OnEvent(event,...)
     elseif event=='GET_ITEM_INFO_RECEIVED'then C.due.inventory=0;C.due.character=0;C.itemDetailSent={};C.due.itemdetails=0
     elseif event:match('^QUEST_')then C.due.quests=A.Clock()+1 end
 end
-function C.CaptureChat(event,message,sender,language,channel)
+-- Game links inside a message: enough to colour the name and open its wiki page, nothing else.
+local LINK_KINDS={item=true,spell=true,quest=true}
+local function chatLinks(message)
+    local links;local from=1
+    while true do
+        local first,last,kind,id,name=message:find('|H(%a+):(%d+)[^|]*|h(.-)|h',from)
+        if not first then return links end
+        from=last+1
+        if LINK_KINDS[kind]and#name<=128 and not name:find('|',1,true)then
+            local before=message:sub(math.max(1,first-12),first-1)
+            links=links or P.Array()
+            if#links<5 then links[#links+1]={kind=kind,id=tonumber(id),name=name,color=before:match('|c%x%x(%x%x%x%x%x%x)$'),quality=tonumber(before:match('|cnIQ(%d):$'))}end
+        end
+    end
+end
+function C.CaptureChat(event,message,sender,language,channel,channelName)
     if not C.running or not C.settings.categories.chat or not A.Safe(message,sender,language,channel)or type(message)~='string'or message==''or#message>4096 then return end
     -- Ignore only protocol traffic; own ordinary chat is part of the history.
     if message:find('ZC5~',1,true)then return end
     local outgoing=event=='CHAT_MSG_WHISPER_INFORM'or event=='CHAT_MSG_BN_WHISPER_INFORM'or type(sender)=='string'and L.Identity(sender)==L.Identity(Z.me.target)
-    local text=message:gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|r',''):gsub('|H.-|h(.-)|h','%1'):gsub('|T.-|t','')
+    local links=chatLinks(message)
+    local text=message:gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|cn[^:|]*:',''):gsub('|r',''):gsub('|H.-|h(.-)|h','%1'):gsub('|T.-|t','')
     local clipped=#text>768;if clipped then text=text:sub(1,768):gsub('[\194-\244][\128-\191]*$','')end
     C.chatCounter=(C.chatCounter or 0)+1
     local recipient=(event=='CHAT_MSG_WHISPER_INFORM'or event=='CHAT_MSG_BN_WHISPER_INFORM')and type(sender)=='string'and#sender<=128 and sender or nil
-    C.chatRows[#C.chatRows+1]={id=C.session..':'..C.chatCounter,counter=C.chatCounter,at=A.Now(),channel=event:sub(10):gsub('_INFORM$',''),direction=outgoing and'outgoing'or'incoming',recipient=recipient,conversation=type(channel)=='string'and#channel<=128 and channel or'',sender=outgoing and Z.me.target or type(sender)=='string'and#sender<=128 and sender or'',text=text,truncated=clipped}
+    C.chatRows[#C.chatRows+1]={id=C.session..':'..C.chatCounter,counter=C.chatCounter,at=A.Now(),channel=event:sub(10):gsub('_INFORM$',''),direction=outgoing and'outgoing'or'incoming',recipient=recipient,conversation=type(channel)=='string'and#channel<=128 and channel or'',conversationName=channelName,sender=outgoing and Z.me.target or type(sender)=='string'and#sender<=128 and sender or'',text=text,truncated=clipped,links=links}
     while#C.chatRows>30 do table.remove(C.chatRows,1);C.chatDropped=(C.chatDropped or 0)+1 end
     C.due.chat=0
 end
@@ -537,11 +553,12 @@ function C.CaptureClub(clubID,streamID,messageID)
     local directory=Z.CommunityDirectory;local selected=false
     for _,id in ipairs(directory and directory.config and directory.config.assignment or{})do if tostring(id)==tostring(clubID)then selected=true;break end end
     if not selected or type(C_Club and C_Club.GetMessageInfo)~='function'or A.Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)==true then return end
-    C.readingChat=true;local info=A.Call(C_Club.GetMessageInfo,clubID,streamID,messageID);C.readingChat=false
+    C.readingChat=true;local info=A.Call(C_Club.GetMessageInfo,clubID,streamID,messageID);local stream=A.Call(C_Club.GetStreamInfo,clubID,streamID);C.readingChat=false
     if C.clubChatBlocked or not A.PublicTable(info)then return end
     local author=info.author
     if not A.PublicTable(author)or not A.Safe(author.isSelf,author.name,info.content,info.destroyed)or info.destroyed==true then return end
-    C.CaptureChat('CHAT_MSG_COMMUNITY',info.content,author.isSelf and Z.me.target or author.name,nil,tostring(clubID)..':'..tostring(streamID))
+    local streamName=A.PublicTable(stream)and A.Safe(stream.name)and type(stream.name)=='string'and#stream.name<=64 and stream.name or nil
+    C.CaptureChat('CHAT_MSG_COMMUNITY',info.content,author.isSelf and Z.me.target or author.name,nil,tostring(clubID)..':'..tostring(streamID),streamName)
 end
 local frame=CreateFrame('Frame');C.frame=frame
 local flushFrame=CreateFrame('Frame');C.flushFrame=flushFrame
