@@ -4,7 +4,8 @@ local D={MAX_GROUPS=64,SCAN_BATCH=25,MAX_CANDIDATES=5000,candidates={},groups={}
 D.BOOTSTRAP_NAME="Zenial Network" -- Name of the lounge in the client; used to recognise it. Never shown to players.
 D.DISPLAY_NAME="ZENIAL Community"
 D.BOOTSTRAP_ID=200669412 -- Live lounge confirmed by the operator in the Forever client.
-D.BOOTSTRAP_INVITE="https://launch.battle.net/invite/EWYKlz5SAj2"
+D.BOOTSTRAP_INVITE="https://blizzard.com/invite/EWYKlz5SAj2"
+local LEGACY_LIVE_INVITE="https://launch.battle.net/invite/EWYKlz5SAj2"
 local BETA_BOOTSTRAP_ID=23099311
 local BETA_BOOTSTRAP_INVITE="https://blizzard.com/invite/GnrrkJsXow"
 local OLD_BOOTSTRAP_INVITE="https://launch.battle.net/invite/9EKj2poHooq"
@@ -15,6 +16,10 @@ end
 local function norm(value)return type(value)=="string"and value:lower():gsub("[%s%-%'_]","")or nil end
 function D.World(realm)
     local key=norm(realm);if not key or key==""then return nil end
+    -- Live PvP realm and pool numbers are internal subrealms. Match the
+    -- region and PvP type; neither internal number identifies a separate world.
+    local livePvP=key:match("^camwow(%a%a)%d+realm%d+pvp$")
+    if livePvP then return "forever-live-pvp:"..livePvP end
     if key:match("^classicbetapve%d*$")then return "forever-normal"end
     if key:match("^classicbetapvp%d*$")then return "forever-pvp"end
     if key:match("^classicbetarp%d*$")then return "forever-rp"end
@@ -85,7 +90,7 @@ function D.Initialize(root)
     if #config.groups==0 and D.BOOTSTRAP_ID then
         config.groups={{id=D.BOOTSTRAP_ID,name=D.BOOTSTRAP_NAME,invite=D.BOOTSTRAP_INVITE}};config.assignment={D.BOOTSTRAP_ID}
     else
-        for _,row in ipairs(config.groups)do if row.id==D.BOOTSTRAP_ID and(row.invite==OLD_BOOTSTRAP_INVITE or row.invite=="")then row.invite=D.BOOTSTRAP_INVITE end end
+        for _,row in ipairs(config.groups)do if row.id==D.BOOTSTRAP_ID and(row.invite==LEGACY_LIVE_INVITE or row.invite==OLD_BOOTSTRAP_INVITE or row.invite=="")then row.invite=D.BOOTSTRAP_INVITE end end
     end
     root.network=config;D.config=config;D.candidates,D.groups,D.available={},{},{};D.ChoosePair(false);D.RequestScan(true)
 end

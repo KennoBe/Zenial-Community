@@ -103,6 +103,8 @@ function U.ShowDiagnostics()
         scroll:SetPoint("TOPLEFT",24,-86);scroll:SetPoint("BOTTOMRIGHT",-46,65)
         if T then T.StyleScroll(scroll);T.AttachScrollWheel(scroll,42)end
         local edit=CreateFrame("EditBox",nil,scroll);U.diagnosticEdit=edit
+        edit:EnableMouse(true);edit:EnableKeyboard(true)
+        edit:SetScript("OnMouseDown",function(self,button)if button=="LeftButton"then self:SetFocus()end end)
         edit:SetMultiLine(true);edit:SetAutoFocus(false);edit:SetMaxLetters(0);edit:SetFontObject("ChatFontNormal")
         edit:SetWidth(f:GetWidth()-80);edit:SetPoint("TOPLEFT");if edit.SetTextInsets then edit:SetTextInsets(6,6,6,6)end
         edit:SetScript("OnEscapePressed",function()f:Hide()end)

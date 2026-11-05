@@ -76,6 +76,12 @@ function S.Refresh()
     S.mode:SetText(tr("Mode: direct network without channel"))
     local issue=state.joined==0 and#available==0 and D.SetupIssue()or state.state
     S.status:SetText(tr(issue).."\n"..tr("Roster: %d/%d · eligible game accounts: %d",state.scanned,state.total,state.candidates).."\n"..tr("Confirmed: Battle.net %d · addon whisper %d · pending %d",transport.bnet,transport.whisper,transport.pending))
+    if state.candidates==0 then
+        local reasons={};for reason,n in pairs(D.scanReasons or{})do reasons[#reasons+1]={reason=reason,n=n}end
+        table.sort(reasons,function(a,b)if a.n~=b.n then return a.n>b.n end;return a.reason<b.reason end)
+        local parts={};for i=1,math.min(3,#reasons)do parts[#parts+1]=reasons[i].reason.."="..reasons[i].n end
+        if #parts>0 then S.status:SetText(S.status:GetText().."\n"..tr("Excluded accounts: %s",table.concat(parts,", ")))end
+    end
     local rows={};for _,route in pairs(B.routes or{})do rows[#rows+1]=route.name.." · "..route.transport end;table.sort(rows)
     while#rows>4 do table.remove(rows)end
     S.confirmed:SetText(table.concat(rows,"\n"))
