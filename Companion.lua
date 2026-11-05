@@ -38,7 +38,7 @@ function C.Stop(reason)
         for line in pairs(C.seenEcho or{})do C.retiredLines[line]=true end
         C.retiredUntil=A.Clock()+60
     else C.retiredLines=nil;C.retiredUntil=nil end
-    C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.waiting={};C.due={};C.signatures={};C.finished={};C.seenEcho={};C.pendingCount=0
+    C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.inventoryParts=nil;C.waiting={};C.due={};C.signatures={};C.finished={};C.seenEcho={};C.pendingCount=0
     if C.SetActive then C.SetActive(C.debugPixel==true,C.retiredUntil~=nil)end
     if C.flushFrame then C.flushFrame:UnregisterAllEvents();C.flushFrame:SetScript('OnEvent',nil);C.flushFrame:SetScript('OnUpdate',nil)end
     C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.clubChatBlocked=false;C.positionRenewAt=0
@@ -84,7 +84,7 @@ function C.BeginSession()
     if not C.settings or not Z.identityReady or A.Now()<1 then return false end
     C.settings.sessionSequence=(tonumber(C.settings.sessionSequence)or 0)%1000000000+1
     C.session=string.format('%.0f.%d.%.0f',A.Now(),C.settings.sessionSequence,math.floor(A.Clock()*1000))
-    C.sequence=0;C.jobs={};C.latest={};C.finished={};C.signatures={};C.due={};C.waiting={};C.seenEcho={};C.stats={sent=0,echoed=0,automatic=0}
+    C.sequence=0;C.jobs={};C.latest={};C.inventoryParts=nil;C.finished={};C.signatures={};C.due={};C.waiting={};C.seenEcho={};C.stats={sent=0,echoed=0,automatic=0}
     C.itemDetailSent={}
     C.questScanDue=0;if C.QuestAreas then C.QuestAreas.Reset()end
     C.mapCatalogIDs=nil;C.mapCatalogCursor=nil;C.mapCatalogDue=nil;C.mapCatalogEssential=nil;C.mapCatalogEssentialMap=nil;C.mapCatalogEssentialDue=0
@@ -114,6 +114,7 @@ function C.SetCategory(topic,enabled)
     if not C.settings or C.settings.categories[topic]==nil then return false end
     if topic=='questareas'then C.settings.questAreasEnabled=enabled==true;if C.QuestAreas then C.QuestAreas.Reset()end end
     C.settings.categories[topic]=enabled==true;C.jobs[topic]=nil;C.latest[topic]=nil;C.signatures[topic]=nil;C.due[topic]=0;C.due.policy=0
+    if topic=='inventory'then C.inventoryParts=nil;C.finished.inventory=nil end
     if topic=='position'then
         for _,related in ipairs({'map','mapcatalog'})do C.settings.categories[related]=enabled==true;C.jobs[related]=nil;C.latest[related]=nil;C.signatures[related]=nil;C.due[related]=0 end
         C.mapCatalogIDs=nil
@@ -126,8 +127,15 @@ function C.SetCategory(topic,enabled)
     if topic=='chat'then C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.finished.chat=nil;C.ConfigureChat()end
     changed();return true
 end
+-- Seconds between full inventories. The pixel stream is one-way and slow, so between two full
+-- comparisons only changes are sent; the full one repairs a lost change or a late receiver.
+local function inventoryFullAfter()return C.IsPixel()and 180 or 60 end
 function C.Queue(topic,data,force)
+    -- The read time changes every second, so with it every unchanged inventory would look new.
+    local pixelInventory=topic=='inventory'and C.IsPixel();local observedAt=pixelInventory and data.observedAt
+    if pixelInventory then data.observedAt=nil end
     local ok,signature=pcall(P.Json,data)
+    if pixelInventory then data.observedAt=observedAt end
     if not ok then
         -- A single restricted/oversized category must not stop position updates.
         -- Export an explicit unavailable state instead of a partial fake baseline.
@@ -147,8 +155,73 @@ local function inventoryDelta(data,previous)
     local removed=P.Array();for id in pairs(old)do if not seen[id]then removed[#removed+1]=id end end
     return{replace=false,baseSequence=previous.sequence,available=data.available,observedAt=data.observedAt,scope=data.scope,items=added,removed=removed,slots=data.slots,bags=data.bags}
 end
+-- Pixel inventory: the stream is one-way and one lost line voids a whole message, so a full
+-- inventory travels as small parts the receiver can collect across passes. The snapshot name is
+-- derived from the content: a receiver that already holds it only has to confirm it.
+local INVENTORY_PART_BYTES=1500
+local function inventoryParts(data,snapshot)
+    local parts={};local current,size
+    local function open()current={items=P.Array(),slots=P.Array()};parts[#parts+1]=current;size=0 end
+    local function add(list,row)
+        local bytes=#P.Json(row);if size>0 and size+bytes>INVENTORY_PART_BYTES then open()end
+        current[list][#current[list]+1]=row;size=size+bytes
+    end
+    open()
+    for _,row in ipairs(data.items or{})do add('items',row)end
+    for _,row in ipairs(data.slots or{})do add('slots',row)end
+    for index,part in ipairs(parts)do
+        part.replace=false;part.snapshot=snapshot;part.part=index;part.parts=#parts
+        part.available=data.available;part.observedAt=data.observedAt;part.scope=data.scope
+    end
+    parts[1].bags=data.bags
+    return parts
+end
+local function inventoryChanges(data,prior,snapshot)
+    local out={replace=false,baseSnapshot=prior.snapshot,snapshot=snapshot,available=data.available,observedAt=data.observedAt,scope=data.scope,bags=data.bags,
+        items=P.Array(),removed=P.Array(),slots=P.Array(),slotsRemoved=P.Array()}
+    local function compare(rows,oldRows,key,changed,removed)
+        local old,seen={},{}
+        for _,row in ipairs(oldRows or{})do old[key(row)]=P.Json(row)end
+        for _,row in ipairs(rows or{})do local id=key(row);seen[id]=true;if old[id]~=P.Json(row)then changed[#changed+1]=row end end
+        for id in pairs(old)do if not seen[id]then removed[#removed+1]=id end end
+    end
+    compare(data.items,prior.data.items,function(row)return row.itemID end,out.items,out.removed)
+    compare(data.slots,prior.data.slots,function(row)return row.bag..':'..row.slot end,out.slots,out.slotsRemoved)
+    return out
+end
+local function inventoryMessage(data,row,fields,repeated)
+    C.sequence=C.sequence+1
+    local ok,body=pcall(P.Json,{origin='timer',uptime=A.Clock(),data=data})
+    if not ok then C.Stop('Payload could not be encoded: inventory');return nil end
+    local lines,reason=P.Frames(C.source,C.session,C.sequence,'inventory',row.observedAt,body)
+    if not lines then C.Stop(reason);return nil end
+    -- A lost change blocks all later ones until the next full inventory, so it is shown twice.
+    if repeated and#lines>1 then for i=1,#lines do lines[#lines+1]=lines[i]end end
+    local job={lines=lines,next=1,at=A.Clock(),data=row.data,sequence=C.sequence,fullAt=fields.fullAt,snapshot=fields.snapshot,partial=fields.partial}
+    C.jobs.inventory=job;return job
+end
+local function inventoryJob()
+    local cycle=C.inventoryParts
+    if not cycle then
+        local row=C.latest.inventory;if not row then return nil end;C.latest.inventory=nil
+        if row.data.available==false then row.data.replace=true;return inventoryMessage(row.data,row,{fullAt=A.Clock()})end
+        local snapshot=P.Source(row.signature);local prior=C.finished.inventory
+        if prior and(not prior.snapshot or A.Clock()-prior.fullAt>=inventoryFullAfter())then prior=nil end
+        if prior then
+            if prior.snapshot==snapshot then return nil end
+            return inventoryMessage(inventoryChanges(row.data,prior,snapshot),row,{fullAt=prior.fullAt,snapshot=snapshot},true)
+        end
+        cycle={parts=inventoryParts(row.data,snapshot),index=1,pass=1,row=row,snapshot=snapshot,fullAt=A.Clock()};C.inventoryParts=cycle
+    end
+    local part=cycle.parts[cycle.index];local last=cycle.pass==2 and cycle.index==#cycle.parts
+    if cycle.index<#cycle.parts then cycle.index=cycle.index+1
+    elseif cycle.pass==1 then cycle.pass=2;cycle.index=1
+    else C.inventoryParts=nil end
+    return inventoryMessage(part,cycle.row,{fullAt=cycle.fullAt,snapshot=cycle.snapshot,partial=not last})
+end
 function C.Job(topic)
     if C.jobs[topic]then return C.jobs[topic]end
+    if topic=='inventory'and C.IsPixel()then return inventoryJob()end
     local row=C.latest[topic];if not row then return nil end;C.latest[topic]=nil
     C.sequence=C.sequence+1
     local data=row.data
@@ -173,7 +246,7 @@ function C.Job(topic)
     end
     if topic=='inventory'then
         local prior=C.finished.inventory
-        if prior and A.Clock()-prior.fullAt>=(C.IsPixel()and 15 or 60)then prior=nil end
+        if prior and A.Clock()-prior.fullAt>=inventoryFullAfter()then prior=nil end
         data=inventoryDelta(data,prior);row.fullAt=data.replace and A.Clock()or C.finished.inventory.fullAt
     end
     local ok,body=pcall(P.Json,{origin='timer',uptime=A.Clock(),data=data})
@@ -201,9 +274,11 @@ local function choose()
             if job and job.data and job.data.bootstrap then C.bootstrapNext=topic=='mapcatalog'and'itemdetails'or'mapcatalog';return topic end
         end
     end
+    -- The rotation alone leaves the largest topic about one line per second.
+    if C.bootstrapTurn%4==2 and C.IsPixel()and(C.jobs.inventory or C.latest.inventory or C.inventoryParts)then return'inventory'end
     local order={'identity','policy','heartbeat'};for _,topic in ipairs(C.TOPICS)do if topic~='position'then order[#order+1]=topic end end
     for _=1,#order do local topic=order[C.cursor];C.cursor=C.cursor%#order+1
-        if C.jobs[topic]or C.latest[topic]then return topic end
+        if C.jobs[topic]or C.latest[topic]or topic=='inventory'and C.inventoryParts then return topic end
     end
     return'position'
 end
@@ -343,8 +418,8 @@ function C.Tick()
                 local ok,data=pcall(T[topic]);if ok and type(data)=='table'then
                     local renew=topic=='position'and clock>=(C.positionRenewAt or 0)
                     local prior=C.finished[topic]
-                    local replay=C.IsPixel()and prior and clock-(prior.sentAt or 0)>=20
-                    C.Queue(topic,data,renew or topic=='identity'or replay or topic=='inventory'and C.finished.inventory and clock-C.finished.inventory.fullAt>=(C.IsPixel()and 15 or 60))
+                    local replay=C.IsPixel()and topic~='inventory'and prior and clock-(prior.sentAt or 0)>=20
+                    C.Queue(topic,data,renew or topic=='identity'or replay or topic=='inventory'and not C.inventoryParts and C.finished.inventory and clock-C.finished.inventory.fullAt>=inventoryFullAfter())
                     if renew then C.positionRenewAt=clock+(C.IsPixel()and 1 or 5)end
                 elseif not ok then C.reason='Data unavailable: '..topic end
             end
@@ -358,7 +433,7 @@ function C.Tick()
         if not C.SendLine(line,'timer')then return end
         job.next=job.next+1
         if job.next>#job.lines then
-            C.finished[topic]={data=job.data,sequence=job.sequence,fullAt=job.fullAt,sentAt=clock};C.jobs[topic]=nil
+            if not job.partial then C.finished[topic]={data=job.data,sequence=job.sequence,fullAt=job.fullAt,sentAt=clock,snapshot=job.snapshot}end;C.jobs[topic]=nil
             if C.IsPixel()and topic=='identity'then
                 -- A receiver may start at any time. Every repeated identity is
                 -- immediately followed by a fresh consent policy, without a reply.

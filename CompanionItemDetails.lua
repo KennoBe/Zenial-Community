@@ -37,6 +37,13 @@ local function collect(ref)
     out.reason=protected and'protected-lines'or truncated and'truncated'or#out.lines==0 and'not-loaded-or-unavailable'or nil
     return out
 end
+-- The slots come from the last sent inventory, which can lag behind the bags. An emptied or
+-- refilled slot has nothing to describe yet; its next inventory corrects the list.
+local function slotChanged(ref)
+    if ref.bag==nil or not A.PublicTable(C_Container)then return false end
+    local id=A.Call(C_Container.GetContainerItemID,ref.bag,ref.slot)
+    return A.Safe(id)and id~=ref.itemID
+end
 function T.itemdetails()
     local C=Z.Companion
     if C.jobs.itemdetails or C.latest.itemdetails then return nil end
@@ -62,7 +69,7 @@ function T.itemdetails()
         local index=(cursor+i-1)%#refs+1;local ref=refs[index]
         local previous=C.itemDetailSent[ref.key]
         local signature=tostring(ref.itemID)..':'..(ref.link or ref.instance or'')
-        if not previous or previous.signature~=signature or now>=previous.due then
+        if(not previous or previous.signature~=signature or now>=previous.due)and not slotChanged(ref)then
             C.itemDetailCursor=index%#refs+1
             local row=collect(ref);C.itemDetailSent[ref.key]={signature=signature,due=now+(row.complete and 60 or 8)}
             return{entries=P.Array({row}),bootstrap=not previous or previous.signature~=signature}
