@@ -74,7 +74,7 @@ function S.Refresh()
     end
     S.add:SetEnabled(selected~=nil);S.previous:SetEnabled(#available>1);S.next:SetEnabled(#available>1)
     S.mode:SetText(tr("Mode: direct network without channel"))
-    local issue=state.joined==0 and#available==0 and D.SetupIssue()or state.state
+    local issue=state.joined==0 and#available==0 and D.SetupIssue()or D.ownProfileMissing and D.OWN_PROFILE_HINT or state.state
     S.status:SetText(tr(issue).."\n"..tr("Roster: %d/%d · eligible game accounts: %d",state.scanned,state.total,state.candidates).."\n"..tr("Confirmed: Battle.net %d · addon whisper %d · pending %d",transport.bnet,transport.whisper,transport.pending))
     if state.candidates==0 then
         local reasons={};for reason,n in pairs(D.scanReasons or{})do reasons[#reasons+1]={reason=reason,n=n}end
@@ -103,6 +103,7 @@ function S.UserSummary()
     if not ready then return tr("Checking community membership.")end
     local transport=B.Status()
     if(transport.bnet or 0)+(transport.whisper or 0)>0 then return tr("Connected to the community.")end
+    if D.ownProfileMissing then return tr(D.OWN_PROFILE_HINT)end
     return tr("Searching for active community members.")
 end
 function S.RefreshOverview()

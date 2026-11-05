@@ -65,6 +65,24 @@ function D.OwnGameAccountID()
     local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
     return A.PublicTable(info)and A.Safe(info.gameAccountID)and L.Int(info.gameAccountID,1,2147483647)and info.gameAccountID or 0
 end
+-- Live Battle.net can keep an in-world account online with no character data.
+-- Peers then exclude it as a non-Forever account, so it is never discoverable.
+-- Only a readable empty answer that lasts past login counts; this never affects eligibility.
+D.OWN_PROFILE_GRACE=90
+D.OWN_PROFILE_HINT="Battle.net is not sharing your character right now, so other players cannot find you. To fix it: log out, turn off all addons, enter the world, log out again, turn the addons back on and enter the world."
+local function checkOwnProfile()
+    local clock=A.Clock();if clock<(D.ownProfileNext or 0)then return end;D.ownProfileNext=clock+5
+    local lookup=C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID
+    local guid=Z.me and Z.me.guid
+    if type(lookup)~="function"or not guid or D.nextScan==math.huge then D.ownProfileEmptySince,D.ownProfileMissing=nil,false;return end
+    local ok,info=pcall(lookup,guid);if not ok or not A.Safe(info)then return end
+    if info~=nil then
+        if not A.PublicTable(info)or not A.Safe(info.characterName)then return end
+        if L.Text(info.characterName or"",64)then D.ownProfileEmptySince,D.ownProfileMissing=nil,false;return end
+    end
+    D.ownProfileEmptySince=D.ownProfileEmptySince or clock
+    D.ownProfileMissing=clock-D.ownProfileEmptySince>=D.OWN_PROFILE_GRACE
+end
 local function clubType()return Enum and Enum.ClubType and Enum.ClubType.BattleNet or 0 end
 local function validLink(link)
     return link==""or L.Text(link,180)and(link:match("^https://blizzard%.com/invite/[%w]+$")or link:match("^https://www%.blizzard%.com/invite/[%w]+$")or link:match("^https://launch%.battle%.net/invite/[%w]+$"))~=nil
@@ -230,7 +248,8 @@ local function beginScan()
     D.scan=scan;D.state=scan.loading and"Group roster loading"or"Scanning group members"
 end
 function D.Tick()
-    if not D.config or not Z.db or not Z.db.consent or not Z.db.autoDiscovery then return end
+    if not D.config or not Z.db or not Z.db.consent or not Z.db.autoDiscovery then D.ownProfileEmptySince,D.ownProfileMissing=nil,false;return end
+    checkOwnProfile()
     local clock=A.Clock();if not D.scan then if clock<(D.nextScan or 0)then return end;beginScan()end
     local s=D.scan;local processed=0
     while processed<D.SCAN_BATCH do
@@ -269,5 +288,5 @@ function D.Tick()
 end
 function D.Status()
     local joined=0;for _,row in pairs(D.groups)do if row.joined then joined=joined+1 end end
-    return{state=D.state or"Group setup required",configured=D.config and#D.config.groups or 0,assigned=D.config and#D.config.assignment or 0,joined=joined,candidates=L.Count(D.candidates),scanned=D.progress or 0,total=D.total or 0,unresolved=D.unresolved or 0,mode=D.config and D.config.mode or"direct",project=D.Project(),region=D.Region()}
+    return{state=D.state or"Group setup required",configured=D.config and#D.config.groups or 0,assigned=D.config and#D.config.assignment or 0,joined=joined,candidates=L.Count(D.candidates),scanned=D.progress or 0,total=D.total or 0,unresolved=D.unresolved or 0,mode=D.config and D.config.mode or"direct",project=D.Project(),region=D.Region(),ownProfileMissing=D.ownProfileMissing==true}
 end

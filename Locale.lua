@@ -328,6 +328,7 @@ local DE={
     ["Checking community membership."]="Community-Beitritt wird geprüft.",
     ["Connected to the community."]="Mit der Community verbunden.",
     ["Searching for active community members."]="Suche nach aktiven Community-Mitgliedern.",
+    ["Battle.net is not sharing your character right now, so other players cannot find you. To fix it: log out, turn off all addons, enter the world, log out again, turn the addons back on and enter the world."]="Battle.net teilt deinen Charakter gerade nicht, deshalb können dich andere nicht finden. So behebst du es: ausloggen, alle Addons ausschalten, ins Spiel gehen, wieder ausloggen, Addons einschalten und ins Spiel gehen.",
     ["Connect with other players to find members and community activity."]="Verbinde dich mit anderen Spielern, um Mitglieder und Aktivitäten zu finden.",
     ["Refresh connection"]="Verbindung aktualisieren",
     ["Connection check started. It may take a moment."]="Verbindungstest gestartet. Das kann einen Moment dauern.",
