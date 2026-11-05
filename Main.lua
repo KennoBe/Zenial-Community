@@ -621,6 +621,7 @@ register("QUEST_REMOVED")
 register("QUEST_TURNED_IN")
 register("PLAYER_REGEN_ENABLED")
 register("PLAYER_DEAD")
+register("PLAYER_FLAGS_CHANGED")
 register("PLAYER_ALIVE")
 register("PLAYER_UNGHOST")
 register("ZONE_CHANGED_NEW_AREA")
@@ -647,7 +648,7 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="BAG_UPDATE_DELAYED"then if Z.Items then Z.Items.SeedBags()end;if Z.db and Z.MaterialPlanner then Z.MaterialPlanner.InvalidateInventory()end
     elseif event=="CHAT_MSG_ADDON" then if Z.db then A.Receive(...) end
     elseif event=="SKILL_LINES_CHANGED"or event=="SPELLS_CHANGED"or event:match("^TRADE_SKILL_")then if Z.ProfessionScan then Z.ProfessionScan.OnEvent(event,...)end
-    elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event)end
+    elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"or event=="PLAYER_FLAGS_CHANGED"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event,...)end
     elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;Z.RefreshLocation(false)
     elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then if Z.CommunityLayer then Z.CommunityLayer.RequestScan(event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil)end
     elseif event=="GROUP_ROSTER_UPDATE" then

@@ -586,6 +586,7 @@ DE["Open your own profession window and keep the recipe list visible. ZenialComm
 DE["Confirm handoff"]="Übergabe bestätigen"
 DE["Handoff confirmed"]="Übergabe bestätigt"
 DE["Another %d death(s) needed before requesting help."]="Noch %d Tod/Tode bis zum Hilferuf."
+DE["You must be flagged for PvP to request help."]="Du musst für PvP markiert sein, um Hilfe anzufordern."
 DE["%d recipes found for %s."]="%d Rezepte für %s erkannt."
 DE["Complete: %s"]="Vollständig: %s"
 DE["Partial scan: %s"]="Teilscan: %s"

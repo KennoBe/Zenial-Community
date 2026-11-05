@@ -86,6 +86,7 @@ end
 function P.CanCall()
     local now=A.Now();if currentCall()then return false,"Es läuft bereits ein Hilferuf."end
     if P.store.lastCallAt>0 and now-P.store.lastCallAt<CALL_COOLDOWN then return false,"Ein neuer Hilferuf ist erst nach zehn Minuten möglich."end
+    if not A.IsPvpFlagged()then return false,Z.T("You must be flagged for PvP to request help.")end
     if P.testMode then return true end
     local n=P.DeathCount();if n<2 then return false,Z.T("Another %d death(s) needed before requesting help.",2-n)end
     if not P.store.lastDeath then return false,"Kein Todesort gespeichert."end;return true
@@ -259,9 +260,11 @@ function P.Receive3(sender,kind,wire)
     acceptCall(key,s,true);refresh()
     return true
 end
-function P.OnEvent(event)
+function P.OnEvent(event,unit)
     if not P.store then return end
-    if event=="PLAYER_DEAD"then
+    if event=="PLAYER_FLAGS_CHANGED"then
+        if A.Safe(unit)and unit=="player"then refresh()end
+    elseif event=="PLAYER_DEAD"then
         if P.deathArmed and A.OpenWorld()then local now=A.Now();local loc=A.PvpLocation(false);loc.at=now;loc.enemy=A.PvpEnemy();P.store.lastDeath=loc;P.store.deaths[#P.store.deaths+1]=now;P.DeathCount();if P.CanCall()and Z.OnPvpHelpEligible then Z.OnPvpHelpEligible()end end;P.deathArmed=false;refresh()
     elseif event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"then
         local d=P.store.lastDeath;if d and not d.hasPos then local corpse=A.PvpLocation(true);if corpse.hasPos and(d.mapID==0 or corpse.mapID==d.mapID)then d.mapID,d.hasPos,d.x,d.y=corpse.mapID,true,corpse.x,corpse.y end end

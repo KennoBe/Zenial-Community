@@ -353,6 +353,7 @@ function A.InvitePvp(target)
     return A.Invite(target)
 end
 function A.IsDeadOrGhost() return A.Call(UnitIsDeadOrGhost,"player")==true end
+function A.IsPvpFlagged() return A.Call(UnitIsPVP,"player")==true end
 function A.OpenWorld()
     local _,instanceType=A.Call(GetInstanceInfo)
     return instanceType=="none"
