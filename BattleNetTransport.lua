@@ -60,10 +60,10 @@ local function freshAccount(id)
     local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByID,id)
     local eligible,reason=D.Eligible(info);if not eligible then return nil,"account_"..(reason or"unavailable")end
     if info.gameAccountID~=id then return nil,"account_address_changed"end
-    -- Compare two native snapshots here, never native realm spelling with the
-    -- character's GetRealmName. A real character switch still invalidates proof.
+    -- Both native APIs can report different internal subrealms or spellings.
+    -- The world must match; name and GUID still bind the actual character.
     if info.characterName~=candidate.info.characterName then return nil,"roster_character_changed"end
-    if info.realmName~=candidate.info.realmName then return nil,"roster_realm_changed"end
+    if D.World(info.realmName)~=D.World(candidate.info.realmName)then return nil,"roster_realm_changed"end
     if info.playerGuid~=candidate.info.playerGuid then return nil,"roster_guid_changed"end
     return info
 end
@@ -264,8 +264,8 @@ function B.Receive(prefix,wire,transport,sender)
     end
     if transport=="BNET"then
         if f[2]~="H"and f[2]~="A"then B.stats.rejected=B.stats.rejected+1;return false end
-        local info=freshAccount(sender);local bound=info and boundIdentity(info,f)
-        if not bound then B.stats.rejected=B.stats.rejected+1;trace("rejected","BNET","identity_or_membership");return false end
+        local info,accountReason=freshAccount(sender);local bound=info and boundIdentity(info,f)
+        if not bound then B.stats.rejected=B.stats.rejected+1;trace("rejected","BNET",accountReason or"identity_mismatch");return false end
         if f[2]=="H"then
             B.Queue("BNET",sender,"A",f[3]);if not B.pending[routeKey]and not B.routes[routeKey]then B.Probe("BNET",sender)end;return true
         end
