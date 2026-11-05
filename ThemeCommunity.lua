@@ -62,14 +62,6 @@ end
 
 local function tint(region, method, key, alpha) return T.Tint(region, method, key, alpha) end
 
--- Existing consumers read T.colors; re-derive them from the palette.
-local function setColor(name, key, alpha) T.colors[name] = { T.PaletteColor(key, alpha) } end
-setColor("shell", "bg", .995); setColor("sidebar", "side", .995); setColor("surface", "panel", .985)
-setColor("inset", "inset", .99); setColor("parchment", "panel", .98); setColor("border", "edge")
-setColor("borderSoft", "line"); setColor("gold", "gold"); setColor("text", "text"); setColor("muted", "dim")
-setColor("red", "dangerBottom", .9); setColor("redHover", "dangerTop", .9); setColor("green", "online")
-setColor("danger", "danger"); setColor("blue", "accentBlueEdge", .62); setColor("disabled", "disabled", .94)
-
 -- ---------------------------------------------------------------------------------------------
 -- Flat 1px frames (backdrop with the client's white texture) and plain texture borders
 -- ---------------------------------------------------------------------------------------------
@@ -174,7 +166,7 @@ T.FontObject = fontObject
 
 local BUTTON_TEXT = {
     secondary = { "text", "goldBright", "disabledText" }, primary = { "goldText", "goldText", "disabledText" },
-    danger = { "text", "goldText", "disabledText" }, nav = { "textSoft", "text", "disabledText" },
+    danger = { "dangerText", "goldText", "disabledText" }, nav = { "textSoft", "text", "disabledText" },
 }
 -- Applies the per-state font objects of the button's variant. `size` overrides the current text size.
 function T.StyleButtonText(button, size)
@@ -304,11 +296,11 @@ end
 T.PressFeedback = pressFeedback
 
 -- ---------------------------------------------------------------------------------------------
--- Buttons: one primary (gold) and one secondary (dark) style, plus danger and the borderless nav style
+-- Buttons: one primary (red) and one secondary (dark) style, plus danger and the borderless nav style
 -- ---------------------------------------------------------------------------------------------
 local VARIANTS = {
     secondary = { top = "btnTop", bottom = "btnBottom", edge = "btnEdge", hoverEdge = "goldDim", hover = .10 },
-    primary = { top = "goldFillTop", bottom = "goldFillBottom", edge = "goldEdge", hoverEdge = "goldBright", hover = .16 },
+    primary = { top = "primaryTop", bottom = "primaryBottom", edge = "primaryEdge", hoverEdge = "goldBright", hover = .16 },
     danger = { top = "dangerTop", bottom = "dangerBottom", edge = "dangerEdge", hoverEdge = "goldDim", hover = .12 },
     nav = { hover = .07 },
 }
