@@ -177,11 +177,15 @@ function S.createAddonPage(f)
             U.SetAddonView(i)
         end)
         -- Name and version share a narrow tab; the small font fits six of them.
-        local tabText = U.addonTabs[i].GetFontString and U.addonTabs[i]:GetFontString()
-        if tabText then
-            tabText:SetFontObject('GameFontNormalSmall')
-            tabText:SetWordWrap(false)
+        -- Set on the button itself, which reapplies its fonts on every state change.
+        local tab = U.addonTabs[i]
+        if tab.SetNormalFontObject then
+            tab:SetNormalFontObject('GameFontHighlightSmall')
+            tab:SetHighlightFontObject('GameFontHighlightSmall')
+            tab:SetDisabledFontObject('GameFontDisableSmall')
         end
+        local tabText = tab.GetFontString and tab:GetFontString()
+        if tabText then tabText:SetWordWrap(false) end
     end
     U.addonStatus = label(p, '', 0, -40, 850, 'GameFontNormalLarge')
     U.addonDescription = label(p, '', 0, -66, 850, 'GameFontHighlight')
