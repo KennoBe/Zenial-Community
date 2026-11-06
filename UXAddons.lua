@@ -65,6 +65,8 @@ function U.RefreshAddonAvailability()
             count = count + 1
             first = first or i
             selectedExists = selectedExists or U.addonIndex == i
+            local version = addonState(entry).version
+            tab:SetText(version and version ~= '' and entry.label .. ' (' .. version .. ')' or entry.label)
             tab:ClearAllPoints()
             tab:SetPoint('TOPLEFT', (count - 1) * 180, 0)
             tab:Show()
@@ -124,6 +126,9 @@ function U.RefreshAddonManager()
             .. '|r'
             .. (state.version and state.version ~= '' and ' · ' .. tr('Version') .. ' ' .. state.version or '')
     )
+    -- A working addon needs no status text; its page gets the room. Anything else explains itself here.
+    U.addonDescription:SetShown(state.kind ~= 'ready')
+    U.addonStatus:SetShown(state.kind ~= 'ready')
     U.addonAction:Hide()
     U.addonAction:SetEnabled(true)
     if state.kind == 'ready' then
@@ -140,6 +145,7 @@ function U.RefreshAddonManager()
                 U.addonPanels[entry.addon] = cached
             else
                 U.addonStatus:SetText('|cffff5555' .. tr('Embedded interface could not be created.') .. '|r')
+                U.addonStatus:Show()
             end
         end
         if cached then

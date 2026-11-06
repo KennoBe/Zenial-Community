@@ -175,7 +175,13 @@ function S.createAddonPage(f)
     for i, entry in ipairs(ADDON_CATALOG) do
         U.addonTabs[i] = navButton(p, entry.label, (i - 1) * 180, 0, 170, function()
             U.SetAddonView(i)
-        end, entry.icon)
+        end)
+        -- Name and version share a narrow tab; the small font fits six of them.
+        local tabText = U.addonTabs[i].GetFontString and U.addonTabs[i]:GetFontString()
+        if tabText then
+            tabText:SetFontObject('GameFontNormalSmall')
+            tabText:SetWordWrap(false)
+        end
     end
     U.addonStatus = label(p, '', 0, -40, 850, 'GameFontNormalLarge')
     U.addonDescription = label(p, '', 0, -66, 850, 'GameFontHighlight')
@@ -183,7 +189,7 @@ function S.createAddonPage(f)
     U.addonAction = button(p, '', 0, -98, 220, function() end)
     U.addonAction:Hide()
     U.addonHost = CreateFrame('Frame', nil, p)
-    U.addonHost:SetPoint('TOPLEFT', 0, -100)
+    U.addonHost:SetPoint('TOPLEFT', 0, -36)
     U.addonHost:SetPoint('BOTTOMRIGHT', 0, 0)
     U.addonHost:SetFrameLevel(p:GetFrameLevel() + 5)
     U.addonHost:EnableMouse(false)
