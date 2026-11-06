@@ -3,7 +3,7 @@
 ## Notes: ZENIAL members, crafting, groups, PvP help, quest help and trade
 ## Notes-deDE: ZENIAL-Mitglieder, Handwerk, Gruppen, PvP-Hilfe, Questhilfe und Handel
 ## Author: ZENIAL contributors
-## Version: 5.2.13
+## Version: 5.2.14
 ## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
 ## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
 ## SavedVariables: ZenialCommunityDB, ZenialMinimapDB
