@@ -6,7 +6,7 @@
 ## Version: 5.2.12
 ## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
 ## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
-## SavedVariables: ZenialCommunityDB
+## SavedVariables: ZenialCommunityDB, ZenialMinimapDB
 ## X-License: MIT
 Core.lua
 Adapter.lua

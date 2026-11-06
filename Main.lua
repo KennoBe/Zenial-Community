@@ -591,7 +591,6 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end
     elseif text=="debug"or text=="diagnose"or text=="diagnostics"or text=="logs"then if Z.UI then Z.UI.ShowDiagnostics()end
     elseif text=="resetpos" then Z.db.position=nil; Z.db.scale=1; if Z.UI and Z.UI.frame then Z.UI.frame:SetScale(1); Z.UI.frame:ClearAllPoints(); Z.UI.frame:SetPoint("CENTER") end
-    elseif text=="minimap" then if Z.UI then Z.UI.SetMinimapHidden(not Z.db.minimapHidden) end
     elseif text=="pvptest" then
         local on=Z.PvPHelp and Z.PvPHelp.ToggleTestMode();local line="ZENIAL: PvP test mode "..(on and"on until /reload."or"off.")
         if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end

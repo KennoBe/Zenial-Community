@@ -1,3 +1,4 @@
+local _, ns = ...
 local Z = ZenialCommunity
 local U, T = {}, Z.Theme
 Z.UI = U
@@ -146,83 +147,15 @@ function U.ShowDiagnostics()
     U.diagnosticWindow:Show();U.RefreshDiagnostics()
 end
 
-local function miniAngle(y, x)
-    if math.atan2 then return math.atan2(y, x) end
-    if x == 0 then return y >= 0 and math.pi / 2 or -math.pi / 2 end
-    local angle = math.atan(y / x); if x < 0 then angle = angle + math.pi end; return angle
-end
-
-local function minimapOrbitRadius()
-    local width, height = Minimap:GetSize()
-    local fallback = math.min(type(width) == "number" and width or 140, type(height) == "number" and height or 140) / 2 + 16
-    local dial = MinimapCluster and MinimapCluster.DielFrame
-    if not dial or not dial:IsShown() then return fallback, false end
-    local mx, my = Minimap:GetCenter(); local dx, dy = dial:GetCenter()
-    local mapScale, uiScale = Minimap:GetEffectiveScale(), UIParent:GetEffectiveScale()
-    if type(mx) ~= "number" or type(my) ~= "number" or type(dx) ~= "number" or type(dy) ~= "number"
-        or type(mapScale) ~= "number" or type(uiScale) ~= "number" or mapScale <= 0 or uiScale <= 0 then return fallback, false end
-    local radius = math.sqrt((dx - mx) * (dx - mx) + (dy - my) * (dy - my)) / (mapScale / uiScale)
-    if radius < fallback * .75 or radius > fallback * 2 then return fallback, false end
-    return radius, true
-end
-
+-- The shared ZENIAL icon (Launcher.lua) took over from Community's own button; ZenialUI still repositions it here.
 function U.PositionMinimapButton()
-    if not U.minimapButton or not Minimap then return false end
-    local radius, measured = minimapOrbitRadius(); local angle = math.rad(Z.db.minimapAngle or 225)
-    U.minimapButton:ClearAllPoints(); U.minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
-    return measured
-end
-
-function U.ApplyMinimapVisibility()
-    if not U.minimapButton then return end
-    if Z.db and Z.db.minimapHidden then U.minimapButton:Hide() else U.minimapButton:Show() end
-end
-
-function U.SetMinimapHidden(hidden)
-    Z.db.minimapHidden = hidden == true
-    U.ApplyMinimapVisibility()
-    if U.minimapHiddenControl then U.minimapHiddenControl:SetChecked(Z.db.minimapHidden) end
-    local line = Z.T(Z.db.minimapHidden and "Minimap button hidden. Bring it back with /zenial minimap." or "Minimap button shown.")
-    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line) else print(line) end
-end
-
--- Probed: a client without a working menu API falls back to opening the window.
-local function openMinimapMenu(owner)
-    if type(MenuUtil) ~= "table" or type(MenuUtil.CreateContextMenu) ~= "function" then return false end
-    return (pcall(MenuUtil.CreateContextMenu, owner, function(_, root)
-        root:CreateTitle("ZENIAL Community")
-        root:CreateButton(Z.T("Open ZENIAL Community"), function() U.Toggle() end)
-        root:CreateButton(Z.T("Hide minimap button"), function() U.SetMinimapHidden(true) end)
-    end))
+    if not U.minimapButton then return false end
+    return U.minimapButton.Reposition()
 end
 
 function U.CreateMinimapButton()
-    if U.minimapButton or not Minimap then return end
-    local button = CreateFrame("Button", "ZenialCommunityMinimapButton", Minimap); U.minimapButton = button
-    button:SetSize(32, 32); button:SetFrameStrata("MEDIUM"); button:SetFrameLevel(Minimap:GetFrameLevel() + 8); button:RegisterForClicks("LeftButtonUp", "RightButtonUp"); button:RegisterForDrag("LeftButton")
-    local mask = button:CreateMaskTexture(); mask:SetAllPoints(); mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    local background = button:CreateTexture(nil, "BACKGROUND"); background:SetAllPoints(); background:SetColorTexture(.01, .02, .04, 1); background:AddMaskTexture(mask)
-    local icon = button:CreateTexture(nil, "ARTWORK"); icon:SetSize(20, 20); icon:SetPoint("CENTER"); icon:SetTexture("Interface\\AddOns\\ZenialCommunity\\Media\\Icon.tga")
-    local border = button:CreateTexture(nil, "OVERLAY"); border:SetAllPoints()
-    if not T or not T.SetTexture(border, {atlas="UI-HUD-Minimap-Frame-Cycle",file="Interface\\Minimap\\MiniMap-TrackingBorder"}) then border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder") end
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT"); highlight:SetAllPoints(); highlight:SetColorTexture(1, .8, .3, .24); highlight:AddMaskTexture(mask)
-    button:SetScript("OnClick", function(self, mouseButton) if mouseButton == "RightButton" and openMinimapMenu(self) then return end; U.Toggle() end)
-    button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("ZENIAL Community"); if(U.unreadTotal or 0)>0 then GameTooltip:AddLine(Z.T("%d unread updates",U.unreadTotal),1,.8,.2)end; GameTooltip:AddLine(Z.T("Click to open"), 1, 1, 1); GameTooltip:AddLine(Z.T("Right-click: options"), 1, 1, 1); GameTooltip:Show() end)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    button:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", function()
-            local mx, my = Minimap:GetCenter(); local scale = Minimap.GetEffectiveScale and Minimap:GetEffectiveScale() or UIParent:GetEffectiveScale(); local x, y = GetCursorPosition()
-            if type(x) == "number" and type(scale) == "number" and scale > 0 then Z.db.minimapAngle = math.deg(miniAngle(y / scale - my, x / scale - mx)); U.PositionMinimapButton() end
-        end)
-    end)
-    button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-    if Minimap.HookScript then Minimap:HookScript("OnSizeChanged", function() U.PositionMinimapButton() end) end
-    if MinimapCluster and MinimapCluster.HookScript then MinimapCluster:HookScript("OnSizeChanged", function() U.PositionMinimapButton() end) end
-    local watcher = CreateFrame("Frame", nil, button); watcher.elapsed, watcher.tries = 0, 0
-    watcher:SetScript("OnUpdate", function(self, elapsed)
-        self.elapsed = self.elapsed + elapsed
-        if self.elapsed >= 1 then self.elapsed = 0; self.tries = self.tries + 1; if U.PositionMinimapButton() or self.tries >= 15 then self:SetScript("OnUpdate", nil) end end
-    end)
-    U.PositionMinimapButton()
-    U.ApplyMinimapVisibility()
+    local launcher = ns.Launcher
+    if not launcher then return end
+    U.minimapButton = launcher.MinimapHub()
+    launcher.AdoptMinimapAngle(Z.db and Z.db.minimapAngle)
 end
