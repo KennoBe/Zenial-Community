@@ -29,6 +29,7 @@ UIState.lua
 Notifications.lua
 Social.lua
 SocialCategories.lua
+SocialDiary.lua
 TradeManager.lua
 GroupFinder.lua
 SessionPlans.lua
@@ -82,6 +83,7 @@ SchedulePickersUI.lua
 CategorySettingsUI.lua
 ActivityDetailsUI.lua
 ActivityArchiveUI.lua
+SocialDiaryUI.lua
 NotificationInboxUI.lua
 PvPHelpUI.lua
 ResponsiveUI.lua

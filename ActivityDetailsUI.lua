@@ -23,6 +23,14 @@ local function whisperTarget(r)
     local target=c and c.target or not r.own and r.data and r.data.ownerTarget
     if target and Z.Logic.Identity(target)and Z.ResolvePeerKey(target)==key then return target end
 end
+-- The selected participant of an own activity, otherwise the organizer.
+local function diaryPlayer(r)
+    if not r then return end
+    local key=r.own and U.activityParticipantKey or r.owner
+    if not key or key==Z.me.key or Z.db.blocked[key]then return end
+    local c=Z.db.contacts[key]
+    return key,c and c.target or not r.own and r.data and r.data.ownerTarget or nil
+end
 local function canInviteParticipant(r,e,p,key,revision)
     local pending=U.activityInvitePending and U.activityInvitePending[r.key..':'..tostring(key)]
     return p~=nil and p.state=='CONFIRMED'and e.status=='OPEN'and e.endsAt>A.Now()
@@ -83,13 +91,14 @@ end
 function U.RefreshActivityDetails()
     if not U.activityDetails then return end
     local r=current()
-    for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction})do b:SetEnabled(false)end
+    for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction,U.activityDiary})do b:SetEnabled(false)end
     U.activityArchiveAction:SetShown(r~=nil and r.own and r.kind~='PVP'and(r.kind~='EVENT'or S.GetOwned(r.id).status=='OPEN'))
     if not r then U.activityDetailTitle:SetText(tr('This activity is no longer available.'));H.rows(U.activityInformation,{},44);H.rows(U.activityParticipants,{},42);U.LayoutActivityDetails(nil,0,0);return end
     local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
     U.activityDetailTitle:SetText(Z.Locale.Activity(r.title))
     -- Opening a chat does not require a current addon-presence report.
     U.activityWhisper:SetEnabled(whisperTarget(r)~=nil)
+    U.activityDiary:SetEnabled(diaryPlayer(r)~=nil)
     local details={{text=r.ownerName..' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now'),height=32}}
     local party=Z.ActivityParty.Info(r)
     local capacity=r.kind=='EVENT'and(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)or e and e.size
@@ -220,6 +229,7 @@ function U.CreateActivityDetails(helpers)
         local r=current();if not r or not r.own then return end;f:Hide();U.creatorFlow=false
         if r.kind=='EVENT'then U.OpenScheduledEditor(S.GetOwned(r.id))elseif r.kind=='LIVE'then U.OpenGroupEditor(r.data)elseif r.kind=='QUEST'then U.OpenQuestEditor(r.data)end
     end)
+    U.activityDiary=H.button(f,tr('Social diary'),16,-480,196,function()local key,target=diaryPlayer(current());if key then U.OpenSocialDiary(key,target)end end)
     H.button(f,tr('Close'),16,-512,196,function()f:Hide()end)
     H.makeModal(f);f:Hide()
 end

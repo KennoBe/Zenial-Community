@@ -309,6 +309,7 @@ function U.CreateCommunityHome(helpers)
     U.memberProfileScroll=CreateFrame('ScrollFrame',nil,U.pages[1],'UIPanelScrollFrameTemplate');U.memberProfileChild=CreateFrame('Frame',nil,U.memberProfileScroll);U.memberProfileScroll:SetScrollChild(U.memberProfileChild);U.memberDetail:SetParent(U.memberProfileChild)
     if Z.Theme then Z.Theme.StyleScroll(U.memberProfileScroll);Z.Theme.AttachScrollWheel(U.memberProfileScroll,32)end
     U.memberCategories:Hide();button(U.pages[1],tr('Contact history'),140,-407,180,function()if U.memberKey then U.OpenHistory(U.memberKey)end end)
+    U.memberDiary=button(U.pages[1],tr('Social diary'),330,-407,180,function()local m=U.memberKey and U.Shared.memberFor(U.memberKey);U.OpenSocialDiary(U.memberKey,m and m.target)end)
     U.OpenPrivateCategories=function()
         U.CloseDialogs();U.Navigate('members');U.Refresh();U.OpenCompactArea('members')
     end
@@ -322,6 +323,6 @@ function U.CreateCommunityHome(helpers)
     U.craftMaterialsTab:Hide()
     button(U.craftOrdersFrame,tr('All shopping lists'),495,-354,325,function()U.SetCraftView('materials')end)
     U.materialBackOrders=button(U.pages[2],tr('Back to orders'),560,0,290,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()
-    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
+    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

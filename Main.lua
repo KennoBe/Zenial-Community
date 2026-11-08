@@ -129,7 +129,7 @@ function Z.RemoveCharacter(key)
         if ZenialCommunityDB.ui and ZenialCommunityDB.ui.characters then ZenialCommunityDB.ui.characters[alias]=nil end
         if ZenialCommunityDB.pvpHelp then ZenialCommunityDB.pvpHelp[alias]=nil end
         Z.db.contacts[alias]=nil;Z.db.peers[alias]=nil;Z.db.recipeCatalogs[alias]=nil
-        if Z.Social and Z.Social.store then Z.Social.store.favorites[alias]=nil;Z.Social.store.notes[alias]=nil;if Z.SocialCategories then Z.SocialCategories.Forget(alias)end end
+        if Z.Social and Z.Social.store then Z.Social.store.favorites[alias]=nil;Z.Social.store.notes[alias]=nil;if Z.SocialCategories then Z.SocialCategories.Forget(alias)end;if Z.SocialDiary then Z.SocialDiary.Forget(alias)end end
         if Z.UI and Z.UI.noteDrafts then Z.UI.noteDrafts[alias]=nil end
         for _,results in pairs(Z.db.recipeResults)do results[alias]=nil end
     end
@@ -522,6 +522,7 @@ local function initializeGameplayModules(d)
     if Z.GroupFinder then Z.GroupFinder.Initialize()end
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
+    if Z.SocialDiary then Z.SocialDiary.Initialize()end
     if Z.CraftOrders then Z.CraftOrders.Initialize()end
     if Z.ProfessionScan then Z.ProfessionScan.Initialize()end
     if Z.RecipeSearch then Z.RecipeSearch.Initialize()end
@@ -586,6 +587,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="debug on"then Z.Companion.SetDebugPixel(true)
     elseif text=="debug off"then Z.Companion.SetDebugPixel(false)
     elseif text=="companion"then Z.Companion.Show()
+    elseif text=="diary"or text=="tagebuch"then if Z.UI and Z.UI.OpenSocialDiaryForUnit then Z.UI.OpenSocialDiaryForUnit("target")end
     elseif text=="setup advanced"then Z.NetworkSetup.ShowAdvanced()
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end
@@ -640,7 +642,7 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
     elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then
-        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.Reset("disconnect")end end
+        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.Reset("disconnect")end end
     elseif event=="PLAYER_LEVEL_UP" then
         if Z.RefreshIdentity() then Z.Publish() end
         if Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
@@ -650,14 +652,15 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="CHAT_MSG_ADDON" then if Z.db then A.Receive(...) end
     elseif event=="SKILL_LINES_CHANGED"or event=="SPELLS_CHANGED"or event:match("^TRADE_SKILL_")then if Z.ProfessionScan then Z.ProfessionScan.OnEvent(event,...)end
     elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"or event=="PLAYER_FLAGS_CHANGED"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event,...)end
-    elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;Z.RefreshLocation(false)
-    elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then if Z.CommunityLayer then Z.CommunityLayer.RequestScan(event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil)end
+    elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if Z.db and Z.SocialDiary and event=="ZONE_CHANGED_NEW_AREA"then Z.SocialDiary.OnEvent(event)end;Z.RefreshLocation(false)
+    elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then local unit=event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil;if Z.CommunityLayer then Z.CommunityLayer.RequestScan(unit)end;if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event,unit)end
     elseif event=="GROUP_ROSTER_UPDATE" then
         if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
         Z.CommunityMap.Refresh()
         if Z.ActivityParty and Z.ActivityParty.SyncLive()then L.Touch(Z.db);Z.Publish()end
         if Z.db and Z.db.lfg[1] then local have=A.GroupRoles(); if Z.db.lfg[1].have~=have then Z.db.lfg[1].have=have; L.Touch(Z.db); Z.Publish() end end
         if Z.db then Z.ObserveFinderGroup()end
+        if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end
         A.DiscoveryTick(true)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
