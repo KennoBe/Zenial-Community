@@ -131,6 +131,7 @@ function Z.RemoveCharacter(key)
         Z.db.contacts[alias]=nil;Z.db.peers[alias]=nil;Z.db.recipeCatalogs[alias]=nil
         if Z.Social and Z.Social.store then Z.Social.store.favorites[alias]=nil;Z.Social.store.notes[alias]=nil;if Z.SocialCategories then Z.SocialCategories.Forget(alias)end;if Z.SocialDiary then Z.SocialDiary.Forget(alias)end end
         if Z.UI and Z.UI.noteDrafts then Z.UI.noteDrafts[alias]=nil end
+        if Z.AccountOverview then Z.AccountOverview.Forget(alias)end
         for _,results in pairs(Z.db.recipeResults)do results[alias]=nil end
     end
     -- Other own profiles may still contain pre-shared-social migration copies.
@@ -523,6 +524,7 @@ local function initializeGameplayModules(d)
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
     if Z.SocialDiary then Z.SocialDiary.Initialize()end
+    if Z.AccountOverview then Z.AccountOverview.Initialize()end
     if Z.CraftOrders then Z.CraftOrders.Initialize()end
     if Z.ProfessionScan then Z.ProfessionScan.Initialize()end
     if Z.RecipeSearch then Z.RecipeSearch.Initialize()end
@@ -588,6 +590,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="debug off"then Z.Companion.SetDebugPixel(false)
     elseif text=="companion"then Z.Companion.Show()
     elseif text=="diary"or text=="tagebuch"then if Z.UI and Z.UI.OpenSocialDiaryForUnit then Z.UI.OpenSocialDiaryForUnit("target")end
+    elseif text=="alts"or text=="twinks"or text=="account"then if Z.UI and Z.UI.OpenAccountOverview then Z.UI.OpenAccountOverview()end
     elseif text=="setup advanced"then Z.NetworkSetup.ShowAdvanced()
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end

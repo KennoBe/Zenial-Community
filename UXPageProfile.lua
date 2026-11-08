@@ -103,6 +103,9 @@ function S.createProfilePage(f)
         -165,
         295
     )
+    U.accountOverviewButton = button(U.profileCharactersFrame, 'Account overview', 545, -340, 250, function()
+        U.OpenAccountOverview()
+    end)
     U.profileDisplayFrame = CreateFrame('Frame', nil, p)
     U.profileDisplayFrame:SetPoint('TOPLEFT', 0, -42)
     U.profileDisplayFrame:SetSize(856, 414)

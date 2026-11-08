@@ -323,6 +323,6 @@ function U.CreateCommunityHome(helpers)
     U.craftMaterialsTab:Hide()
     button(U.craftOrdersFrame,tr('All shopping lists'),495,-354,325,function()U.SetCraftView('materials')end)
     U.materialBackOrders=button(U.pages[2],tr('Back to orders'),560,0,290,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()
-    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
+    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateAccountOverview(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

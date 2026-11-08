@@ -30,6 +30,7 @@ Notifications.lua
 Social.lua
 SocialCategories.lua
 SocialDiary.lua
+AccountOverview.lua
 TradeManager.lua
 GroupFinder.lua
 SessionPlans.lua
@@ -84,6 +85,7 @@ CategorySettingsUI.lua
 ActivityDetailsUI.lua
 ActivityArchiveUI.lua
 SocialDiaryUI.lua
+AccountOverviewUI.lua
 NotificationInboxUI.lua
 PvPHelpUI.lua
 ResponsiveUI.lua
