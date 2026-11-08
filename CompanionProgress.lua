@@ -74,7 +74,9 @@ function R.Sample(deferLevel)
     if not R.record then return end
     local key=day();if not text(key)then return end;bucket(key)
     local money=read(GetMoney)
-    if money then if R.money then local delta=money-R.money;add(delta<0 and'expenses'or'income',math.abs(delta))end;R.money=money
+    -- The client reports 0 copper while unloading or loading player data. A drop
+    -- to exactly 0 is a reading gap; the next reading starts a fresh baseline.
+    if money and not(money==0 and R.money and R.money>0)then if R.money then local delta=money-R.money;add(delta<0 and'expenses'or'income',math.abs(delta))end;R.money=money
     else R.money=nil end
     local level,xp,maximum=read(UnitLevel,'player'),read(UnitXP,'player'),read(UnitXPMax,'player')
     if level and xp and maximum then
@@ -86,12 +88,15 @@ function R.Sample(deferLevel)
       elseif not wrapped and(not deferLevel or not R.level or level==R.level)then
         if R.level and R.xp and R.maximum then
             local gained=level-R.level
-            if gained>0 then local row=bucket(key);row.levels=row.levels+gained;touch(row)end
+            -- Only a new highest level counts; a level reached before is never counted again.
+            local reached=level-math.max(R.record.peakLevel or R.level,R.level)
+            if reached>0 then local row=bucket(key);row.levels=row.levels+reached;touch(row)end
             local delta=level==R.level and xp-R.xp or gained==1 and R.maximum-R.xp+xp or 0
             add('xp',math.max(0,delta))
             if gained>1 then R.pending[#R.pending+1]={kind='xp',amount=0,unknownThresholds=true,at=A.Clock(),day=key}end
         end
         R.level,R.xp,R.maximum=level,xp,maximum
+        R.record.peakLevel=math.max(R.record.peakLevel or level,level)
       end
     else R.level=nil;R.xp=nil;R.maximum=nil;R.xpDropAt=nil end
     if A.Clock()>=(R.skillDue or 0)then
@@ -170,7 +175,8 @@ local function ownAlt(target)
 end
 function R.OnEvent(event,...)
     if not R.record then return end
-    R.Sample(true)
+    -- Logout unloads player data; only pending observed movements are flushed.
+    if event~='PLAYER_LOGOUT'then R.Sample(true)end
     if event=='QUEST_TURNED_IN'then local _,xp,money=...;hint('xp','quest',xp);hint('income','quest',money)
     elseif event=='CHAT_MSG_COMBAT_XP_GAIN'then
         local message=...
