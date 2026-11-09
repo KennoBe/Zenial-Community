@@ -63,6 +63,7 @@ UX.lua
 UXAddons.lua
 UXNotices.lua
 UXMembers.lua
+UXMemberGroups.lua
 UXSessions.lua
 UXGroups.lua
 UXQuests.lua
