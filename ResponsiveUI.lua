@@ -102,6 +102,7 @@ function U.ApplyResponsiveLayout(activePage)
     if U.RefreshMemberCategories and(not activePage or activePage==U.pages[1])then U.RefreshMemberCategories()end
     if U.LayoutHomeWishes and(not activePage or activePage==U.pages[9])then U.LayoutHomeWishes()end
     if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
+    if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end
     U.responsiveUpdating=false
 end
 return U

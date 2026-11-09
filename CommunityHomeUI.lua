@@ -296,7 +296,7 @@ function U.CreateCommunityHome(helpers)
     U.creatorContinue=button(f,tr('Continue'),16,-272,294,U.ContinueActivityCreator,'primary');U.creatorCancel=button(f,tr('Cancel'),324,-272,294,function()f:Hide()end)
     H.makeModal(f);f:Hide()
     local settings=U.pages[11];label(settings,tr('Settings'),0,0,850,'GameFontNormalLarge')
-    local actions={{'Character profile',function()U.Navigate('profile','public')end},{'Main & alts',function()U.Navigate('profile','characters')end},
+    local actions={{'Character profile',function()U.Navigate('profile','public')end},{'My characters',function()U.Navigate('profile','characters')end},
         {'Display settings',function()U.Navigate('profile','display')end},{'Connection and privacy',function()U.Navigate('profile','network')end},
         {'Addon Manager',function()U.Navigate('addons')end},{'History',function()U.OpenHistory()end},
         {'Companion',function()Z.Companion.Show()end}}

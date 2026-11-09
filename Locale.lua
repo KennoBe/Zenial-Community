@@ -985,6 +985,8 @@ DE["The social diary is full."]="Das Begegnungstagebuch ist voll."
 
 -- Account overview
 DE["Account overview"]="Accountübersicht"
+DE["My characters"]="Meine Charaktere"
+DE["MY CHARACTERS"]="MEINE CHARAKTERE"
 DE["Record own characters at login"]="Eigene Charaktere beim Login erfassen"
 DE["Record bags and opened bank"]="Taschen und geöffnete Bank erfassen"
 DE["Faction"]="Fraktion"
