@@ -87,6 +87,22 @@ function U.RefreshJoinBanner()
     U.Layout()
 end
 
+-- Pages that are not scaled proportionally with the window. Only the profile
+-- page while its "My characters" view is active: it switches between one and
+-- two columns by the real width, which a proportional scale (logical width
+-- always about 856) would hide.
+function U.PageUsesNativeScale(i)
+    return i == 6 and U.profileView == 'characters'
+end
+-- Changing the profile subview can change the page scale; apply the layout then.
+local setProfileView = U.SetProfileView
+function U.SetProfileView(v)
+    setProfileView(v)
+    if U.frame and U.pages and U.PageUsesNativeScale(6) ~= (U.profileNativeScale == true) then
+        U.Layout(U.page == 6)
+    end
+end
+
 function U.Layout(activeOnly, geometryOnly)
     if not U.frame or not U.pages then
         return
@@ -131,10 +147,17 @@ function U.Layout(activeOnly, geometryOnly)
     -- the unscaled content boundary instead of drifting right and down.
     for i, page in ipairs(U.pages) do
         if not activeOnly or i == U.page then
-            page:SetScale(scale)
+            -- "My characters" lays itself out by its real content width, so it
+            -- keeps scale 1 and the unscaled available size (P0-B2).
+            local native = U.PageUsesNativeScale(i)
+            local pageScale = native and 1 or scale
+            if i == 6 then
+                U.profileNativeScale = native
+            end
+            page:SetScale(pageScale)
             page:ClearAllPoints()
-            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / scale, (-118 - bannerHeight) / scale)
-            page:SetSize(available / scale, pageHeight / scale)
+            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / pageScale, (-118 - bannerHeight) / pageScale)
+            page:SetSize(available / pageScale, pageHeight / pageScale)
         end
     end
     U.status:ClearAllPoints()
