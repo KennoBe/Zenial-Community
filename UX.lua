@@ -739,7 +739,8 @@ local function rows(view, items, height)
             b.text:SetFontObject(item.header and 'GameFontNormalSmall' or 'GameFontHighlightSmall')
             b.text:ClearAllPoints()
             local hasIcon = item.icon ~= nil
-            local textLeft = item.textInset or (hasIcon and (item.header and 30 or 46) or 8)
+            local indent = item.indent or 0
+            local textLeft = (item.textInset or (hasIcon and (item.header and 30 or 46) or 8)) + indent
             b.text:SetPoint('TOPLEFT', textLeft, item.iconTop and -3 or -5)
             b.text:SetWidth(view.width - textLeft - 8)
             b.text:SetWordWrap(item.noWrap ~= true)
@@ -815,7 +816,7 @@ local function rows(view, items, height)
                 local iconSize = item.iconSize or 30
                 b.zenialRowIcon:SetSize(iconSize, iconSize)
                 b.zenialRowIcon:ClearAllPoints()
-                b.zenialRowIcon:SetPoint(item.iconTop and 'TOPLEFT' or 'LEFT', 8, item.iconTop and -5 or 0)
+                b.zenialRowIcon:SetPoint(item.iconTop and 'TOPLEFT' or 'LEFT', 8 + indent, item.iconTop and -5 or 0)
             end
             b:RegisterForClicks(item.clickOnDown and 'LeftButtonDown' or 'LeftButtonUp')
             b.zenialItem = item

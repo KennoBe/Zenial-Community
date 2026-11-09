@@ -457,49 +457,39 @@ local function refreshMemberDetail()
     U.memberWhisper:SetEnabled(not m.own)
     U.memberInvite:SetEnabled(not m.own and m.online)
 end
-local function refreshMembers()
-    local query = string.lower(U.memberSearch:GetText() or '')
-    local status, class, profession = U.memberStatus:GetText(), U.memberClass:GetText(), U.memberProfession:GetText()
-    if status ~= 'ONLINE' then
-        status = 'ALL'
-        U.memberStatus:SetText(status)
+local refreshMembers
+-- Grouping by declared main is a local view preference (account-wide, never published).
+local function groupingEnabled()
+    return not Z.ui or Z.ui.memberGrouping ~= false
+end
+S.memberGroupingEnabled = groupingEnabled
+function U.SetMemberGrouping(enabled)
+    if Z.ui then
+        Z.ui.memberGrouping = enabled ~= false
     end
-    if Z.uiCharacter then
-        Z.uiCharacter.memberStatus = status
+    if U.memberGrouping then
+        U.memberGrouping:SetChecked(enabled ~= false)
     end
-    local favoriteOnly = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() == 'FAVORITES'
-    local filtered = {}
-    local now = A.Now()
-    local C = Z.SocialCategories
-    if U.SyncCategoryControls then
-        U.SyncCategoryControls()
+    if U.memberList then
+        refreshMembers()
     end
-    local selected = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() or 'ALL'
-    local category = selected ~= 'FAVORITES' and selected ~= 'MY_GUILD' and selected or 'ALL'
-    for _, m in ipairs(memberEntries()) do
-        local s = m.data
-        local cn, prof, where, hay = m.cn, m.prof, m.where, m.hay
-        hay = hay .. ' ' .. string.lower(C.Text(m.key))
-        if
-            visibleMember(m, query, now)
-            and (query == '' or hay:find(query, 1, true))
-            and (status == 'ALL' or status == 'ONLINE' and m.online)
-            and (class == 'ALL_CLASSES' or s and s.classFile == class)
-            and (profession == 'ALL_PROFESSIONS' or prof:find(tr(profession), 1, true))
-            and (not favoriteOnly or Z.Social.IsFavorite(m.key))
-            and (selected ~= 'MY_GUILD' or Z.Social.IsGuildMember(m.key))
-            and C.Matches(m.key, category)
-        then
-            m.cn, m.prof, m.where = cn, prof, where
-            filtered[#filtered + 1] = m
-        end
-    end
-    local sort = U.memberSort:GetText()
-    table.sort(filtered, function(a, b)
-        local af = a.online == true and Z.Social.IsFavorite(a.key)
-        local bf = b.online == true and Z.Social.IsFavorite(b.key)
-        if af ~= bf then
-            return af == true
+end
+-- Character filter shared by both views; the status filter is applied per view.
+local function memberMatches(m, ctx)
+    local s = m.data
+    local hay = m.hay .. ' ' .. string.lower(ctx.C.Text(m.key))
+    return visibleMember(m, ctx.query, ctx.now)
+        and (ctx.query == '' or hay:find(ctx.query, 1, true))
+        and (ctx.class == 'ALL_CLASSES' or s and s.classFile == ctx.class)
+        and (ctx.profession == 'ALL_PROFESSIONS' or m.prof:find(tr(ctx.profession), 1, true))
+        and (not ctx.favoriteOnly or Z.Social.IsFavorite(m.key))
+        and (ctx.selected ~= 'MY_GUILD' or Z.Social.IsGuildMember(m.key))
+        and ctx.C.Matches(m.key, ctx.category)
+end
+local function sortRecords(records, sort)
+    table.sort(records, function(a, b)
+        if a.favorite ~= b.favorite then
+            return a.favorite == true
         end
         if sort == 'ONLINE_FIRST' then
             if a.online ~= b.online then
@@ -513,7 +503,7 @@ local function refreshMembers()
             end
             return a.key > b.key
         end
-        local av, bv = a.data and a.data.level or 0, b.data and b.data.level or 0
+        local av, bv = a.level, b.level
         if sort == 'LEVEL_ASC' and av ~= bv then
             return av < bv
         elseif sort == 'LEVEL_DESC' and av ~= bv then
@@ -526,85 +516,361 @@ local function refreshMembers()
         end
         return a.key < b.key
     end)
-    local items = {}
-    for _, m in ipairs(filtered) do
-        local s = m.data
-        local name = m.target .. (s and s.community and s.community ~= '' and ' (' .. s.community .. ')' or '')
-        -- Class colour where the class is known; otherwise the previous colours (own gold, others white).
-        local classHex = T and T.ClassColorHex and s and T.ClassColorHex(s.classFile, s.class)
-        local title = '|cff'
-            .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
-            .. name
-            .. '|r'
-            .. (m.own and ' |cff' .. paletteHex('gold') .. '[' .. tr('You') .. ']|r' or '')
-            .. '    '
-            .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
-        local info = s and (m.cn .. ' · ' .. tr('Level') .. ' ' .. (s.level or 0) .. (s.roles and s.roles ~= '' and ' · ' .. roleName(
-            s.roles
-        ) or '')) or tr('Profile not received yet')
-        local location = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where) or ''
-        if m.main and m.main ~= '' then
-            if location ~= '' then
-                location = location .. ' · ' .. tr('Main') .. ': ' .. m.main
-            else
-                info = info .. ' · ' .. tr('Main') .. ': ' .. m.main
+end
+local function memberRecord(m)
+    return {
+        member = m,
+        favorite = m.online == true and Z.Social.IsFavorite(m.key) == true,
+        online = m.online,
+        seen = m.seen,
+        target = m.target,
+        key = m.key,
+        level = m.data and m.data.level or 0,
+    }
+end
+local function selectMember(memberKey, m)
+    U.memberKey = memberKey
+    if m and not m.own and m.data and m.data.publicOnly then
+        Z.RequestProfile(memberKey)
+    end
+    refreshMembers()
+    refreshMemberDetail()
+    U.OpenCompactArea('members')
+end
+local function locationLine(m)
+    return m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where)
+        or (tr('Location') .. ': ' .. string.lower(tr('Unknown')))
+end
+local function layerChip(m)
+    local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
+    return layerText and ('|cff' .. paletteHex('accentBlue') .. layerText .. '|r · ') or '', layerText
+end
+-- One character row: the unchanged per-character item of the list.
+local function characterItem(m, ctx)
+    local s = m.data
+    local name = m.target .. (s and s.community and s.community ~= '' and ' (' .. s.community .. ')' or '')
+    -- Class colour where the class is known; otherwise the previous colours (own gold, others white).
+    local classHex = T and T.ClassColorHex and s and T.ClassColorHex(s.classFile, s.class)
+    local title = '|cff'
+        .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
+        .. name
+        .. '|r'
+        .. (m.own and ' |cff' .. paletteHex('gold') .. '[' .. tr('You') .. ']|r' or '')
+        .. '    '
+        .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
+    local info = s and (m.cn .. ' · ' .. tr('Level') .. ' ' .. (s.level or 0) .. (s.roles and s.roles ~= '' and ' · ' .. roleName(
+        s.roles
+    ) or '')) or tr('Profile not received yet')
+    local location = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where) or ''
+    if m.main and m.main ~= '' then
+        if location ~= '' then
+            location = location .. ' · ' .. tr('Main') .. ': ' .. m.main
+        else
+            info = info .. ' · ' .. tr('Main') .. ': ' .. m.main
+        end
+    end
+    local tooltip = title .. '\n' .. info .. (location ~= '' and '\n' .. location or '')
+    if Z.Social.IsFavorite(m.key) then
+        tooltip = tooltip .. '\n' .. tr('Favorite')
+    end
+    if Z.Social.IsGuildMember(m.key) then
+        tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.me.guild
+    end
+    local chip, layerText = layerChip(m)
+    if not layerText then
+        tooltip = tooltip .. '\n' .. Z.CommunityLayer.Label(nil)
+    end
+    local level = s and type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
+    local at = ctx.category == 'RECONTACT' and ctx.C.LastTogether(m.key)
+    if at then
+        tooltip = tooltip .. '\n' .. Z.T('Last together %d days ago.', math.floor((ctx.now - at) / 86400))
+    end
+    local memberKey = m.key
+    return {
+        iconTop = true,
+        noWrap = true,
+        ageAt = not m.online and m.seen or nil,
+        ageText = not m.online and age(m.seen) or nil,
+        selected = memberKey == U.memberKey,
+        icon = T and T.ClassIcon(s and s.classFile, s and s.class),
+        text = title,
+        subtitle = tr('Level') .. ' ' .. level .. ' · ' .. chip .. locationLine(m),
+        tooltip = tooltip,
+        favorite = Z.Social.IsFavorite(m.key),
+        sameGuild = Z.Social.IsGuildMember(m.key),
+        click = function()
+            selectMember(memberKey, m)
+        end,
+    }
+end
+local function neutralIcon()
+    return T and T.assets and T.assets.neutralIcon and { file = T.assets.neutralIcon } or nil
+end
+local function roleLabel(g, m)
+    return tr(m == g.mainMember and 'Main' or 'Alt')
+end
+-- Short class/level text of one real character; nothing is invented for missing data.
+local function classLevel(m)
+    local s = m.data
+    if not s then
+        return tr('Profile not received yet')
+    end
+    local level = type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
+    return m.cn .. ' ' .. level
+end
+local function containsKey(g, key)
+    for _, k in ipairs(g.memberKeys) do
+        if k == key then
+            return true
+        end
+    end
+    return false
+end
+-- Header of one linked group. The headline is the main's name; every live detail
+-- (class, level, location, layer) belongs to the active character only.
+local function groupItem(g, hits, ctx)
+    local main, active = g.mainMember, g.activeMember
+    local ms = main and main.data
+    local expanded = U.memberGroupExpanded[g.groupKey] == true
+    local classHex = T and T.ClassColorHex and ms and T.ClassColorHex(ms.classFile, ms.class)
+    local status
+    if active and active == main then
+        status = '|cff' .. paletteHex('online') .. tr('Online') .. ' · ' .. tr('playing main') .. '|r'
+    elseif active then
+        status = '|cff' .. paletteHex('online') .. Z.T('Online · playing %s', active.target) .. '|r'
+    elseif g.lastSeen > 0 then
+        status = dimText(Z.T('Offline · last seen %s', age(g.lastSeen)))
+    else
+        status = dimText(tr('Offline'))
+    end
+    local mark = '|TInterface\\Buttons\\UI-' .. (expanded and 'Minus' or 'Plus') .. 'Button-Up:14:14|t '
+    local title = mark
+        .. '|cff'
+        .. (classHex or (g.isOwn and 'ffd36b' or 'ffffff'))
+        .. g.mainName
+        .. '|r '
+        .. dimText('(' .. tr('Main') .. ')')
+        .. (g.isOwn and ' |cff' .. paletteHex('gold') .. '[' .. tr('You') .. ']|r' or '')
+        .. '    '
+        .. status
+    local subtitle
+    if active then
+        local chip = layerChip(active)
+        subtitle = tr('Active') .. ': ' .. active.target .. ' · ' .. classLevel(active) .. ' · ' .. chip .. locationLine(active)
+        if #g.activeMembers > 1 then
+            subtitle = subtitle .. ' · ' .. Z.T('+%d more online', #g.activeMembers - 1)
+        end
+    else
+        subtitle = (ms and classLevel(main) .. ' · ' or '')
+            .. Z.T(#g.members == 1 and '%d known character' or '%d known characters', #g.members)
+    end
+    -- A filter that only matches alts is shown, so the group never looks like a random result.
+    local hitMain, names = false, {}
+    for _, m in ipairs(hits) do
+        if m == main then
+            hitMain = true
+        end
+        names[#names + 1] = m.target
+    end
+    if ctx.filtering and not hitMain then
+        subtitle = subtitle .. ' · ' .. tr('Match') .. ': ' .. table.concat(names, ', ')
+    end
+    local favorite, sameGuild = false, false
+    local lines = { title, subtitle, '' }
+    for _, m in ipairs(g.members) do
+        favorite = favorite or Z.Social.IsFavorite(m.key)
+        sameGuild = sameGuild or Z.Social.IsGuildMember(m.key)
+        lines[#lines + 1] = m.target .. ' · ' .. roleLabel(g, m) .. ' · ' .. classLevel(m) .. ' · ' .. (m.online and tr('Online') or age(m.seen))
+    end
+    if g.virtual then
+        lines[#lines + 1] = Z.T('%s has not been seen with ZENIAL yet.', g.mainName)
+    end
+    lines[#lines + 1] = ''
+    lines[#lines + 1] = tr('Main and alts as declared by their addon; not verified.')
+    lines[#lines + 1] = tr(expanded and 'Click again to collapse the characters.' or 'Click to show the characters.')
+    -- The concrete character a selection uses: the active one, else the main, else the first known.
+    local pick = active or main or g.members[1]
+    return {
+        iconTop = true,
+        noWrap = true,
+        ageAt = not g.online and g.lastSeen > 0 and g.lastSeen or nil,
+        ageText = not g.online and g.lastSeen > 0 and age(g.lastSeen) or nil,
+        selected = not expanded and containsKey(g, U.memberKey),
+        icon = T and (ms and T.ClassIcon(ms.classFile, ms.class) or neutralIcon()),
+        text = title,
+        subtitle = subtitle,
+        tooltip = table.concat(lines, '\n'),
+        favorite = favorite,
+        sameGuild = sameGuild,
+        click = function()
+            if containsKey(g, U.memberKey) and U.memberGroupExpanded[g.groupKey] then
+                U.memberGroupExpanded[g.groupKey] = nil
+                refreshMembers()
+                return
+            end
+            U.memberGroupExpanded[g.groupKey] = true
+            if containsKey(g, U.memberKey) then
+                refreshMembers()
+                return
+            end
+            selectMember(pick.key, pick)
+        end,
+    }
+end
+-- One known character inside an expanded group, with its own status.
+local function groupMemberItem(g, m, hit, ctx)
+    local s = m.data
+    local classHex = T and T.ClassColorHex and s and T.ClassColorHex(s.classFile, s.class)
+    local title = '|cff'
+        .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
+        .. m.target
+        .. '|r '
+        .. dimText('· ' .. roleLabel(g, m))
+        .. (m.own and ' |cff' .. paletteHex('gold') .. '[' .. tr('You') .. ']|r' or '')
+        .. (ctx.filtering and hit and dimText(' · ' .. tr('Match')) or '')
+        .. '    '
+        .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
+    local chip = layerChip(m)
+    local memberKey = m.key
+    return {
+        iconTop = true,
+        noWrap = true,
+        indent = 22,
+        height = 44,
+        ageAt = not m.online and m.seen or nil,
+        ageText = not m.online and age(m.seen) or nil,
+        selected = memberKey == U.memberKey,
+        icon = T and (T.ClassIcon(s and s.classFile, s and s.class) or neutralIcon()),
+        text = title,
+        subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
+        favorite = Z.Social.IsFavorite(m.key),
+        sameGuild = Z.Social.IsGuildMember(m.key),
+        click = function()
+            selectMember(memberKey, m)
+        end,
+    }
+end
+local function groupLevel(g)
+    local m = g.activeMember or g.mainMember
+    return m and m.data and m.data.level or 0
+end
+local function groupedItems(ctx)
+    local records, characters = {}, 0
+    for _, g in ipairs((S.memberGroups())) do
+        if not g.blocked then
+            local hits, hitSet = {}, {}
+            for _, m in ipairs(g.members) do
+                if memberMatches(m, ctx) then
+                    hits[#hits + 1] = m
+                    hitSet[m] = true
+                end
+            end
+            -- The online filter needs at least one online character of the group.
+            if #hits > 0 and (ctx.status == 'ALL' or g.online) then
+                characters = characters + #g.members
+                if g.linked then
+                    local favorite = false
+                    for _, m in ipairs(g.members) do
+                        favorite = favorite or Z.Social.IsFavorite(m.key)
+                    end
+                    records[#records + 1] = {
+                        group = g,
+                        hits = hits,
+                        hitSet = hitSet,
+                        favorite = g.online == true and favorite == true,
+                        online = g.online,
+                        seen = g.lastSeen,
+                        target = g.mainName,
+                        key = g.groupKey,
+                        level = groupLevel(g),
+                    }
+                else
+                    records[#records + 1] = memberRecord(g.members[1])
+                end
             end
         end
-        local tooltip = title .. '\n' .. info .. (location ~= '' and '\n' .. location or '')
-        if Z.Social.IsFavorite(m.key) then
-            tooltip = tooltip .. '\n' .. tr('Favorite')
-        end
-        if Z.Social.IsGuildMember(m.key) then
-            tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.me.guild
-        end
-        local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
-        if not layerText then
-            tooltip = tooltip .. '\n' .. Z.CommunityLayer.Label(nil)
-        end
-        local level = s and type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
-        local where = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where)
-            or (tr('Location') .. ': ' .. string.lower(tr('Unknown')))
-        local at = category == 'RECONTACT' and C.LastTogether(m.key)
-        if at then
-            tooltip = tooltip .. '\n' .. Z.T('Last together %d days ago.', math.floor((now - at) / 86400))
-        end
-        local memberKey = m.key
-        items[#items + 1] = {
-            iconTop = true,
-            noWrap = true,
-            ageAt = not m.online and m.seen or nil,
-            ageText = not m.online and age(m.seen) or nil,
-            selected = memberKey == U.memberKey,
-            icon = T and T.ClassIcon(s and s.classFile, s and s.class),
-            text = title,
-            subtitle = tr('Level') .. ' ' .. level .. ' · ' .. (layerText and ('|cff' .. paletteHex('accentBlue') .. layerText .. '|r · ') or '') .. where,
-            tooltip = tooltip,
-            favorite = Z.Social.IsFavorite(m.key),
-            sameGuild = Z.Social.IsGuildMember(m.key),
-            click = function()
-                U.memberKey = memberKey
-                if not m.own and s and s.publicOnly then
-                    Z.RequestProfile(memberKey)
-                end
-                refreshMembers()
-                refreshMemberDetail()
-                U.OpenCompactArea('members')
-            end,
-        }
     end
-    local filtering = query ~= ''
-        or status ~= 'ALL'
-        or class ~= 'ALL_CLASSES'
-        or profession ~= 'ALL_PROFESSIONS'
-        or favoriteOnly
-        or selected ~= 'ALL'
+    sortRecords(records, ctx.sort)
+    local items = {}
+    for _, r in ipairs(records) do
+        if r.group then
+            items[#items + 1] = groupItem(r.group, r.hits, ctx)
+            if U.memberGroupExpanded[r.group.groupKey] then
+                for _, m in ipairs(r.group.members) do
+                    items[#items + 1] = groupMemberItem(r.group, m, r.hitSet[m], ctx)
+                end
+            end
+        else
+            items[#items + 1] = characterItem(r.member, ctx)
+        end
+    end
+    return items, #records, characters
+end
+function refreshMembers()
+    local query = string.lower(U.memberSearch:GetText() or '')
+    local status, class, profession = U.memberStatus:GetText(), U.memberClass:GetText(), U.memberProfession:GetText()
+    if status ~= 'ONLINE' then
+        status = 'ALL'
+        U.memberStatus:SetText(status)
+    end
+    if Z.uiCharacter then
+        Z.uiCharacter.memberStatus = status
+    end
+    local favoriteOnly = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() == 'FAVORITES'
+    local C = Z.SocialCategories
+    if U.SyncCategoryControls then
+        U.SyncCategoryControls()
+    end
+    local selected = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() or 'ALL'
+    local category = selected ~= 'FAVORITES' and selected ~= 'MY_GUILD' and selected or 'ALL'
+    local ctx = {
+        query = query,
+        status = status,
+        class = class,
+        profession = profession,
+        favoriteOnly = favoriteOnly,
+        selected = selected,
+        category = category,
+        now = A.Now(),
+        C = C,
+        sort = U.memberSort:GetText(),
+    }
+    -- Filters that pick characters (the online status is a group signal in the grouped view).
+    ctx.filtering = query ~= '' or class ~= 'ALL_CLASSES' or profession ~= 'ALL_PROFESSIONS' or favoriteOnly or selected ~= 'ALL'
+    U.memberGroupExpanded = U.memberGroupExpanded or {}
+    local grouped = groupingEnabled()
+    if U.memberGrouping then
+        U.memberGrouping:SetChecked(grouped)
+    end
+    local items, count
+    if grouped then
+        local identities, characters
+        items, identities, characters = groupedItems(ctx)
+        count = Z.T(identities == 1 and '%d player identity' or '%d player identities', identities)
+            .. ' · '
+            .. Z.T(characters == 1 and '%d known character' or '%d known characters', characters)
+    else
+        local records = {}
+        for _, m in ipairs(memberEntries()) do
+            if memberMatches(m, ctx) and (status == 'ALL' or status == 'ONLINE' and m.online) then
+                records[#records + 1] = memberRecord(m)
+            end
+        end
+        sortRecords(records, ctx.sort)
+        items = {}
+        for _, r in ipairs(records) do
+            items[#items + 1] = characterItem(r.member, ctx)
+        end
+        count = #records .. ' ' .. tr(#records == 1 and 'member' or 'members')
+    end
+    local filtering = ctx.filtering or status ~= 'ALL'
     U.SetEmptyHint(
         U.memberList,
         filtering and 'No members match your filters. Reset the filters or press Refresh.'
             or 'No community members found yet. Press Refresh to search again.'
     )
     rows(U.memberList, items, 48)
-    U.memberCount:SetText(#filtered .. ' ' .. tr(#filtered == 1 and 'member' or 'members'))
+    U.memberCount:SetText(count)
     refreshMemberDetail()
     U.RefreshCategoryPanel()
     if U.RefreshMemberCategories then

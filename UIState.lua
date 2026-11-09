@@ -32,7 +32,7 @@ end
 function S.Initialize(root,characterKey,legacy)
     local raw=type(root.ui)=="table"and root.ui or{};local window=type(raw.window)=="table"and raw.window or{}
     -- Account-wide navigation preference; existing installations show the manager by default.
-    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
+    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
     ui.window.width=math.max(900,math.min(1280,math.floor(ui.window.width)));ui.window.height=math.max(610,math.min(860,math.floor(ui.window.height)))
     for key,value in pairs(type(raw.characters)=="table"and raw.characters or{})do
         if type(value)=="table"and L.ValidIdentityKey(key)then
