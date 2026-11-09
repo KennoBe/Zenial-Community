@@ -78,6 +78,7 @@ UXPageQuests.lua
 UXPageTrade.lua
 UXPageProfile.lua
 UXCreate.lua
+UXNavigation.lua
 ScheduledGroupsUI.lua
 CommunityHomeUI.lua
 FormLayoutUI.lua

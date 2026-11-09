@@ -6,7 +6,7 @@ function U.RefreshProfessionHistory()
     for _,p in ipairs(Z.db.professions or{})do
         local name=Z.Logic.ProfessionName(p.name);local s=Z.db.recipeStates[name];local at=s and s.at or Z.db.recipeScans[name]
         local when=at and at>0 and date('%d.%m.%Y %H:%M',at)or Z.T('Not scanned yet')
-        items[#items+1]={text=Z.T(name)..' · '..when..'\n'..(s and Z.T('%d recipes · %s',s.count,Z.T(s.complete and'Complete'or'Partial'))or Z.T('Not scanned yet')),height=42,click=function()U.OpenHistory();U.historyKind:SetText('CRAFT');U.historySearch:SetText(name);U.RefreshHistory()end}
+        items[#items+1]={text=Z.T(name)..' · '..when..'\n'..(s and Z.T('%d recipes · %s',s.count,Z.T(s.complete and'Complete'or'Partial'))or Z.T('Not scanned yet')),height=42,click=function()if U.OpenHistory()then U.historyKind:SetText('CRAFT');U.historySearch:SetText(name);U.RefreshHistory()end end}
     end
     H.rows(U.professionHistory,items,42)
 end

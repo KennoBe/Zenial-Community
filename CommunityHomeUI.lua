@@ -159,7 +159,7 @@ function U.RefreshCommunityHome()
     heading('Matching fellow players')
     if#home.people==0 then items[#items+1]={text=tr('No verified matches in the considered candidates.'),height=42}end
     for _,m in ipairs(home.people)do local member=m;items[#items+1]={text=m.target..' · '..tr(m.status)..'\n'..table.concat(m.reasons,'\n'),height=math.max(84,24*(1+#m.reasons)+12),click=function()
-        U.Navigate('members');U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')
+        if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
     end}end
     H.rows(U.homeList,items,48)
     U.homeWishState:SetText(state=='active'and(P.store.mode=='DAY'and Z.T('%d private wishes for today',#P.store.wishes)or Z.T('%d private wishes · %d min remaining',#P.store.wishes,math.ceil((P.store.expiresAt-A.Now())/60)))
@@ -283,7 +283,7 @@ function U.CreateCommunityHome(helpers)
     U.activityPrev=button(board,tr('Previous'),0,-408,88,function()U.activityPage=(U.activityPage or 1)-1;U.RefreshActivityBoard()end)
     U.activityNext=button(board,tr('Next'),96,-408,88,function()U.activityPage=(U.activityPage or 1)+1;U.RefreshActivityBoard()end)
     button(board,tr('Follow activities'),192,-408,164,function()U.Navigate('groups','follow')end)
-    U.activityEvents=button(board,tr('Events'),366,-408,132,function()U.Navigate('groups','scheduled');U.scheduledArchive:SetChecked(false);U.RefreshScheduledGroups()end)
+    U.activityEvents=button(board,tr('Events'),366,-408,132,function()if U.Navigate('groups','scheduled')then U.scheduledArchive:SetChecked(false);U.RefreshScheduledGroups()end end)
     U.activityArchiveOpen=button(board,tr('Archive'),508,-408,110,function()U.OpenActivityArchive()end)
     button(board,tr('Create activity'),630,-408,220,U.OpenActivityCreator,'primary')
     U.activityCreator=H.panel(U.frame);local f=U.activityCreator;f:ClearAllPoints();f:SetPoint('CENTER');f:SetSize(650,330)

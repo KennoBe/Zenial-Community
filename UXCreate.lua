@@ -173,7 +173,8 @@ function U.Create()
         U.pages[i] = p
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
             if i == 4 then
-                U.Navigate('quests', 'shared')
+                -- Main navigation stays direct like the other tabs (no unsaved-input guard).
+                U.Navigation.Open(U.Navigation.Resolve('quests', 'shared'), { skipGuard = true })
             else
                 U.Page(i)
             end
@@ -370,11 +371,16 @@ function U.Create()
     U.craftView = state.subviews and state.subviews.craft or 'search'
     U.tradeView = state.subviews and state.subviews.trade or 'browse'
     U.profileView = state.subviews and state.subviews.profile or 'public'
-    U.Navigate(
+    -- Login restores the saved place silently; an unknown or unavailable one falls back to Today.
+    local login = U.Navigation
+    local saved = login.Resolve(
         state.section,
         state.section == 'quests' and (state.subviews and state.subviews.quests == 'questgroups' and 'questgroups' or 'shared')
             or (state.subviews and state.subviews[state.section])
     )
+    if not (saved and login.Open(saved)) then
+        login.Open(login.Resolve('today'))
+    end
     U.Refresh(true)
     if T then
         T.suppressMotion = false

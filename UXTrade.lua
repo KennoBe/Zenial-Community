@@ -347,7 +347,27 @@ function U.OpenMaterialOffer(key, id, itemID)
     end
     -- Only navigate to the existing offer details. Its separate whisper button
     -- opens a chat draft; no purchase, message or saved trade rule is created.
-    U.Navigate('trade', 'browse')
+    -- Leaving the craft request for the offer keeps its draft in the return context.
+    local N, ctx, token = U.Navigation, U.craftOrderContext, nil
+    if ctx and ctx.planID == plan.id and not plan.order then
+        token = N.BeginContext('craft', {
+            peerKey = ctx.peer,
+            recipeRef = ctx.recipe,
+            quantityText = U.craftOrderQuantity:GetText(),
+            craftsText = U.craftMaterialCount:GetText(),
+            tipGoldText = U.craftOrderTip:GetText(),
+            noteText = U.craftOrderNote:GetText(),
+            materialsProvided = U.craftOrderMaterials:GetChecked() == true,
+            planID = plan.id,
+            materialPlanID = U.materialPlanID,
+            materialItemID = U.materialItemID,
+            materialFindID = U.materialFindID,
+        }, (N.Resolve('craft', 'materials')))
+    end
+    if not U.Navigate('trade', 'browse') then
+        N.DiscardContext(token)
+        return
+    end
     U.offerSearch:SetText(tostring(itemID))
     U.offerSearchItemID = itemID
     U.tradeKindFilter:SetText('SELL')

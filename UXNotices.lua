@@ -170,17 +170,36 @@ end
 function U.OpenApplications(kind, key, id)
     U.Create()
     U.frame:Show()
+    local N = U.Navigation
     local activity = (kind == 'quest' and 'QUEST' or 'LIVE') .. ':' .. Z.me.key .. ':' .. id
-    if Z.ActivityBoard.Get(activity) then
-        U.OpenActivity(activity)
-        U.SelectActivityParticipant(key)
-    elseif kind == 'quest' then
-        U.questApplicantKey = key
-        U.Navigate('quests', 'mine')
-    else
-        U.groupApplicantKey = key
-        U.Navigate('groups', 'mine')
+    if Z.db.blocked[key] then
+        return N.Fail('target-unavailable')
     end
+    if Z.ActivityBoard.Get(activity) then
+        if not U.OpenActivity(activity) then
+            return false
+        end
+        U.SelectActivityParticipant(key)
+        return true
+    end
+    local own
+    if kind == 'quest' then
+        own = Z.db.quest
+    else
+        own = Z.db.lfg[1]
+    end
+    if not own or own.id ~= id then
+        return N.Fail('target-unavailable')
+    end
+    if N.UnsavedInput() then
+        return N.Fail('unsaved-input')
+    end
+    if kind == 'quest' then
+        U.questApplicantKey = key
+        return U.Navigate('quests', 'mine')
+    end
+    U.groupApplicantKey = key
+    return U.Navigate('groups', 'mine')
 end
 local function ensureFollowToast()
     if U.followToast then
@@ -196,8 +215,11 @@ local function ensureFollowToast()
         if key and id then
             U.Create()
             U.frame:Show()
-            U.Navigate('groups', 'browse')
-            U.SelectGroup(key, id)
+            if Z.db.blocked[key] or not Z.FindForeignGroup(key, id) then
+                U.Navigation.Fail('target-unavailable')
+            elseif U.Navigate('groups', 'browse') then
+                U.SelectGroup(key, id)
+            end
         end
     end)
     return f
@@ -278,22 +300,62 @@ function U.NotifyPvPHelpEligible()
     f:Show()
     f.hideAt = A.Clock() + 8
 end
+-- True when the entry's target still exists; read-only, so a failed link changes nothing.
+local function updateTarget(entry)
+    local peer, id = entry.peer, entry.id
+    if entry.code == 'application_received' then
+        return true
+    elseif entry.area == 'groups' and entry.view == 'scheduled' then
+        -- The store is authoritative (archived events stay); the board cache may lag behind a deletion.
+        return Z.ScheduledGroups.Get(peer, id) ~= nil
+    elseif entry.area == 'craft' then
+        return Z.CraftOrders.orders[id] ~= nil or Z.db.craftOrderHistory[id] ~= nil
+    elseif entry.area == 'trade' then
+        return Z.TradeManager.store ~= nil and Z.TradeManager.store.rules[entry.source] ~= nil
+    elseif entry.view == 'outgoing' and (entry.area == 'groups' or entry.area == 'quests') then
+        return Z.ActivityBoard.Get((entry.area == 'groups' and 'LIVE' or 'QUEST') .. ':' .. peer .. ':' .. id) ~= nil
+    elseif entry.view == 'mine' and (entry.area == 'groups' or entry.area == 'quests') then
+        local own
+        if entry.area == 'groups' then
+            own = Z.db.lfg[1]
+        else
+            own = Z.db.quest
+        end
+        return own ~= nil and own.id == id
+    elseif entry.view == 'pvp' then
+        local own = Z.PvPHelp.Own()
+        return own ~= nil and own.id == id
+    elseif entry.area == 'groups' and entry.view == 'browse' and entry.code == 'GROUP_FOLLOW' then
+        return Z.FindForeignGroup(peer, id) ~= nil
+    end
+    return true
+end
 function U.OpenUpdate(entry)
     U.Create()
     U.frame:Show()
-    Z.Notifications.Read(entry.token)
-    if entry.code == 'application_received' then
-        U.OpenApplications(entry.area == 'groups' and 'group' or 'quest', entry.peer, entry.id)
-        return
+    local N = U.Navigation
+    if Z.db.blocked[entry.peer] or not updateTarget(entry) then
+        return N.Fail('target-unavailable')
     end
+    if entry.code == 'application_received' then
+        local ok, reason = U.OpenApplications(entry.area == 'groups' and 'group' or 'quest', entry.peer, entry.id)
+        if ok then
+            Z.Notifications.Read(entry.token)
+        end
+        return ok, reason
+    end
+    if N.UnsavedInput() then
+        return N.Fail('unsaved-input')
+    end
+    Z.Notifications.Read(entry.token)
     if entry.area == 'groups' and entry.view == 'scheduled' then
         local key = 'EVENT:' .. entry.peer .. ':' .. entry.id
         if Z.ActivityBoard.Get(key) then
-            U.OpenActivity(key)
-            if entry.source ~= '' then
+            local ok, reason = U.OpenActivity(key)
+            if ok and entry.source ~= '' then
                 U.SelectActivityParticipant(Z.ResolvePeerKey(entry.source))
             end
-            return
+            return ok, reason
         end
     end
     if entry.area == 'craft' then
@@ -322,8 +384,8 @@ function U.OpenUpdate(entry)
             U.questApplicantKey = entry.peer
         end
     end
-    U.Navigate(entry.area, entry.view)
-    if entry.view == 'pvp' then
+    local ok, reason = U.Navigate(entry.area, entry.view)
+    if ok and entry.view == 'pvp' then
         U.SetPvpView('mine')
         local own = Z.PvPHelp.Own()
         if U.pvpUnified and own and own.id == entry.id and own.responses[entry.peer] then
@@ -332,6 +394,7 @@ function U.OpenUpdate(entry)
             U.RefreshPvPHelp()
         end
     end
+    return ok, reason
 end
 function U.NotifyAddonVersion(version)
     if not U.addonVersionToast then

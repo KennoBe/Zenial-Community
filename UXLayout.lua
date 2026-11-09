@@ -183,9 +183,9 @@ end
 
 local PAGE_BY_KEY =
     { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11 }
-function U.Navigate(section, subview, selection)
-    local page = section == 'groups' and subview == 'today' and 9 or PAGE_BY_KEY[section] or 9
-    U.Page(page)
+function S.applyRoute(route)
+    local section, subview = route.legacy.section, route.legacy.subview
+    U.Page(route.page)
     if section == 'craft' then
         U.SetCraftView(subview)
     elseif section == 'groups' then
@@ -196,12 +196,25 @@ function U.Navigate(section, subview, selection)
         U.SetTradeView(subview)
     elseif section == 'profile' then
         U.SetProfileView(subview)
-    elseif section == 'addons' and selection then
-        U.SetAddonView(selection)
+    elseif section == 'addons' and route.selection then
+        U.SetAddonView(route.selection)
     end
     if Z.UIState then
         Z.UIState.Route(section, subview)
     end
+end
+-- Legacy section/subview names stay valid; U.Navigation resolves them and guards unsaved input.
+function U.Navigate(section, subview, selection)
+    local N = U.Navigation
+    local route, reason = N.Resolve(section, subview, selection)
+    if not route then
+        return N.Fail(reason)
+    end
+    local ok, why = N.Open(route)
+    if not ok then
+        return N.Fail(why)
+    end
+    return true
 end
 function U.IsRoute(section)
     return U.page == PAGE_BY_KEY[section]

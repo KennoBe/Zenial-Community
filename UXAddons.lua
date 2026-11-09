@@ -216,6 +216,10 @@ function U.OpenAddonManager(addon)
         if not U.frame:IsShown() then
             U.frame:Show()
         end
+        if U.Navigation.UnsavedInput() then
+            U.Navigation.Fail('unsaved-input')
+            return true
+        end
         U.Page(ADDON_PAGE)
         U.SetAddonView(index)
         return true

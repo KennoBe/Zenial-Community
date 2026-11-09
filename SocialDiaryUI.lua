@@ -64,6 +64,7 @@ end
 -- need a diary row: favorites, notes and the known mark work regardless.
 function U.OpenSocialDiary(key,target)
     U.Create();if not U.frame:IsShown()then U.frame:Show()end
+    if U.Navigation.UnsavedInput()then return U.Navigation.Fail('unsaved-input')end
     U.CloseDialogs()
     if key and(key==Z.me.key or Z.db.blocked[key]or not Z.Logic.ValidIdentityKey(key))then key,target=nil,nil end
     U.socialDiaryPage=1;U.socialDiarySearch:SetText('')
@@ -72,6 +73,7 @@ function U.OpenSocialDiary(key,target)
         local rows=U.SocialDiaryRows();for i,r in ipairs(rows)do if r.key==key then U.socialDiaryPage=math.floor((i-1)/PAGE)+1;break end end
     end
     bindNote(key);U.RefreshSocialDiary();U.socialDiary:Show()
+    return true
 end
 function U.OpenSocialDiaryForUnit(unit)
     local key,target

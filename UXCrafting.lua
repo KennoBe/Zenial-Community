@@ -414,8 +414,9 @@ function U.RefreshMaterialPlans(force)
     U.materialRecheck:SetEnabled(selected ~= nil)
     U.materialMark:SetEnabled(false)
     U.materialFind:SetEnabled(false)
+    local _, returnPlanID = U.Navigation.ActiveContext('craft')
     U.materialContinue:SetEnabled(
-        selected and not selected.order and U.craftOrderContext and U.craftOrderContext.planID == selected.id or false
+        selected and not selected.order and (U.craftOrderContext and U.craftOrderContext.planID == selected.id or returnPlanID == selected.id) or false
     )
     if not selected then
         rows(U.materialDetail, { { text = tr('Select a private shopping list.') } }, 48)

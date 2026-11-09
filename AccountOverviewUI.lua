@@ -375,8 +375,7 @@ end
 function U.OpenMyCharacters()
     U.Create()
     if not U.frame:IsShown()then U.frame:Show()end
-    U.CloseDialogs()
-    U.Navigate('profile','characters')
+    if not U.Navigate('profile','characters')then return end
     U.Refresh()
 end
 -- Former name of the account overview entry point; the overview is now part of

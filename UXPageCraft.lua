@@ -60,6 +60,7 @@ function S.createCraftPage(f)
         if not U.professionRecipe then
             return
         end
+        U.Navigation.DiscardContext()
         local recipe = {}
         for k, v in pairs(U.professionRecipe) do
             recipe[k] = v
@@ -311,6 +312,11 @@ function S.createCraftPage(f)
             U.SetCraftView('search')
             U.craftOrderForm:Show()
             U.RefreshCraftIngredients()
+        elseif plan and not plan.order then
+            local token, planID = U.Navigation.ActiveContext('craft')
+            if token and planID == plan.id then
+                U.Navigation.Return(token)
+            end
         end
     end)
     U.materialMark = button(U.materialPlanFrame, tr('Mark acquired'), 270, -239, 220, function()

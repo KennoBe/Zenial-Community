@@ -406,6 +406,9 @@ function U.RefreshHistory()
 end
 function U.OpenHistory(peerKey)
     U.Create()
+    if U.Navigation.UnsavedInput() then
+        return U.Navigation.Fail('unsaved-input')
+    end
     U.historyPeriod:SetText('DAYS_90')
     U.historyKind:SetText('ALL_KINDS')
     U.historyCharacter:SetText('ALL_CHARACTERS')
@@ -414,7 +417,7 @@ function U.OpenHistory(peerKey)
         target = H.byPeer[peerKey][1].peerTarget
     end
     U.historySearch:SetText(target or '')
-    U.Navigate('history')
+    return U.Navigate('history')
 end
 function U.ShowHistoryDeleteConfirm(peerOnly)
     local entry = selectedHistoryEntry()

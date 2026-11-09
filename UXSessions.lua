@@ -278,8 +278,9 @@ function U.CreateSessionPlans(parent)
             U.RefreshSessionPlans()
             return
         end
-        U.Navigate('groups', 'browse')
-        U.SelectGroup(match.key, match.groupID)
+        if U.Navigate('groups', 'browse') then
+            U.SelectGroup(match.key, match.groupID)
+        end
     end)
     U.LoadSessionEditor()
     f:Hide()

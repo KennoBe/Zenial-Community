@@ -592,7 +592,12 @@ end
 function U.OpenPvPHelp(view, key, id, preview)
     U.Create()
     U.frame:Show()
-    U.Navigate('groups', 'pvp')
+    if key and id and (Z.db.blocked[key] or not (Z.PvPHelp and Z.PvPHelp.GetCall(key, id))) then
+        return U.Navigation.Fail('target-unavailable')
+    end
+    if not U.Navigate('groups', 'pvp') then
+        return false
+    end
     U.SetPvpView(view or 'calls')
     if key and id then
         U.SelectPvpCall(key, id)
@@ -600,6 +605,7 @@ function U.OpenPvPHelp(view, key, id, preview)
     if preview then
         U.OpenPvpPreview()
     end
+    return true
 end
 function U.OpenPvPRequester()
     U.OpenPvPHelp('mine')

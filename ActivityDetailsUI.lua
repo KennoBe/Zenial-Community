@@ -82,11 +82,16 @@ function U.LayoutActivityDetails(r,infoHeight,peopleHeight)
     for _,f in ipairs({U.activityInformation,U.activityParticipants})do if f.zenialRender then f.zenialRender()end end
 end
 function U.OpenActivity(key)
-    local r=B.Get(key);if not r then U.Message(tr('This activity is no longer available.'));return end
+    local r=B.Get(key);if not r then U.Message(tr('This activity is no longer available.'));return false,'target-unavailable' end
+    local N=U.Navigation
+    if Z.db.blocked[r.owner]then return N.Fail('target-unavailable')end
+    if U.activityDetailKey==key and U.activityDetails:IsShown()then U.RefreshActivityDetails();return true end
+    if N.UnsavedInput()then return N.Fail('unsaved-input')end
     U.CloseDialogs();U.activityDetailKey=key;U.activityParticipantKey=nil;U.activityDetailNote:SetText('')
     U.activityDetailRole:SetText(Z.Logic.Role(Z.db.roles)or'DAMAGER')
     if r.kind=='EVENT'and not r.own then S.Query(r.owner,r.id)elseif r.kind=='PVP'and not r.own then Z.PvPHelp.RequestDetails(r.owner,r.id)end
     U.activityDetails:Show();U.RefreshActivityDetails()
+    return true
 end
 function U.RefreshActivityDetails()
     if not U.activityDetails then return end
