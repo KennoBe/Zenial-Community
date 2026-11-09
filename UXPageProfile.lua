@@ -64,7 +64,7 @@ function S.createProfilePage(f)
         U.Message('Profile saved.')
     end, 'primary')
     U.profileShow = button(U.profilePublicFrame, 'Show profile in Members', 170, -218, 220, function()
-        U.memberKey = Z.me.key
+        U.memberKey, U.memberFollowActive = Z.me.key, false
         U.Navigate('members')
     end)
     for _, field in pairs(U.profileFields) do

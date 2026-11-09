@@ -84,6 +84,16 @@ local function build(entries)
     local ownMain = Z.PublicLinks().main
     local ownVersion = Z.account and Z.account.linkVersion or 0
     local byKey, claims, reasons = {}, {}, {}
+    -- A foreign peer must not join the own group by declaring the own main:
+    -- only characters from the local account data may claim it.
+    local ownMainKey = type(ownMain) == 'string' and Z.me and L.ScopeKey(ownMain, Z.me.realm, Z.me.faction) or nil
+    local ownKnown = {}
+    for _, c in pairs(Z.account and Z.account.characters or {}) do
+        local k = type(c) == 'table' and L.ScopeKey(c.target, c.realm, c.faction)
+        if k then
+            ownKnown[k] = true
+        end
+    end
     for _, m in ipairs(entries) do
         byKey[m.key] = m
     end
@@ -96,6 +106,8 @@ local function build(entries)
             if c and not c.self then
                 if blocked[c.mainKey] then
                     reasons[m.key] = 'blocked'
+                elseif ownMainKey and c.mainKey == ownMainKey and not m.own and not ownKnown[m.key] then
+                    reasons[m.key] = 'conflict'
                 else
                     claims[m.key] = c
                 end

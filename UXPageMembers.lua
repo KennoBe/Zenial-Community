@@ -105,23 +105,39 @@ function S.createMembersPage(f)
         U.SavePrivateNote()
     end)
     U.memberWhisper = button(p, 'Whisper', 570, -382, 125, function()
-        local c = memberFor(U.memberKey)
+        -- Real, reachable character (active twink of a group), never an offline main or a group anchor.
+        local c = S.memberContactTarget(memberFor(U.memberKey))
         if c and not Z.db.blocked[c.key] then
             A.Whisper(c.target)
         end
     end)
     U.memberInvite = button(p, 'Invite to group', 705, -382, 145, function()
-        local c = Z.db.contacts[U.memberKey]
+        local t = S.memberContactTarget(memberFor(U.memberKey))
+        local c = t and Z.db.contacts[t.key]
         if c then
-            if not peerOnline(U.memberKey) then
+            if not peerOnline(t.key) then
                 U.Message('This player is offline.')
                 U.Refresh()
                 return
             end
             local ok, err = A.Invite(c.target)
-            U.Message(ok and 'Invitation submitted; awaiting response.' or err)
+            U.Message(ok and Z.T('Invitation submitted to %s; awaiting response.', c.target) or err)
         end
     end)
+    for _, b in ipairs({ U.memberWhisper, U.memberInvite }) do
+        if GameTooltip and b.HookScript then
+            b:HookScript('OnEnter', function(self)
+                if self.tipText then
+                    GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+                    GameTooltip:AddLine(self.tipText, 1, 0.9, 0.7, true)
+                    GameTooltip:Show()
+                end
+            end)
+            b:HookScript('OnLeave', function()
+                GameTooltip:Hide()
+            end)
+        end
+    end
     U.memberBack = button(p, '← Back to list', 665, 0, 180, function()
         U.CloseCompactArea('members')
     end)

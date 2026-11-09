@@ -159,7 +159,7 @@ function U.RefreshCommunityHome()
     heading('Matching fellow players')
     if#home.people==0 then items[#items+1]={text=tr('No verified matches in the considered candidates.'),height=42}end
     for _,m in ipairs(home.people)do local member=m;items[#items+1]={text=m.target..' · '..tr(m.status)..'\n'..table.concat(m.reasons,'\n'),height=math.max(84,24*(1+#m.reasons)+12),click=function()
-        U.Navigate('members');U.memberKey=member.key;U.Refresh();U.OpenCompactArea('members')
+        U.Navigate('members');U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')
     end}end
     H.rows(U.homeList,items,48)
     U.homeWishState:SetText(state=='active'and(P.store.mode=='DAY'and Z.T('%d private wishes for today',#P.store.wishes)or Z.T('%d private wishes · %d min remaining',#P.store.wishes,math.ceil((P.store.expiresAt-A.Now())/60)))

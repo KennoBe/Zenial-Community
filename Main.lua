@@ -6,7 +6,7 @@ local uiDirty=false
 -- links, i.e. nothing the member list model reads. Their changes still refresh
 -- the visible page at once and invalidate every other view cache; only the
 -- member list model is reused. Unknown or missing kinds invalidate everything.
-local MEMBER_INDEPENDENT={order=true,history=true,materials=true,materialOffers=true,search=true,sessionPlans=true,sessionMatches=true,questHelper=true,scheduled=true,party=true}
+local MEMBER_INDEPENDENT={guild=true,order=true,history=true,materials=true,materialOffers=true,search=true,sessionPlans=true,sessionMatches=true,questHelper=true,scheduled=true,party=true}
 function Z.MarkDirty(kind)
     Z.viewRevision=(Z.viewRevision or 0)+1
     if not MEMBER_INDEPENDENT[kind]then Z.memberRevision=(Z.memberRevision or 0)+1 end
@@ -613,7 +613,7 @@ register("PLAYER_LEVEL_UP")
 register("ADDON_LOADED")
 Z.receiveEvent=register("CHAT_MSG_ADDON")
 register("GROUP_ROSTER_UPDATE")
-register("PLAYER_GUILD_UPDATE")
+register("PLAYER_GUILD_UPDATE");register("GUILD_ROSTER_UPDATE")
 register("SKILL_LINES_CHANGED")
 register("SPELLS_CHANGED")
 register("TRADE_SKILL_SHOW")
@@ -642,6 +642,8 @@ register("BAG_UPDATE_DELAYED")
 register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
 frame:SetScript("OnEvent",function(_,event,...)
+    if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
+    if event=="GUILD_ROSTER_UPDATE" then return end
     if event=="PLAYER_LOGIN" then Z.Initialize()
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
     elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end
@@ -712,6 +714,7 @@ end
 
 -- Every 1 s: time-dependent UI state.
 local function tickSecond()
+    if Z.Social and Z.Social.GuildTick then Z.Social.GuildTick()end
     if Z.UI and Z.UI.RefreshTimed then Z.UI.RefreshTimed(A.Clock())end
 end
 

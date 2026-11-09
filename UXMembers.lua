@@ -384,8 +384,92 @@ local function updateMemberHeader(m, s, layerText)
         card.layerTag:Hide()
     end
 end
+-- Linked group of a member in the grouped view; nil for single characters, in the single-character view
+-- and for blocked characters. Groups only project member entries: every action keeps using real member keys.
+local function linkedGroupOf(m)
+    if not m or Z.db.blocked[m.key] or not (S.memberGroupingEnabled and S.memberGroupingEnabled()) then
+        return nil
+    end
+    local g = S.memberGroupFor(m.key)
+    return g and g.linked and not g.blocked and g or nil
+end
+-- Real character that whisper/invite reach. Own character: none. An explicitly chosen character (row click,
+-- jump from another page) is always the exact target, as before. Only the group-header selection (follow
+-- mode) redirects to the preferred online character of the group; never the offline main or the anchor.
+local function contactTarget(m)
+    if not m or m.own or Z.db.blocked[m.key] then
+        return nil
+    end
+    local g = linkedGroupOf(m)
+    if not g or U.memberFollowActive ~= true then
+        return m
+    end
+    if m.online then
+        return m
+    end
+    for _, a in ipairs(g.activeMembers) do
+        if not a.own and not Z.db.blocked[a.key] then
+            return a
+        end
+    end
+    return nil
+end
+S.memberContactTarget = contactTarget
+-- Identity block of a linked group: main headline, active character, action targets and known characters.
+local function groupDetailLines(m, g, target)
+    local lines = {}
+    local function fact(caption, value)
+        return dimText(caption .. ':') .. ' ' .. value
+    end
+    local active = g.activeMember
+    lines[#lines + 1] = fact(tr('Main'), g.mainName .. (g.virtual and not g.isOwn and ' ' .. dimText('(' .. tr('not seen yet') .. ')') or ''))
+    lines[#lines + 1] = fact(tr('Active'), active and active.target or tr('Offline'))
+    lines[#lines + 1] = fact(tr('Acts on'), m.target)
+    -- Own characters are never contacted: no contact line for them.
+    if not m.own then
+        lines[#lines + 1] = fact(tr('Whisper') .. ' / ' .. tr('Invite to group'), target and target.target or tr('No character online'))
+    end
+    if not m.online and U.memberFollowActive ~= true then
+        for _, a in ipairs(g.activeMembers) do
+            if not a.own and not Z.db.blocked[a.key] then
+                lines[#lines + 1] = dimText(Z.T('Online: %s - select the row to contact', a.target))
+                break
+            end
+        end
+    end
+    lines[#lines + 1] = dimText(tr('Known characters') .. ':')
+    local shown = 0
+    for _, c in ipairs(g.members) do
+        if shown >= 4 then
+            lines[#lines + 1] = dimText(Z.T('+%d more characters', #g.members - shown))
+            break
+        end
+        shown = shown + 1
+        local where = locationText(c.location)
+        lines[#lines + 1] = (c == m and '> ' or '  ')
+            .. c.target
+            .. ' · '
+            .. (c.data and (c.cn .. ' ' .. (type(c.data.level) == 'number' and c.data.level > 0 and c.data.level or tr('Unknown'))) or tr('Profile not received yet'))
+            .. ' · '
+            .. (c.online and tr('Online') or age(c.seen))
+            .. (where ~= '' and ' · ' .. where or '')
+    end
+    lines[#lines + 1] = ''
+    return lines
+end
+local function updateContactActions(m)
+    local target = contactTarget(m)
+    U.memberWhisper:SetEnabled(target ~= nil)
+    U.memberInvite:SetEnabled(target ~= nil and target.online == true)
+    U.memberWhisper.tipText = target and Z.T('Contact: %s', target.target) or nil
+    U.memberInvite.tipText = target and Z.T('Contact: %s', target.target) or nil
+    return target
+end
 local function refreshMemberDetail()
     local m = memberFor(U.memberKey)
+    if m and Z.db.blocked[m.key] then
+        m = nil
+    end
     bindPrivateNote(m and m.key)
     if not m then
         updateMemberHeader(nil)
@@ -403,8 +487,9 @@ local function refreshMemberDetail()
         end
         return
     end
-    U.memberWhisper:SetEnabled(not m.own)
-    U.memberInvite:SetEnabled(not m.own and m.online)
+    local target = updateContactActions(m)
+    local group = linkedGroupOf(m)
+    local groupLines = group and groupDetailLines(m, group, target) or {}
     if U.memberFavorite then
         local favorite = Z.Social.IsFavorite(m.key)
         U.memberFavorite:SetEnabled(not m.own)
@@ -416,7 +501,8 @@ local function refreshMemberDetail()
     local s = m.data
     if not s then
         updateMemberHeader(m, nil, nil)
-        U.memberDetail:SetText(dimText(tr('Profile not received yet')))
+        groupLines[#groupLines + 1] = dimText(tr('Profile not received yet'))
+        U.memberDetail:SetText(table.concat(groupLines, '\n'))
         return
     end
     local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
@@ -425,7 +511,7 @@ local function refreshMemberDetail()
     local function fact(caption, value)
         return dimText(caption) .. ' ' .. value
     end
-    local lines = {}
+    local lines = groupLines
     if s.community and s.community ~= '' then
         lines[#lines + 1] = fact(tr('Display name') .. ':', s.community)
     end
@@ -454,8 +540,6 @@ local function refreshMemberDetail()
         lines[#lines + 1] = '\n|cff' .. paletteHex('muted') .. Z.CommunityLayer.Label(nil) .. '|r'
     end
     U.memberDetail:SetText(table.concat(lines, '\n'))
-    U.memberWhisper:SetEnabled(not m.own)
-    U.memberInvite:SetEnabled(not m.own and m.online)
 end
 local refreshMembers
 -- Grouping by declared main is a local view preference (account-wide, never published).
@@ -528,8 +612,10 @@ local function memberRecord(m)
         level = m.data and m.data.level or 0,
     }
 end
-local function selectMember(memberKey, m)
-    U.memberKey = memberKey
+-- Selection is a real member key (U.memberKey) plus a follow flag: a group header selects the group and
+-- follows its active character; a character row or an external jump (U.memberKey set directly) pins it.
+local function selectMember(memberKey, m, follow)
+    U.memberKey, U.memberKeySeen, U.memberFollowActive = memberKey, memberKey, follow == true
     if m and not m.own and m.data and m.data.publicOnly then
         Z.RequestProfile(memberKey)
     end
@@ -574,7 +660,7 @@ local function characterItem(m, ctx)
         tooltip = tooltip .. '\n' .. tr('Favorite')
     end
     if Z.Social.IsGuildMember(m.key) then
-        tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.me.guild
+        tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.Social.GuildName()
     end
     local chip, layerText = layerChip(m)
     if not layerText then
@@ -680,9 +766,16 @@ local function groupItem(g, hits, ctx)
     for _, m in ipairs(g.members) do
         favorite = favorite or Z.Social.IsFavorite(m.key)
         sameGuild = sameGuild or Z.Social.IsGuildMember(m.key)
-        lines[#lines + 1] = m.target .. ' · ' .. roleLabel(g, m) .. ' · ' .. classLevel(m) .. ' · ' .. (m.online and tr('Online') or age(m.seen))
+        lines[#lines + 1] = m.target
+            .. ' · '
+            .. roleLabel(g, m)
+            .. ' · '
+            .. classLevel(m)
+            .. ' · '
+            .. (m.online and tr('Online') or age(m.seen))
+            .. (Z.Social.IsGuildMember(m.key) and ' · ' .. tr('Same guild') or '')
     end
-    if g.virtual then
+    if g.virtual and not g.isOwn then
         lines[#lines + 1] = Z.T('%s has not been seen with ZENIAL yet.', g.mainName)
     end
     lines[#lines + 1] = ''
@@ -713,7 +806,7 @@ local function groupItem(g, hits, ctx)
                 refreshMembers()
                 return
             end
-            selectMember(pick.key, pick)
+            selectMember(pick.key, pick, true)
         end,
     }
 end
@@ -743,6 +836,7 @@ local function groupMemberItem(g, m, hit, ctx)
         icon = T and (T.ClassIcon(s and s.classFile, s and s.class) or neutralIcon()),
         text = title,
         subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
+        tooltip = Z.Social.IsGuildMember(m.key) and tr('Same guild') .. ': ' .. Z.Social.GuildName() or nil,
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
         click = function()
@@ -806,7 +900,29 @@ local function groupedItems(ctx)
     end
     return items, #records, characters
 end
+-- Keeps the selection stable across refreshes: a jump from another page (key set from outside) selects
+-- exactly that character and opens its group; a group selection follows the group's active character.
+local function syncSelection()
+    if U.memberKey ~= U.memberKeySeen then
+        U.memberKeySeen, U.memberFollowActive = U.memberKey, false
+        local m = U.memberKey and memberFor(U.memberKey)
+        local g = m and linkedGroupOf(m)
+        if g then
+            U.memberGroupExpanded[g.groupKey] = true
+        end
+    elseif U.memberFollowActive and U.memberKey and not (U.memberPrivateNote and U.memberPrivateNote:HasFocus()) then
+        local g = linkedGroupOf(memberFor(U.memberKey))
+        local pick = g and (g.activeMember or g.mainMember or g.members[1])
+        if pick and pick.key ~= U.memberKey then
+            U.memberKey, U.memberKeySeen = pick.key, pick.key
+        end
+    end
+    local g = U.memberKey and S.memberGroupFor(U.memberKey)
+    U.memberGroupKey = g and g.groupKey or nil
+end
 function refreshMembers()
+    U.memberGroupExpanded = U.memberGroupExpanded or {}
+    syncSelection()
     local query = string.lower(U.memberSearch:GetText() or '')
     local status, class, profession = U.memberStatus:GetText(), U.memberClass:GetText(), U.memberProfession:GetText()
     if status ~= 'ONLINE' then
@@ -837,7 +953,6 @@ function refreshMembers()
     }
     -- Filters that pick characters (the online status is a group signal in the grouped view).
     ctx.filtering = query ~= '' or class ~= 'ALL_CLASSES' or profession ~= 'ALL_PROFESSIONS' or favoriteOnly or selected ~= 'ALL'
-    U.memberGroupExpanded = U.memberGroupExpanded or {}
     local grouped = groupingEnabled()
     if U.memberGrouping then
         U.memberGrouping:SetChecked(grouped)
