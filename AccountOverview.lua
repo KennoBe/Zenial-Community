@@ -2,8 +2,16 @@
 -- nothing here is published, sent or exported. Identity, level and last login
 -- come from the existing account character list, professions from each
 -- character's profile and item names from the shared item index. This store
--- keeps only what no other store has: gold, rested XP, played time and an
--- optional compact bag/bank inventory (item ID -> count).
+-- keeps only what no other store has: gold, class and level with their own
+-- timestamps, rested XP, played time and an optional compact bag/bank
+-- inventory (item ID -> count). Every recorded field carries the time it was
+-- read; a missing field is unknown, never zero.
+-- Basic data is recorded by default for new stores. Stores saved before that
+-- default existed carry no enabledBy marker; their switch is kept as it was,
+-- because 5.3.0 saved enabled=false for everybody and an explicit choice
+-- cannot be told apart from the old default. Bags and bank stay opt-in.
+-- Played time is only recorded when the player types /played: requesting it
+-- automatically would print to the chat frame on every login.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local O={VERSION=1,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
 Z.AccountOverview=O
@@ -13,7 +21,8 @@ local EVENTS={"PLAYER_ENTERING_WORLD","PLAYER_MONEY","TIME_PLAYED_MSG","PLAYER_X
 local INVENTORY_EVENTS={"BAG_UPDATE_DELAYED","BANKFRAME_OPENED","BANKFRAME_CLOSED","PLAYERBANKSLOTS_CHANGED"}
 local frame
 
-local function defaults()return{version=O.VERSION,enabled=false,inventory=false,characters={}}end
+local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=false,characters={}}end
+local function stamp()local now=A.Now();return now>0 and now or nil end
 local function changed()O.revision=(O.revision or 0)+1 end
 local function int(value,min,max)return L.Int(value,min,max)and value or nil end
 local function items(raw,limit)
@@ -28,7 +37,8 @@ end
 local function sanitize(raw)
     if type(raw)~="table"then return nil end
     local c={}
-    if type(raw.classFile)=="string"and raw.classFile:match("^[A-Z]+$")and #raw.classFile<=16 then c.classFile=raw.classFile end
+    if type(raw.classFile)=="string"and raw.classFile:match("^[A-Z]+$")and #raw.classFile<=16 then c.classFile=raw.classFile;c.classAt=int(raw.classAt,1,MAX_TIME)end
+    c.level=int(raw.level,1,100);c.levelAt=c.level and int(raw.levelAt,1,MAX_TIME);c.updatedAt=int(raw.updatedAt,1,MAX_TIME)
     c.money=int(raw.money,0,MAX_MONEY);c.moneyAt=c.money and int(raw.moneyAt,1,MAX_TIME)
     c.xp=int(raw.xp,0,100000000);c.xpMax=int(raw.xpMax,1,100000000);c.rested=int(raw.rested,0,100000000)
     c.restedAt=int(raw.restedAt,1,MAX_TIME);c.resting=raw.resting==true or nil;c.maxLevel=raw.maxLevel==true or nil
@@ -59,6 +69,7 @@ function O.Initialize()
     local aliases=Z.account and type(Z.account.characterAliases)=="table"and Z.account.characterAliases or{}
     if type(raw)=="table"then
         store.enabled=raw.enabled==true;store.inventory=raw.inventory==true
+        store.enabledBy=(raw.enabledBy=="default"or raw.enabledBy=="user")and raw.enabledBy or"legacy"
         local n=0
         for key,row in pairs(type(raw.characters)=="table"and raw.characters or{})do
             -- Rows follow renamed account keys and vanish with removed characters.
@@ -77,7 +88,7 @@ function O.Enabled()return O.store~=nil and not O.readOnly and O.store.enabled==
 function O.InventoryEnabled()return O.Enabled()and O.store.inventory==true end
 function O.SetEnabled(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
-    O.store.enabled=value==true;setEvents();if O.store.enabled then O.Sample()end;changed();return true
+    O.store.enabled=value==true;O.store.enabledBy="user";setEvents();if O.store.enabled then O.Sample()end;changed();return true
 end
 function O.SetInventory(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
@@ -100,7 +111,7 @@ function O.SampleMoney(allowZero)
     local money=A.Call(GetMoney);if not L.Int(money,0,MAX_MONEY)then return end
     -- The client reports 0 copper while loading; keep a known value then.
     if money==0 and not allowZero and(c.money or 0)>0 then return end
-    c.money=money;c.moneyAt=A.Now()>0 and A.Now()or nil;changed()
+    c.money=money;c.moneyAt=stamp();c.updatedAt=c.moneyAt or c.updatedAt;changed()
 end
 function O.SampleXP()
     local c=own();if not c then return end
@@ -113,17 +124,25 @@ function O.SampleXP()
     if not L.Int(xp,0,100000000)or not L.Int(maximum,1,100000000)then return end
     local rested=A.Call(GetXPExhaustion)
     c.xp,c.xpMax,c.rested=xp,maximum,L.Int(rested,0,100000000)and rested or 0
-    c.resting=A.Call(IsResting)==true or nil;c.restedAt=A.Now()>0 and A.Now()or nil;changed()
+    c.resting=A.Call(IsResting)==true or nil;c.restedAt=stamp();c.updatedAt=c.restedAt or c.updatedAt;changed()
 end
 function O.SamplePlayed(total,level)
     local c=own();if not c or not L.Int(total,0,2147483646)then return end
-    c.played=total;c.playedLevel=L.Int(level,0,2147483646)and level or nil;c.playedAt=A.Now()>0 and A.Now()or nil;changed()
+    c.played=total;c.playedLevel=L.Int(level,0,2147483646)and level or nil;c.playedAt=stamp();c.updatedAt=c.playedAt or c.updatedAt;changed()
+end
+-- PLAYER_LEVEL_UP passes the new level before UnitLevel reports it. Level 0
+-- while the client is still loading is ignored and keeps the known value.
+function O.SampleLevel(level)
+    local c=own();if not c then return end
+    if not L.Int(level,1,100)then level=A.Call(UnitLevel,"player")end
+    if not L.Int(level,1,100)then return end
+    c.level=level;c.levelAt=stamp();c.updatedAt=c.levelAt or c.updatedAt;changed()
 end
 function O.Sample()
     local c=own();if not c then return end
     local _,classFile=A.Call(UnitClass,"player")
-    if type(classFile)=="string"and classFile:match("^[A-Z]+$")and #classFile<=16 then c.classFile=classFile end
-    O.SampleMoney(false);O.SampleXP();if O.InventoryEnabled()then O.ScanBags()end
+    if type(classFile)=="string"and classFile:match("^[A-Z]+$")and #classFile<=16 then c.classFile=classFile;c.classAt=stamp()end
+    O.SampleLevel();O.SampleMoney(false);O.SampleXP();if O.InventoryEnabled()then O.ScanBags()end
 end
 
 -- Container reads: modern C_Container table results, then the legacy globals.
@@ -190,7 +209,8 @@ function O.OnEvent(event,...)
     if event=="PLAYER_ENTERING_WORLD"then O.Sample()
     elseif event=="PLAYER_MONEY"then O.SampleMoney(true)
     elseif event=="TIME_PLAYED_MSG"then O.SamplePlayed(...)
-    elseif event=="PLAYER_XP_UPDATE"or event=="UPDATE_EXHAUSTION"or event=="PLAYER_UPDATE_RESTING"or event=="PLAYER_LEVEL_UP"then O.SampleXP()
+    elseif event=="PLAYER_LEVEL_UP"then O.SampleLevel(...);O.SampleXP()
+    elseif event=="PLAYER_XP_UPDATE"or event=="UPDATE_EXHAUSTION"or event=="PLAYER_UPDATE_RESTING"then O.SampleXP()
     elseif event=="PLAYER_REGEN_ENABLED"then if O.bagsDirty then O.ScanBags()end;if O.bankDirty then O.ScanBank()end
     elseif event=="BAG_UPDATE_DELAYED"then O.ScanBags();if O.bankOpen then O.ScanBank()end
     elseif event=="BANKFRAME_OPENED"then O.bankOpen=true;O.ScanBank()
@@ -266,9 +286,18 @@ function O.List(filter)
         local s=O.store and O.store.characters[key]or{};local u=matched[key]
         local money,fromUtility=s.money,false
         if money==nil and u and u.money then money,fromUtility=u.money,true end
+        -- Level: the newer of the recorded level and the account list (as of
+        -- its last login), then Utility. Each value keeps its own time.
+        local lastLogin=L.Int(c.lastLogin,1,MAX_TIME)and c.lastLogin or nil
+        local level=L.Int(c.level,1,100)and c.level or nil
+        local levelAt,levelFromUtility=level and lastLogin,nil
+        if s.level and(not level or(s.levelAt or 0)>=(lastLogin or 0))then level,levelAt=s.level,s.levelAt end
+        if not level and u and u.level then level,levelAt,levelFromUtility=u.level,u.seen,true end
+        local classFromUtility=not s.classFile and u and u.classFile and true or nil
         rows[#rows+1]={key=key,name=c.target,realm=c.realm or"",faction=c.faction or"",current=key==me,
-            classFile=s.classFile or u and u.classFile,className=c.class~=""and c.class or nil,level=L.Int(c.level,1,100)and c.level or u and u.level,
-            lastLogin=L.Int(c.lastLogin,1,MAX_TIME)and c.lastLogin or nil,money=money,moneyAt=fromUtility and u.seen or s.moneyAt,moneyFromUtility=fromUtility or nil,
+            classFile=s.classFile or u and u.classFile,classAt=s.classFile and s.classAt or classFromUtility and u.seen or nil,classFromUtility=classFromUtility,
+            className=c.class~=""and c.class or nil,level=level,levelAt=levelAt,levelFromUtility=levelFromUtility,updatedAt=s.updatedAt,
+            lastLogin=lastLogin,money=money,moneyAt=fromUtility and u.seen or s.moneyAt,moneyFromUtility=fromUtility or nil,
             maxLevel=s.maxLevel,xp=s.xp,xpMax=s.xpMax,rested=s.rested,restedAt=s.restedAt,resting=s.resting,
             played=s.played,playedLevel=s.playedLevel,playedAt=s.playedAt,professions=professions(key),
             bagsAt=s.bagsAt,bagCount=s.bags and count(s.bags),bankAt=s.bankAt,bankCount=s.bank and count(s.bank)}
