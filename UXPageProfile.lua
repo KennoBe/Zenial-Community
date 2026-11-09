@@ -70,53 +70,14 @@ function S.createProfilePage(f)
     for _, field in pairs(U.profileFields) do
         field:SetScript('OnTextChanged', U.CaptureProfileDraft)
     end
-    -- "My characters" owns its layout (U.LayoutProfileCharacters). The generic
-    -- footer heuristic used to drop the account overview button onto the
-    -- page-wide Settings button; this view now reserves that footer row instead.
+    -- "My characters" owns its layout (U.LayoutProfileCharacters in
+    -- AccountOverviewUI.lua): character list, details and the private overview
+    -- in one view instead of a separate dialog.
     U.profileCharactersFrame = CreateFrame('Frame', nil, p)
     U.profileCharactersFrame.zenialOwnLayout = true
     U.profileCharactersFrame:SetPoint('TOPLEFT', 0, -42)
     U.profileCharactersFrame:SetSize(856, 414)
-    U.profileCharactersTitle =
-        label(U.profileCharactersFrame, '|cffffd36b' .. tr('MY CHARACTERS') .. '|r', 0, 0, 400, 'GameFontNormalLarge')
-    U.profileCharactersScope = label(
-        U.profileCharactersFrame,
-        tr('Only characters in your current game world and faction are shown and linked.'),
-        0,
-        -32,
-        850
-    )
-    U.characterList = list(U.profileCharactersFrame, 0, -78, 525, 300)
-    U.setMainButton = button(U.profileCharactersFrame, 'Als Hauptcharakter festlegen', 545, -78, 250, function()
-        if U.characterKey then
-            Z.SetMain(U.characterKey)
-            U.Refresh()
-        end
-    end)
-    U.accountOverviewButton = button(U.profileCharactersFrame, 'Account overview', 545, -112, 250, function()
-        U.OpenAccountOverview()
-    end)
-    U.profileCharactersHint = label(
-        U.profileCharactersFrame,
-        'The first character is selected as main automatically. Log in with your other characters in the same game world and faction. Other members see your main next to your alt in Members.',
-        545,
-        -154,
-        295
-    )
-    U.removeCharacterButton = button(U.profileCharactersFrame, 'Remove character', 545, -250, 250, function()
-        local c = Z.account.characters[U.characterKey]
-        if not c or U.characterKey == Z.accountCharacterKey then
-            return
-        end
-        U.removeCharacterKey = U.characterKey
-        U.characterConfirmText:SetText(
-            Z.T(
-                'Remove %s from the addon? Its saved profile, professions, recipes and drafts will be removed. History is kept. If it is your main, the logged-in character becomes main.',
-                c.target
-            )
-        )
-        U.characterConfirm:Show()
-    end, 'danger')
+    U.CreateMyCharacters(U.profileCharactersFrame, S)
     U.profileDisplayFrame = CreateFrame('Frame', nil, p)
     U.profileDisplayFrame:SetPoint('TOPLEFT', 0, -42)
     U.profileDisplayFrame:SetSize(856, 414)
@@ -161,67 +122,6 @@ function S.createProfilePage(f)
     U.profileDisplayFrame:Hide()
     U.profileNetworkFrame:Hide()
     U.profileView = 'public'
-    U.LayoutProfileCharacters()
-end
-
--- Explicit reflow for "My characters". The page keeps its logical height of at
--- least 500 through window scaling, so the view never needs its own scrollbar;
--- the list scrolls. The bottom row stays free for the page-wide Settings button.
-local PROFILE_FOOTER = 48
-local function place(f, x, y, w, h)
-    f:ClearAllPoints()
-    f:SetPoint('TOPLEFT', x, y)
-    if w then
-        f:SetWidth(w)
-    end
-    if h then
-        f:SetHeight(h)
-    end
-end
-function U.LayoutProfileCharacters()
-    local frame = U.profileCharactersFrame
-    if not frame then
-        return
-    end
-    local page = U.pages[6]
-    local width = math.max(620, page:GetWidth())
-    local height = math.max(300, page:GetHeight() - 42 - PROFILE_FOOTER)
-    frame:SetSize(width, height)
-    local column = math.min(360, math.max(250, math.floor(width * 0.34)))
-    local columnX = width - column
-    local listWidth = columnX - 20
-    place(U.profileCharactersTitle, 0, 0, width)
-    place(U.profileCharactersScope, 0, -32, width)
-    local listHeight = height - 78
-    local changed = U.characterList:GetWidth() ~= listWidth or U.characterList:GetHeight() ~= listHeight
-    place(U.characterList, 0, -78, listWidth, listHeight)
-    U.characterList.width, U.characterList.height = listWidth - 24, listHeight
-    U.characterList.child:SetWidth(listWidth - 24)
-    if changed and U.characterList.zenialRender then
-        U.characterList.zenialRender()
-    end
-    local buttonWidth = math.min(column, 300)
-    place(U.setMainButton, columnX, -78, buttonWidth)
-    place(U.accountOverviewButton, columnX, -112, buttonWidth)
-    place(U.profileCharactersHint, columnX, -154, column)
-    -- The hint keeps its automatic height; measure the wrapped text for any font size.
-    local hintHeight = math.ceil(U.profileCharactersHint:GetStringHeight() or 0)
-    -- The destructive action follows the explanation, apart from the safe actions.
-    place(U.removeCharacterButton, columnX, -(154 + hintHeight + 18), buttonWidth)
-end
-
--- One entry point for the own characters, also used by /zenial alts|twinks|account.
-function U.OpenMyCharacters(showOverview)
-    U.Create()
-    if not U.frame:IsShown() then
-        U.frame:Show()
-    end
-    U.CloseDialogs()
-    U.Navigate('profile', 'characters')
-    U.Refresh()
-    if showOverview then
-        U.OpenAccountOverview()
-    end
 end
 
 function S.createHistoryPage(f)

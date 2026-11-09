@@ -528,42 +528,10 @@ local function refreshTradeManage()
     )
 end
 S.refreshTradeManage = refreshTradeManage
+-- "My characters" lives in AccountOverviewUI.lua; kept as the shared refresh hook.
 local function refreshCharacters()
-    local items = {}
-    local mainKey = Z.account.mainKey or ''
-    local valid = false
-    for _, key in ipairs(keys(Z.account.characters)) do
-        local characterKey = key
-        local c = Z.account.characters[characterKey]
-        if c.realm == Z.me.realm and c.faction == Z.me.faction then
-            if characterKey == U.characterKey then
-                valid = true
-            end
-            items[#items + 1] = {
-                selected = characterKey == U.characterKey,
-                icon = T and T.ClassIcon(c.class),
-                text = (characterKey == mainKey and '|cffffd36b' .. tr('Main character') .. '|r · ' or '')
-                    .. c.target
-                    .. ' · '
-                    .. L.ClassName(c.class)
-                    .. ' · Level '
-                    .. (c.level or 0)
-                    .. '\n'
-                    .. faction(c.faction),
-                click = function()
-                    U.characterKey = characterKey
-                    refreshCharacters()
-                end,
-            }
-        end
+    if U.RefreshMyCharacters then
+        U.RefreshMyCharacters()
     end
-    if not valid then
-        U.characterKey = Z.accountCharacterKey
-    end
-    rows(U.characterList, items, 58)
-    local c = Z.account.characters[U.characterKey]
-    local eligible = c and c.realm == Z.me.realm and c.faction == Z.me.faction
-    U.setMainButton:SetEnabled(eligible == true and U.characterKey ~= mainKey)
-    U.removeCharacterButton:SetEnabled(eligible == true and U.characterKey ~= Z.accountCharacterKey)
 end
 S.refreshCharacters = refreshCharacters

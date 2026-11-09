@@ -254,15 +254,15 @@ function U.Create()
     S.createAddonPage(f)
 
     U.characterConfirm = CreateFrame('Frame', nil, f, BackdropTemplateMixin and 'BackdropTemplate' or nil)
-    U.characterConfirm:SetSize(460, 215)
+    U.characterConfirm:SetSize(460, 255)
     U.characterConfirm:SetPoint('CENTER')
     U.characterConfirm:SetFrameLevel(f:GetFrameLevel() + 50)
     if T then
         T.Shell(U.characterConfirm)
     end
     U.characterConfirmText = label(U.characterConfirm, '', 25, -25, 410, 'GameFontHighlight')
-    U.characterConfirmText:SetHeight(120)
-    U.characterConfirmDelete = button(U.characterConfirm, 'Remove character', 50, -165, 175, function()
+    U.characterConfirmText:SetHeight(160)
+    U.characterConfirmDelete = button(U.characterConfirm, 'Delete character data', 50, -205, 175, function()
         local ok, err = Z.RemoveCharacter(U.removeCharacterKey)
         U.removeCharacterKey = nil
         U.characterConfirm:Hide()
@@ -273,7 +273,7 @@ function U.Create()
             U.Message(err)
         end
     end, 'danger')
-    U.characterConfirmCancel = button(U.characterConfirm, 'Cancel', 255, -165, 155, function()
+    U.characterConfirmCancel = button(U.characterConfirm, 'Cancel', 255, -205, 155, function()
         U.removeCharacterKey = nil
         U.characterConfirm:Hide()
     end)

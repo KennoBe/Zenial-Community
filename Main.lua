@@ -590,7 +590,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="debug off"then Z.Companion.SetDebugPixel(false)
     elseif text=="companion"then Z.Companion.Show()
     elseif text=="diary"or text=="tagebuch"then if Z.UI and Z.UI.OpenSocialDiaryForUnit then Z.UI.OpenSocialDiaryForUnit("target")end
-    elseif text=="alts"or text=="twinks"or text=="account"then if Z.UI and Z.UI.OpenMyCharacters then Z.UI.OpenMyCharacters(text=="account")end
+    elseif text=="alts"or text=="twinks"or text=="account"then if Z.UI and Z.UI.OpenMyCharacters then Z.UI.OpenMyCharacters()end
     elseif text=="setup advanced"then Z.NetworkSetup.ShowAdvanced()
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end

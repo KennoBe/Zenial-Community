@@ -12,6 +12,8 @@
 -- cannot be told apart from the old default. Bags and bank stay opt-in.
 -- Played time is only recorded when the player types /played: requesting it
 -- automatically would print to the chat frame on every login.
+-- Characters can be hidden from the "My characters" view; hiding only changes
+-- that view and keeps every stored value and link.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local O={VERSION=1,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
 Z.AccountOverview=O
@@ -21,7 +23,7 @@ local EVENTS={"PLAYER_ENTERING_WORLD","PLAYER_MONEY","TIME_PLAYED_MSG","PLAYER_X
 local INVENTORY_EVENTS={"BAG_UPDATE_DELAYED","BANKFRAME_OPENED","BANKFRAME_CLOSED","PLAYERBANKSLOTS_CHANGED"}
 local frame
 
-local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=false,characters={}}end
+local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=false,characters={},hidden={}}end
 local function stamp()local now=A.Now();return now>0 and now or nil end
 local function changed()O.revision=(O.revision or 0)+1 end
 local function int(value,min,max)return L.Int(value,min,max)and value or nil end
@@ -78,6 +80,14 @@ function O.Initialize()
                 local c=sanitize(row);if c then store.characters[canonical]=c;n=n+1 end
             end
         end
+        -- Hidden marks follow renamed keys; Utility-only rows keep their own key.
+        local hidden=0
+        for key,value in pairs(type(raw.hidden)=="table"and raw.hidden or{})do
+            local canonical=type(key)=="string"and(known[key]and key or aliases[key])
+            if canonical and not known[canonical]then canonical=nil end
+            if not canonical and type(key)=="string"and #key<=200 and key:match("^utility:")then canonical=key end
+            if value==true and canonical and not store.hidden[canonical]and hidden<O.MAX_CHARACTERS+O.MAX_UTILITY then store.hidden[canonical]=true;hidden=hidden+1 end
+        end
     end
     root.accountOverview=store;O.store=store
     if not frame then frame=CreateFrame("Frame");frame:SetScript("OnEvent",function(_,event,...)O.OnEvent(event,...)end)end
@@ -90,6 +100,13 @@ function O.SetEnabled(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
     O.store.enabled=value==true;O.store.enabledBy="user";setEvents();if O.store.enabled then O.Sample()end;changed();return true
 end
+-- Hides a character from the overview without touching any stored data.
+function O.SetHidden(key,value)
+    if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
+    if type(key)~="string"or key==""or key==ownKey()then return nil,"The logged-in character always stays visible."end
+    O.store.hidden[key]=value==true or nil;changed();return true
+end
+function O.IsHidden(key)return O.store~=nil and O.store.hidden~=nil and O.store.hidden[key]==true end
 function O.SetInventory(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
     O.store.inventory=value==true;setEvents();if O.InventoryEnabled()then O.ScanBags()end;changed();return true
@@ -218,8 +235,11 @@ function O.OnEvent(event,...)
     elseif event=="PLAYERBANKSLOTS_CHANGED"then if O.bankOpen then queueBank()end end
 end
 function O.Forget(key)
-    if O.store and not O.readOnly and O.store.characters[key]then O.store.characters[key]=nil;changed();return true end
-    return false
+    local removed=false
+    if O.store and not O.readOnly and O.store.hidden[key]then O.store.hidden[key]=nil;removed=true end
+    if O.store and not O.readOnly and O.store.characters[key]then O.store.characters[key]=nil;removed=true end
+    if removed then changed()end
+    return removed
 end
 
 -- ZENIAL Utility keeps its own record of the player's characters. When it is
@@ -270,6 +290,15 @@ function O.Ruleset(realm)
     return RULESETS[world]
 end
 local function count(map)local n=0;for _,c in pairs(map or{})do n=n+c end;return n end
+-- Main and alt roles per world and faction, as stored by Z.SetMain.
+local function scopeKey(realm,faction)return string.lower((realm or""):gsub("%s+","")).."@"..string.lower(faction or"")end
+local function mainFor(characters,realm,faction)
+    local a=Z.account or{}
+    local key=type(a.mains)=="table"and a.mains[scopeKey(realm,faction)]or nil
+    if Z.me and realm==Z.me.realm and faction==Z.me.faction and L.Text(a.mainKey,260)then key=a.mainKey end
+    local c=key and characters[key]
+    if type(c)=="table"and c.realm==realm and c.faction==faction then return key,c.target end
+end
 
 -- All known characters, optionally filtered by realm and faction.
 function O.List(filter)
@@ -281,7 +310,7 @@ function O.List(filter)
         local key=index[norm(u.realm).."|"..u.faction.."|"..norm(u.name)]
         if key then matched[key]=u else u.unmatched=true end
     end
-    local me=ownKey()
+    local me=ownKey();local hidden=O.store and O.store.hidden or{}
     for key,c in pairs(characters)do if type(c)=="table"and L.Text(c.target,113)then
         local s=O.store and O.store.characters[key]or{};local u=matched[key]
         local money,fromUtility=s.money,false
@@ -300,11 +329,16 @@ function O.List(filter)
             lastLogin=lastLogin,money=money,moneyAt=fromUtility and u.seen or s.moneyAt,moneyFromUtility=fromUtility or nil,
             maxLevel=s.maxLevel,xp=s.xp,xpMax=s.xpMax,rested=s.rested,restedAt=s.restedAt,resting=s.resting,
             played=s.played,playedLevel=s.playedLevel,playedAt=s.playedAt,professions=professions(key),
-            bagsAt=s.bagsAt,bagCount=s.bags and count(s.bags),bankAt=s.bankAt,bankCount=s.bank and count(s.bank)}
+            bagsAt=s.bagsAt,bagCount=s.bags and count(s.bags),bankAt=s.bankAt,bankCount=s.bank and count(s.bank),hidden=hidden[key]==true or nil,
+            sameScope=Z.me~=nil and c.realm==Z.me.realm and c.faction==Z.me.faction}
+        local mainKey,mainName=mainFor(characters,c.realm,c.faction)
+        local r=rows[#rows]
+        if mainKey==key then r.role="main"elseif mainKey then r.role,r.mainName="alt",mainName end
     end end
     -- Characters only Utility knows: never logged in with Community yet.
     for _,u in ipairs(utility)do if u.unmatched then
-        rows[#rows+1]={key="utility:"..u.realm.."@"..u.faction.."@"..u.name,name=u.name,realm=u.realm,faction=u.faction,utilityOnly=true,
+        local key="utility:"..u.realm.."@"..u.faction.."@"..u.name
+        rows[#rows+1]={key=key,name=u.name,realm=u.realm,faction=u.faction,utilityOnly=true,hidden=hidden[key]==true or nil,
             classFile=u.classFile,level=u.level,lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={}}
     end end
     local out={}
@@ -345,7 +379,7 @@ function O.Search(query,rows)
                     local hit=hits[itemID]or{id=itemID,name=name or("#"..itemID),total=0,holders={},byKey={}}
                     hits[itemID]=hit;hit.total=hit.total+n
                     local holder=hit.byKey[r.key]
-                    if not holder then holder={name=r.name,realm=r.realm,bags=0,bank=0};hit.byKey[r.key]=holder;hit.holders[#hit.holders+1]=holder end
+                    if not holder then holder={key=r.key,name=r.name,realm=r.realm,bags=0,bank=0};hit.byKey[r.key]=holder;hit.holders[#hit.holders+1]=holder end
                     holder[place]=holder[place]+n
                 end
             end
