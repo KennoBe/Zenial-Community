@@ -27,7 +27,7 @@ local function className(r)
 end
 local function trim(v)return type(v)=='string'and v:match('^%s*(.-)%s*$')or''end
 local function badge(r)
-    if r.utilityOnly then return DIM..tr('Only in ZENIAL Utility')..'|r'end
+    if r.utilityOnly then return DIM..tr('From ZENIAL Utility')..'|r'end
     if r.role=='main'then return GOLD..tr('Main')..'|r'end
     if r.role=='alt'then return ALT..tr('Alt')..'|r'end
 end
@@ -107,6 +107,12 @@ local function summary(context)
     local note=''
     if overview.readOnly then note=' · '..WARN..tr('The account overview uses a newer format.')..'|r'
     elseif not overview.Enabled()then note=' · '..WARN..tr('Recording is off.')..'|r'end
+    -- Taken-over Utility data is named with its age; unassignable rows are counted.
+    local status=overview.ImportStatus()
+    if status then
+        note=note..' · '..DIM..tr('ZENIAL Utility data taken over %s',S.age(status.at))..'|r'
+        if status.ambiguous>0 then note=note..' · '..WARN..tr('%d not assignable',status.ambiguous)..'|r'end
+    end
     return first..'\n'..DIM..table.concat(second,' · ')..'|r'..note
 end
 
@@ -153,12 +159,19 @@ local function details(r)
     local out={}
     local role=roleText(r);if role then out[#out+1]={text=role,height=48}end
     if r.hidden then out[#out+1]={text=tr('Hidden from this overview. Its data is kept; show hidden characters to see it again.'),height=34}end
-    out[#out+1]={text=tr('Gold')..': '..(r.money and A.MoneyText(r.money)or tr('Unknown'))..(r.money and(' · '..tr('as of %s',when(r.moneyAt)))or'')
-        ..(r.moneyFromUtility and('\n'..tr('From ZENIAL Utility'))or''),height=r.moneyFromUtility and 44 or 30}
+    out[#out+1]={text=tr('Gold')..': '..(r.money and A.MoneyText(r.money)or tr('Unknown'))..(r.money and(' · '..tr('as of %s',when(r.moneyAt)))or''),height=30}
     out[#out+1]={text=tr('Last login')..': '..when(r.lastLogin),height=30}
     if r.updatedAt then out[#out+1]={text=tr('Last updated')..': '..when(r.updatedAt),height=30}end
+    -- Values from the taken-over Utility copy are named, with the takeover time.
+    local fields={}
+    if r.moneyFromUtility then fields[#fields+1]=tr('Gold')end
+    if r.levelFromUtility then fields[#fields+1]=tr('Level')end
+    if r.classFromUtility then fields[#fields+1]=tr('Class')end
+    if #fields>0 and r.importedAt then
+        out[#out+1]={text=DIM..tr('From ZENIAL Utility')..': '..table.concat(fields,', ')..' · '..tr('taken over %s',when(r.importedAt))..'|r',height=44}
+    end
     if r.utilityOnly then
-        out[#out+1]={text=tr('Only known to ZENIAL Utility. Log in with this character to record more.'),height=44}
+        out[#out+1]={text=tr('Only known from the data taken over from ZENIAL Utility. Log in with this character to record more.'),height=44}
         return out
     end
     out[#out+1]={text=tr('Rested XP')..': '..restedText(r),height=44}
@@ -219,7 +232,10 @@ function U.RefreshMyCharacters()
     if selected then for _,row in ipairs(details(selected))do detailRows[#detailRows+1]=row end end
     S.rows(U.accountOverviewDetails,detailRows,40)
     U.setMainButton:SetEnabled(canSetMain(selected)==true)
-    U.myCharactersMore:SetEnabled(selected~=nil)
+    local utility=overview.UtilityLoaded()and not overview.readOnly
+    U.myCharactersMore:SetEnabled(selected~=nil or utility)
+    U.importUtilityButton:SetShown(utility)
+    U.myCharactersMenu:SetHeight(utility and 160 or 128)
     U.hideCharacterButton:SetText(tr(selected and selected.hidden and'Show in overview again'or'Hide from overview'))
     U.hideCharacterButton:SetEnabled(canHide(selected)==true)
     U.removeCharacterButton:SetEnabled(canDelete(selected)==true)
@@ -287,6 +303,17 @@ function U.CreateMyCharacters(frame,helpers)
     U.removeCharacterButton=button(menu,'Delete character data…',8,-40,234,confirmDelete,'danger')
     U.myCharactersMenuNote=label(menu,'',10,-74,230)
     U.myCharactersMenuNote:SetHeight(48)
+    -- Only offered while ZENIAL Utility is loaded; reads it, never writes it.
+    -- Repeating it replaces the earlier copy.
+    U.importUtilityButton=button(menu,'Take over data from ZENIAL Utility',8,-124,234,function()
+        U.CloseDropdowns()
+        local n,ambiguous=overview.ImportUtility()
+        if not n then U.Message(tr(ambiguous))
+        elseif ambiguous>0 then U.Message(tr('%d characters taken over from ZENIAL Utility, %d not assignable.',n,ambiguous))
+        else U.Message(tr('%d characters taken over from ZENIAL Utility.',n))end
+        U.RefreshMyCharacters()
+    end)
+    U.importUtilityButton:Hide()
     menu:Hide()
     U.myCharactersBuilt=true
     U.LayoutProfileCharacters()

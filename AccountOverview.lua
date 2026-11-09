@@ -14,6 +14,9 @@
 -- automatically would print to the chat frame on every login.
 -- Characters can be hidden from the "My characters" view; hiding only changes
 -- that view and keeps every stored value and link.
+-- Community is the leading local source. ZENIAL Utility is optional: its rows
+-- are only read when the player takes them over explicitly, and then kept as
+-- a separate, labelled snapshot that a newer Community value always replaces.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local O={VERSION=1,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
 Z.AccountOverview=O
@@ -88,6 +91,7 @@ function O.Initialize()
             if not canonical and type(key)=="string"and #key<=200 and key:match("^utility:")then canonical=key end
             if value==true and canonical and not store.hidden[canonical]and hidden<O.MAX_CHARACTERS+O.MAX_UTILITY then store.hidden[canonical]=true;hidden=hidden+1 end
         end
+        store.imported=O.SanitizeImported(raw.imported)
     end
     root.accountOverview=store;O.store=store
     if not frame then frame=CreateFrame("Frame");frame:SetScript("OnEvent",function(_,event,...)O.OnEvent(event,...)end)end
@@ -242,36 +246,86 @@ function O.Forget(key)
     return removed
 end
 
--- ZENIAL Utility keeps its own record of the player's characters. When it is
--- loaded, its rows are read (never written) to fill gaps; nothing depends on it.
-local function norm(value)return type(value)=="string"and value:lower():gsub("[%s%-%'_]","")or""end
+-- ZENIAL Utility keeps its own record of the player's characters. It is never
+-- required and never written. Its rows are only read on an explicit takeover,
+-- which stores a copy with source and time in this store; repeating the
+-- takeover replaces that copy, so nothing is ever counted twice.
+local FACTIONS={Alliance=true,Horde=true,Neutral=true}
+local function norm(value)return type(value)=="string"and(value:lower():gsub("[%s%-%'_]",""))or""end
+local function identity(realm,faction,name)return norm(realm).."|"..tostring(faction).."|"..norm(name)end
+local function utilityRow(raw)
+    if type(raw)~="table"or not L.Text(raw.name,48)or not L.Text(raw.realm,64)or not FACTIONS[raw.faction]or norm(raw.name)==""then return nil end
+    local classFile=raw.classFile or raw.class
+    return{name=raw.name,realm=raw.realm,faction=raw.faction,level=int(raw.level,1,100),
+        classFile=type(classFile)=="string"and #classFile<=16 and classFile:match("^[A-Z]+$")and classFile~="GENERAL"and classFile or nil,
+        money=int(raw.money,0,MAX_MONEY),seen=int(raw.seen,1,MAX_TIME)}
+end
+-- Stored takeover: {source="utility",at=time,characters={identity=row}}.
+function O.SanitizeImported(raw)
+    if type(raw)~="table"or raw.source~="utility"or not L.Int(raw.at,1,MAX_TIME)then return nil end
+    local out={source="utility",at=raw.at,ambiguous=int(raw.ambiguous,0,10000)or 0,characters={}};local n=0
+    for id,row in pairs(type(raw.characters)=="table"and raw.characters or{})do
+        local r=n<O.MAX_UTILITY and utilityRow(row)
+        if r and id==identity(r.realm,r.faction,r.name)then out.characters[id]=r;n=n+1 end
+    end
+    return out
+end
 function O.UtilityLoaded()
     local loaded=C_AddOns and type(C_AddOns.IsAddOnLoaded)=="function"and A.Call(C_AddOns.IsAddOnLoaded,"ZenialUtility")or A.Call(IsAddOnLoaded,"ZenialUtility")
     return loaded==true and type(ZenialUtilityDB)=="table"and type(ZenialUtilityDB.characters)=="table"
 end
+-- Valid Utility rows by identity. Two rows with one identity are ambiguous and
+-- left out entirely.
 function O.UtilityRows()
-    local out={};if not O.UtilityLoaded()then return out end
-    for _,row in pairs(ZenialUtilityDB.characters)do
-        if #out>=O.MAX_UTILITY then break end
-        if type(row)=="table"and L.Text(row.name,48)and L.Text(row.realm,64)and(row.faction=="Alliance"or row.faction=="Horde"or row.faction=="Neutral")then
-            out[#out+1]={name=row.name,realm=row.realm,faction=row.faction,level=int(row.level,1,100),
-                classFile=type(row.class)=="string"and row.class:match("^[A-Z]+$")and row.class~="GENERAL"and row.class or nil,
-                money=int(row.money,0,MAX_MONEY),seen=int(row.seen,1,MAX_TIME)}
+    local out,seen,ambiguous,n={},{},0,0;if not O.UtilityLoaded()then return out,0 end
+    for _,raw in pairs(ZenialUtilityDB.characters)do
+        if n>=O.MAX_UTILITY then break end
+        local r=utilityRow(raw)
+        if r then
+            local id=identity(r.realm,r.faction,r.name)
+            if seen[id]then if out[id]then out[id]=nil;n=n-1;ambiguous=ambiguous+1 end;ambiguous=ambiguous+1
+            else seen[id]=true;out[id]=r;n=n+1 end
         end
     end
-    return out
+    return out,ambiguous
 end
--- Utility stores the given name only. A row matches a Community character with
--- the same world, faction and given name; ambiguous names stay unmatched.
-local function utilityIndex(characters)
-    local index,count={},{}
-    for key,c in pairs(characters)do if type(c)=="table"and c.target then
-        local id=norm(c.realm).."|"..tostring(c.faction).."|"..norm(c.target:match("^(%S+)"))
-        count[id]=(count[id]or 0)+1;index[id]=key
+-- Copies the current Utility rows into this store. Safe to repeat: the copy is
+-- replaced, Utility's own data stays untouched.
+function O.ImportUtility()
+    if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
+    if not O.UtilityLoaded()then return nil,"ZENIAL Utility is not loaded."end
+    local at=stamp();if not at then return nil,"Character data is not available yet."end
+    local rows,ambiguous=O.UtilityRows();local copy,n={},0
+    for id,r in pairs(rows)do copy[id]={name=r.name,realm=r.realm,faction=r.faction,level=r.level,classFile=r.classFile,money=r.money,seen=r.seen};n=n+1 end
+    O.store.imported={source="utility",at=at,ambiguous=ambiguous,characters=copy};changed()
+    return n,ambiguous
+end
+-- Drops the taken-over rows of a deleted character, so it does not return as
+-- a Utility-only row.
+function O.ForgetImported(target,realm,faction)
+    local imported=O.store and not O.readOnly and O.store.imported
+    if not imported or type(target)~="string"then return end
+    local base=target:match("^%s*(.-)%s*$")or"";base=base:match("^(.-)%-.+$")or base
+    for _,name in ipairs({base,base:match("^(%S+)")})do
+        local id=identity(realm,faction,name)
+        if imported.characters[id]then imported.characters[id]=nil;changed()end
+    end
+end
+-- Utility may store the given name or the full name. A row matches a Community
+-- character with the same world, faction and either name; a name that two
+-- Community characters share stays unmatched.
+local function accountIndex(characters)
+    local index={}
+    for key,c in pairs(characters)do if type(c)=="table"and L.Text(c.target,113)then
+        local base=c.target:match("^(.-)%-.+$")or c.target
+        local ids={[identity(c.realm,c.faction,base)]=true,[identity(c.realm,c.faction,base:match("^(%S+)"))]=true}
+        for id in pairs(ids)do if index[id]==nil then index[id]=key elseif index[id]~=key then index[id]=false end end
     end end
-    for id,n in pairs(count)do if n>1 then index[id]=false end end
     return index
 end
+-- Newer of a Community value and a taken-over Utility value; equal or unknown
+-- times keep the Community value.
+local function utilityNewer(at,u)return u~=nil and u.seen~=nil and u.seen>(at or 0)end
 
 local function professions(key)
     local profile=type(ZenialCommunityDB)=="table"and type(ZenialCommunityDB.characters)=="table"and ZenialCommunityDB.characters[key]
@@ -304,29 +358,35 @@ end
 function O.List(filter)
     filter=filter or{}
     local characters=accountCharacters();local rows,matched={},{}
-    local index=utilityIndex(characters)
-    local utility=O.UtilityRows()
-    for _,u in ipairs(utility)do
-        local key=index[norm(u.realm).."|"..u.faction.."|"..norm(u.name)]
-        if key then matched[key]=u else u.unmatched=true end
+    local index=accountIndex(characters)
+    local imported=O.store and O.store.imported
+    local utility={}
+    for id,u in pairs(imported and imported.characters or{})do
+        local key=index[id]
+        -- Ambiguous rows are neither merged nor listed: that could count a
+        -- character and its gold twice.
+        if key then matched[key]=u elseif key==nil then utility[#utility+1]=u end
     end
     local me=ownKey();local hidden=O.store and O.store.hidden or{}
     for key,c in pairs(characters)do if type(c)=="table"and L.Text(c.target,113)then
         local s=O.store and O.store.characters[key]or{};local u=matched[key]
+        -- Gold: the recorded value unless a taken-over value is newer. A Utility
+        -- zero never replaces known gold (it may be a loading-time reading).
         local money,fromUtility=s.money,false
-        if money==nil and u and u.money then money,fromUtility=u.money,true end
+        if u and u.money and(money==nil or utilityNewer(s.moneyAt,u)and(u.money>0 or money==0))then money,fromUtility=u.money,true end
         -- Level: the newer of the recorded level and the account list (as of
-        -- its last login), then Utility. Each value keeps its own time.
+        -- its last login), then a newer taken-over value. Each keeps its time.
         local lastLogin=L.Int(c.lastLogin,1,MAX_TIME)and c.lastLogin or nil
         local level=L.Int(c.level,1,100)and c.level or nil
         local levelAt,levelFromUtility=level and lastLogin,nil
         if s.level and(not level or(s.levelAt or 0)>=(lastLogin or 0))then level,levelAt=s.level,s.levelAt end
-        if not level and u and u.level then level,levelAt,levelFromUtility=u.level,u.seen,true end
+        if u and u.level and(not level or utilityNewer(levelAt,u))then level,levelAt,levelFromUtility=u.level,u.seen,true end
         local classFromUtility=not s.classFile and u and u.classFile and true or nil
         rows[#rows+1]={key=key,name=c.target,realm=c.realm or"",faction=c.faction or"",current=key==me,
             classFile=s.classFile or u and u.classFile,classAt=s.classFile and s.classAt or classFromUtility and u.seen or nil,classFromUtility=classFromUtility,
             className=c.class~=""and c.class or nil,level=level,levelAt=levelAt,levelFromUtility=levelFromUtility,updatedAt=s.updatedAt,
             lastLogin=lastLogin,money=money,moneyAt=fromUtility and u.seen or s.moneyAt,moneyFromUtility=fromUtility or nil,
+            importedAt=(fromUtility or levelFromUtility or classFromUtility)and imported.at or nil,
             maxLevel=s.maxLevel,xp=s.xp,xpMax=s.xpMax,rested=s.rested,restedAt=s.restedAt,resting=s.resting,
             played=s.played,playedLevel=s.playedLevel,playedAt=s.playedAt,professions=professions(key),
             bagsAt=s.bagsAt,bagCount=s.bags and count(s.bags),bankAt=s.bankAt,bankCount=s.bank and count(s.bank),hidden=hidden[key]==true or nil,
@@ -335,12 +395,14 @@ function O.List(filter)
         local r=rows[#rows]
         if mainKey==key then r.role="main"elseif mainKey then r.role,r.mainName="alt",mainName end
     end end
-    -- Characters only Utility knows: never logged in with Community yet.
-    for _,u in ipairs(utility)do if u.unmatched then
+    -- Characters only the taken-over Utility data knows: never logged in with
+    -- Community yet. They merge into the Community row once that exists.
+    for _,u in ipairs(utility)do
         local key="utility:"..u.realm.."@"..u.faction.."@"..u.name
-        rows[#rows+1]={key=key,name=u.name,realm=u.realm,faction=u.faction,utilityOnly=true,hidden=hidden[key]==true or nil,
-            classFile=u.classFile,level=u.level,lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={}}
-    end end
+        rows[#rows+1]={key=key,name=u.name,realm=u.realm,faction=u.faction,utilityOnly=true,hidden=hidden[key]==true or nil,importedAt=imported.at,
+            classFile=u.classFile,classFromUtility=u.classFile~=nil or nil,level=u.level,levelAt=u.level and u.seen,levelFromUtility=u.level~=nil or nil,
+            lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={}}
+    end
     local out={}
     for _,r in ipairs(rows)do
         if(not filter.realm or r.realm==filter.realm)and(not filter.faction or r.faction==filter.faction)then out[#out+1]=r end
@@ -351,6 +413,14 @@ function O.List(filter)
         return a.name<b.name
     end)
     return out
+end
+-- Source and age of the taken-over Utility data, and how many of its rows
+-- could not be assigned unambiguously (left out of every list and sum).
+function O.ImportStatus()
+    local imported=O.store and O.store.imported;if not imported then return nil end
+    local index=accountIndex(accountCharacters());local n,ambiguous=0,imported.ambiguous or 0
+    for id in pairs(imported.characters)do n=n+1;if index[id]==false then ambiguous=ambiguous+1 end end
+    return{source=imported.source,at=imported.at,count=n,ambiguous=ambiguous}
 end
 function O.Realms()
     local seen,out={},{}

@@ -120,6 +120,7 @@ function Z.RemoveCharacter(key)
         aliases[base.."@"..string.lower(c.realm).."@"..string.lower(c.faction)]=true
         if not ambiguous then aliases[base]=true end
     end
+    if Z.AccountOverview and Z.AccountOverview.ForgetImported then Z.AccountOverview.ForgetImported(c.target,c.realm,c.faction)end
     local expanded=true;while expanded do expanded=false;for alias,canonical in pairs(a.characterAliases or{})do if aliases[canonical]and not aliases[alias]then aliases[alias]=true;expanded=true end end end
     for alias,row in pairs(a.characterBackup or{})do if type(row)=="table"and L.ScopeKey(row.target,row.realm,row.faction)==key then aliases[alias]=true end end
     for alias in pairs(aliases)do
