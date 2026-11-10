@@ -372,6 +372,7 @@ function U.OpenOrderMaterials(order)
     U.materialOrderCount:SetText('1')
     U.materialOrderText:SetText(order.recipeName .. '\n' .. tr('Craft count is the number of crafting operations.'))
     U.materialOrderForm:Show()
+    U.Navigation.Pristine('materialOrderForm')
 end
 function U.RefreshMaterialPlans(force)
     if not U.materialPlanList then

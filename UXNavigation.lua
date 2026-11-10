@@ -57,17 +57,17 @@ local ROUTES = {
     ['profile/characters'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
     ['characters'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
     ['characters/overview'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
-    ['characters/items'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
+    ['characters/items'] = r('characters', 'items', 6, 'profile', 'characters', 'character'),
     ['profile/display'] = r('settings', 'display', 11, 'settings', 'display'),
     ['settings/display'] = r('settings', 'display', 11, 'settings', 'display'),
     ['profile/network'] = r('settings', 'privacy', 11, 'settings', 'privacy'),
     ['settings/connection'] = r('settings', 'privacy', 11, 'settings', 'privacy'),
     ['settings/privacy'] = r('settings', 'privacy', 11, 'settings', 'privacy'),
     ['settings/tools'] = r('settings', 'tools', 11, 'settings', 'tools'),
+    ['settings/integrations'] = r('settings', 'tools', 11, 'settings', 'tools'),
     ['settings/data'] = r('settings', 'data', 11, 'settings', 'data'),
     ['settings'] = r('settings', nil, 11, 'settings', nil),
-    ['addons'] = r('settings', 'integrations', ADDON_PAGE, 'addons', nil, 'addon'),
-    ['settings/integrations'] = r('settings', 'integrations', ADDON_PAGE, 'addons', nil, 'addon'),
+    ['addons'] = r('settings', 'addons', ADDON_PAGE, 'addons', nil, 'addon'),
     ['history'] = r('settings', nil, 7, 'history', nil),
 }
 local KNOWN_SECTIONS = {}
@@ -119,10 +119,48 @@ end
 local function shown(name)
     return U[name] and U[name]:IsShown()
 end
+local pristine = {}
+local pristineHooks = {}
+local function formFields()
+    return {
+    craftOrderForm = { U.craftOrderQuantity, U.craftMaterialCount, U.craftOrderTip, U.craftOrderNote, U.craftOrderMaterials },
+    materialOrderForm = { U.materialOrderCount },
+    activityCreator = { U.creatorWhen, U.creatorKind, U.creatorGoal, U.creatorText, U.groupCustom, U.groupKind, U.groupActivity, U.groupActivitySearch, U.groupFields and U.groupFields.size, U.groupFields and U.groupFields.min, U.groupFields and U.groupFields.max, U.groupFields and U.groupFields.tank, U.groupFields and U.groupFields.healer, U.groupFields and U.groupFields.dd, U.groupFields and U.groupFields.note, U.groupTemplateDuration, U.questPicker, U.questPickerSearch, U.questFields and U.questFields.title, U.questFields and U.questFields.zone, U.questFields and U.questFields.min, U.questFields and U.questFields.max, U.questFields and U.questFields.note, U.questDuration },
+    scheduledEditor = { U.scheduledKind, U.scheduledGoal, U.scheduledActivity, U.scheduledSearch, U.scheduledDay, U.scheduledTime, U.scheduledDuration, U.scheduledNote, U.scheduledOrganizerRole, U.scheduledSlots and U.scheduledSlots.TANK, U.scheduledSlots and U.scheduledSlots.HEALER, U.scheduledSlots and U.scheduledSlots.DAMAGER },
+    templateNameDialog = { U.groupTemplateName },
+    scheduledSeries = { U.scheduledSeriesCount },
+    }
+end
+function N.Pristine(name)
+    if U[name] and not pristineHooks[name] then
+        local formName = name
+        U[name]:HookScript('OnHide', function() pristine[formName] = nil end)
+        pristineHooks[name] = true
+    end
+    local snapshot = {}
+    for i, field in ipairs(formFields()[name] or {}) do
+        if field then
+            if field.GetChecked then snapshot[i] = field:GetChecked() else snapshot[i] = field:GetText() end
+        end
+    end
+    pristine[name] = snapshot
+end
+local function changedForm(name)
+    local snapshot = pristine[name]
+    if not snapshot then return true end
+    for i, field in ipairs(formFields()[name] or {}) do
+        if field then
+            local value
+            if field.GetChecked then value = field:GetChecked() else value = field:GetText() end
+            if value ~= snapshot[i] then return true end
+        end
+    end
+    return false
+end
 -- Returns the name of the first open dialog that holds input a navigation would destroy.
 function N.UnsavedInput()
     for _, name in ipairs({ 'craftOrderForm', 'materialOrderForm', 'activityCreator', 'scheduledEditor', 'templateNameDialog', 'scheduledSeries' }) do
-        if shown(name) then
+        if shown(name) and changedForm(name) then
             return name
         end
     end
@@ -260,6 +298,7 @@ function N.Return(token)
     U.craftOrderNote:SetText(p.noteText)
     U.craftOrderMaterials:SetChecked(p.materialsProvided)
     U.RefreshCraftIngredients()
+    N.Pristine('craftOrderForm')
     context = nil
     return true
 end

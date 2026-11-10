@@ -22,7 +22,7 @@ function U.OpenScheduledEditor(e)
         for role,f in pairs(U.scheduledSlots)do f:SetText(draft[role]or'0')end
     end
     if U.scheduledEditingID then U.scheduledEditorNotice:SetText(tr('Editing a published event invalidates existing applications. Participants must apply again.'))end
-    U.ConfigureScheduledActivity(nil,U.scheduledActivity:GetText());U.scheduledEditor:Show()
+    U.ConfigureScheduledActivity(nil,U.scheduledActivity:GetText());U.scheduledEditor:Show();U.Navigation.Pristine('scheduledEditor')
 end
 function U.SaveScheduledEditor()
     local starts,why=T.Parse(U.scheduledDate:GetText(),U.scheduledClock:GetText());if not starts then U.Message(tr(U.scheduledClock:GetText()=='LOCAL'and'Local date or time is invalid or ambiguous. Choose another time.'or why));return end
@@ -43,7 +43,7 @@ end
 function U.OpenScheduledRecurrence(e)
     if not e then return end
     local key,why=S.SaveTemplate(e.id);if not key then U.Message(tr(why));return end
-    U.scheduledTemplateID=key;U.scheduledSeriesCount:SetText('2');U.scheduledProposal=nil;U.scheduledSeriesCreate:SetEnabled(false);H.rows(U.scheduledSeriesPreview,{},64);U.scheduledSeries:Show()
+    U.scheduledTemplateID=key;U.scheduledSeriesCount:SetText('2');U.scheduledProposal=nil;U.scheduledSeriesCreate:SetEnabled(false);H.rows(U.scheduledSeriesPreview,{},64);U.scheduledSeries:Show();U.Navigation.Pristine('scheduledSeries')
 end
 function U.PreviewScheduledSeries()
     local preview,why=S.Preview(U.scheduledTemplateID,tonumber(U.scheduledSeriesCount:GetText()));U.scheduledProposal=preview;U.scheduledSeriesCreate:SetEnabled(preview~=nil)

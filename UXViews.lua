@@ -91,6 +91,12 @@ function U.SetProfileView(v)
     U.profileView = v == 'characters' and 'characters' or 'public'
     U.profilePublicFrame:SetShown(U.profileView == 'public')
     U.profileCharactersFrame:SetShown(U.profileView == 'characters')
+    U.profilePublicTab:SetShown(U.profileView ~= 'characters')
+    U.profileCharactersTab:SetShown(U.profileView ~= 'characters')
+    U.profileDisplayTab:Hide()
+    U.profileNetworkTab:Hide()
+    U.profileCharactersFrame:ClearAllPoints()
+    U.profileCharactersFrame:SetPoint('TOPLEFT', 0, U.profileView == 'characters' and 0 or -42)
     selectNav(U.profilePublicTab, U.profileView == 'public')
     selectNav(U.profileCharactersTab, U.profileView == 'characters')
     if Z.UIState then

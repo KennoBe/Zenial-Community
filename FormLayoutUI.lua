@@ -47,7 +47,7 @@ function U.ShowActivityStep(step,body)
     center(U.activityCreator,step==1 and 300 or 440)
     if step==1 then U.creatorTitle:SetText(tr('Create activity')..' · '..tr('1/2 · Activity'));U.ConfigureActivityCreator()
     else body.formTitle:SetText(tr(body.formName)..' · '..tr(body.editorContext or(U.creatorFlow and '2/2 · Details'or'Details')))end
-    U.activityCreator:Show();U.activityChanging=false
+    U.activityCreator:Show();if U.Navigation then U.Navigation.Pristine('activityCreator') end;U.activityChanging=false
 end
 function U.BackActivityStep()
     if U.creatorFlow then U.ShowActivityStep(1)else U.activityCreator:Hide()end
@@ -114,7 +114,7 @@ function U.ApplyFormLayouts(helpers)
     H.button(naming,tr('Save template'),16,-164,294,function()if U.SaveGroupTemplate()then naming:Hide()end end,'primary')
     H.button(naming,tr('Cancel'),324,-164,310,function()naming:Hide()end)
     H.makeModal(naming);naming:SetFrameLevel(U.activityCreator:GetFrameLevel()+20);naming:Hide()
-    U.groupTemplateSave:SetScript('OnClick',function()naming:Show()end)
+    U.groupTemplateSave:SetScript('OnClick',function()naming:Show();U.Navigation.Pristine('templateNameDialog')end)
     -- Quest requests use the same label and field baselines.
     U.questFormContent:ClearAllPoints();U.questFormContent:SetPoint('TOPLEFT',0,0);U.questFormContent:SetSize(650,440)
     U.questFormContent:SetFrameLevel(U.questForm:GetFrameLevel()+1)
@@ -233,6 +233,7 @@ function U.ApplyFormLayouts(helpers)
             open(record)
             U.ConfigureActivityEditor(body,record)
             U.ShowActivityStep(2,body)
+            if U.Navigation then U.Navigation.Pristine('activityCreator');U.Navigation.Pristine('scheduledEditor') end
         end
     end
 end

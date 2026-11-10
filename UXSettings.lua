@@ -53,6 +53,9 @@ function U.CreateSettings(helpers)
         control:SetChecked(Z.db[name])
         U.preferences[name] = control
     end
+    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 570, -132, 270, 'GameFontHighlightSmall')
+    U.settingsVisibleNote:SetHeight(190)
+    U.settingsVisibleNote:SetWordWrap(true)
     button(U.profileNetworkFrame, tr('Aktualisieren'), 0, -290, 140, function()
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end)

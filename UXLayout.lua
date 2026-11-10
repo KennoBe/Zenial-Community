@@ -219,10 +219,11 @@ function S.applyRoute(route)
         U.SetTradeView(subview)
     elseif section == 'profile' then
         U.SetProfileView(subview)
+        if route.view == 'items' then U.SetMyCharactersTab('items') end
     elseif section == 'settings' and subview then
         U.SetSettingsView(subview)
-    elseif section == 'addons' and route.selection then
-        U.SetAddonView(route.selection)
+    elseif section == 'addons' then
+        U.SetAddonView(route.selection or U.addonIndex or 1)
     end
     if Z.UIState then
         Z.UIState.Route(section, subview)
