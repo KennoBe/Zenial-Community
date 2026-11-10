@@ -77,10 +77,10 @@ function U.CreateSettings(helpers)
     button(U.settingsDataFrame, tr('History'), 0, 0, 240, function() U.OpenHistory() end)
     U.profileDisplayFrame:SetParent(p)
     U.profileNetworkFrame:SetParent(p)
-    U.SetSettingsView('display')
+    U.SetSettingsView('display', true)
 end
 
-function U.SetSettingsView(v)
+function U.SetSettingsView(v, skipRoute)
     local allowed = { display = true, privacy = true, tools = true, data = true }
     U.settingsView = allowed[v] and v or 'display'
     U.settingsDisplayFrame:SetShown(U.settingsView == 'display')
@@ -93,7 +93,7 @@ function U.SetSettingsView(v)
     if U.settingsView == 'privacy' and U.profileNetworkText then
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end
-    if Z.UIState then
+    if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
     end
 end
