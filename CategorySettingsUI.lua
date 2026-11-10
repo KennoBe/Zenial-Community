@@ -79,6 +79,6 @@ function U.CreateCategorySettings(helpers)
     end,'danger');U.categoryDeleteConfirm:Hide()
     H.button(f,tr('Close'),438,-400,196,function()f:Hide()end)
     H.makeModal(f);f:Hide()
-    H.button(U.pages[11],tr('Private contact categories'),430,-52,410,function()U.categoryDeleteConfirm:Hide();U.RefreshCategorySettings();f:Show()end)
+    H.button(U.settingsDataFrame,tr('Private contact categories'),430,-52,410,function()U.categoryDeleteConfirm:Hide();U.RefreshCategorySettings();f:Show()end)
 end
 return U

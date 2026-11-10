@@ -15,7 +15,7 @@ function U.LayoutMainTabs()
     local width = U.sidebarWidth or 150
     local y = -86
     local positions = {}
-    for _, index in ipairs({ 9, 10, 4, 1, 2, 5 }) do
+    for _, index in ipairs({ 9, 10, 4, 1, 2, 5, 6 }) do
         positions[index] = y
         y = y - 48
     end
@@ -219,6 +219,8 @@ function S.applyRoute(route)
         U.SetTradeView(subview)
     elseif section == 'profile' then
         U.SetProfileView(subview)
+    elseif section == 'settings' and subview then
+        U.SetSettingsView(subview)
     elseif section == 'addons' and route.selection then
         U.SetAddonView(route.selection)
     end
@@ -520,14 +522,6 @@ function U.Refresh(all, revisionDriven)
     end
     if all or U.page == 6 then
         refreshCharacters()
-        if U.preferences then
-            for name, control in pairs(U.preferences) do
-                control:SetChecked(Z.db[name])
-            end
-        end
-        if U.profileView == 'network' then
-            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
-        end
     end
     if all or U.page == 9 then
         U.RefreshCommunityHome()
@@ -536,7 +530,15 @@ function U.Refresh(all, revisionDriven)
         U.RefreshActivityBoard()
     end
     if all or U.page == 11 then
+        if U.preferences then
+            for name, control in pairs(U.preferences) do
+                control:SetChecked(Z.db[name])
+            end
+        end
         U.homeAddonNavigationOption:SetChecked(not Z.ui or Z.ui.showAddonManager ~= false)
+        if U.settingsView == 'privacy' and U.profileNetworkText then
+            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
+        end
     end
     if all or U.page == HISTORY_PAGE then
         U.RefreshHistory()

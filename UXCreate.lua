@@ -172,7 +172,9 @@ function U.Create()
         p:Hide()
         U.pages[i] = p
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
-            if i == 4 then
+            if i == 6 then
+                U.Navigation.Open(U.Navigation.Resolve('characters', 'overview'), { skipGuard = true })
+            elseif i == 4 then
                 -- Main navigation stays direct like the other tabs (no unsaved-input guard).
                 U.Navigation.Open(U.Navigation.Resolve('quests', 'shared'), { skipGuard = true })
             else
@@ -319,6 +321,7 @@ function U.Create()
     U.CreateCommunityHome({
         label = label,
         button = button,
+        navButton = navButton,
         list = list,
         rows = rows,
         edit = edit,
@@ -370,7 +373,9 @@ function U.Create()
     U.groupView = state.subviews and state.subviews.groups or 'browse'
     U.craftView = state.subviews and state.subviews.craft or 'search'
     U.tradeView = state.subviews and state.subviews.trade or 'browse'
-    U.profileView = state.subviews and state.subviews.profile or 'public'
+    local savedProfileView = state.subviews and state.subviews.profile
+    U.profileView = savedProfileView == 'characters' and 'characters' or 'public'
+    U.settingsView = 'display'
     -- Login restores the saved place silently; an unknown or unavailable one falls back to Today.
     local login = U.Navigation
     local saved = login.Resolve(
