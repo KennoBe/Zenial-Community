@@ -1,6 +1,6 @@
 # ZENIAL Community – UX-Audit und Redesign-Plan
 
-> Status: Plan nach Nutzerkorrekturen überarbeitet; keine Implementierung oder Clientprobe ausgeführt. P0 und alle Produktphasen warten auf Freigabe bzw. ihre Nachweise.
+> Status: Plan nach Nutzerkorrekturen überarbeitet. P0 ist abgeschlossen; P1/P2/P3 sind umgesetzt, ihre gemeinsame Clientabnahme ist offen. P2-Harness-Nachweis steht aus.
 
 ## Entscheidungen für die erste Redesign-Stufe
 
