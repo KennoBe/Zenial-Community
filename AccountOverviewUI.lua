@@ -1,6 +1,6 @@
 -- "My characters": the player's own characters in one view on the profile page.
 -- Two tabs: Overview (character list plus a character sheet with gold, rested
--- XP, played time, professions and recorded bags/bank) and Saved items (item
+-- XP, played time, professions and recorded bags/bank) and Inventory search (item
 -- search over the recorded bags and banks). Reads local data only; nothing
 -- here sends data to other players. Main changes go through Z.SetMain,
 -- deletion through the existing Z.RemoveCharacter confirmation; hiding only
@@ -19,7 +19,7 @@ local HIT_HEIGHT=30
 local HOLDER_HEIGHT=40
 -- Content widths from here on use the wide two-column layout; below it the
 -- list and the detail alternate (list first, selection opens the detail).
-local WIDE_WIDTH=860
+local WIDE_WIDTH=840
 local SHEET_TWO_COLUMNS=520
 local BUTTON_HEIGHT=28
 
@@ -111,7 +111,7 @@ end
 
 -- Visible rows after realm, faction, hidden and name filters, plus the
 -- context needed to explain an empty list. The name search only filters
--- characters; items are searched on the Saved items tab (U.MyCharactersItemHits).
+-- characters; items are searched on the Inventory search tab (U.MyCharactersItemHits).
 -- context.scoped is the scope shared by both tabs (before the name search).
 function U.MyCharactersRows()
     local overview=O();local all=overview.List()
@@ -131,7 +131,7 @@ function U.MyCharactersRows()
     return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=f.realm~=nil or f.faction~=nil,
         realm=f.realm,faction=f.faction,showHidden=showHidden}
 end
--- Item hits of the Saved items tab: only AccountOverview.Search over the
+-- Item hits of the Inventory search tab: only AccountOverview.Search over the
 -- characters of the overview scope. An empty query finds nothing.
 function U.MyCharactersItemHits(context)
     local query=trim(U.itemSearch:GetText())
@@ -291,7 +291,7 @@ local function layoutSheet()
     if U.sheetKey~=U.characterKey then U.sheetKey=U.characterKey;view:SetVerticalScroll(0)end
 end
 
--- Scope shown on the Saved items tab: the overview's realm, faction and
+-- Scope shown on the Inventory search tab: the overview's realm, faction and
 -- hidden choice. Items are searched exactly there.
 local function scopeText(context)
     local parts={context.realm or tr('All realms'),context.faction and tr(context.faction)or tr('All factions')}
@@ -312,10 +312,10 @@ local function refreshItems(context)
     local overview=O()
     local hits,unresolved,query=U.MyCharactersItemHits(context)
     U.itemScope:SetText(scopeText(context))
-    local notes={}
+    local notes={tr('Search the recorded bags and bank compartments of your characters.'),tr('Bag and bank recording must be on. Bank contents exist only after you opened the bank while recording. Saved amounts can be older than your current inventory.')}
     if unresolved>0 then notes[#notes+1]=tr('%d item names are still loading. Search again in a moment.',unresolved)end
     if not overview.InventoryEnabled()then notes[#notes+1]=tr('Bags and bank are only searched once their recording is on.')end
-    U.itemsNote:SetText(table.concat(notes,' '))
+    U.itemsNote:SetText(notes[1]..'\n'..notes[2]..(#notes>2 and ('\n'..table.concat({unpack(notes,3)},' '))or''))
     local selectedHit
     for _,hit in ipairs(hits)do if hit.id==U.itemHitId then selectedHit=hit end end
     if not selectedHit then selectedHit=hits[1];U.itemHitId=selectedHit and selectedHit.id end
@@ -333,7 +333,8 @@ local function refreshItems(context)
     local byKey={};for _,r in ipairs(context.scoped)do byKey[r.key]=r end
     local holders={}
     if selectedHit then
-        holders[1]={text=GOLD..selectedHit.name..' · '..selectedHit.total..'|r',height=24,header=true}
+        local bags,bank=0,0;for _,h in ipairs(selectedHit.holders)do bags=bags+(h.bags or 0);bank=bank+(h.bank or 0)end
+        holders[1]={text=GOLD..selectedHit.name..' · '..selectedHit.total..'|r\n'..tr('%d characters · Bags %d · Bank %d',#selectedHit.holders,bags,bank),height=38,header=true}
         for _,h in ipairs(selectedHit.holders)do holders[#holders+1]=holderItem(h,byKey)end
     end
     U.SetEmptyHint(U.itemHolderList,#hits>0 and tr('Select an item to see which characters hold it.')or nil)
@@ -463,7 +464,7 @@ function U.CreateMyCharacters(frame,helpers)
     tooltip(U.myCharactersPrivacyHit,function()return tr('Stored only on this computer. This list itself is not sent to other players. While your public profile is visible, your main character and up to 10 other characters of the same realm and faction are published with it. The optional Companion export is a separate setting.')end)
     -- Tabs.
     U.myCharactersOverviewTab=S.navButton(frame,'Overview',0,-26,110,function()setTab('overview')end)
-    U.myCharactersItemsTab=S.navButton(frame,'Saved items',120,-26,150,function()setTab('items')end)
+    U.myCharactersItemsTab=S.navButton(frame,'Inventory search',120,-26,150,function()setTab('items')end)
     U.myCharactersPublicTab=S.navButton(frame,'Public profile: current character',280,-26,260,function()U.SetProfileView('public')end)
     -- Overview filters.
     U.myCharactersSummary=label(frame,'',0,-108,800)
@@ -490,11 +491,11 @@ function U.CreateMyCharacters(frame,helpers)
     buttonTooltip(U.setMainButton,tr('While your public profile is visible, other players can see your main character and up to 10 other characters of this realm and faction.'))
     U.myCharactersMore=button(frame,'More',530,-182,80,toggleMenu)
     U.accountOverviewDetails=S.list(frame,320,-216,400,180)
-    -- Saved items: its own search, hits on the left and holders on the right.
+    -- Inventory search: its own search, hits on the left and holders on the right.
     U.itemSearch=S.edit(frame,'Item name (2+ characters) or item ID',0,-60,300,64);U.itemSearch:SetScript('OnTextChanged',reset)
     U.itemScope=label(frame,'',320,-77,300)
     U.itemsNote=label(frame,'',0,-108,800)
-    U.itemsNote:SetHeight(30)
+    U.itemsNote:SetHeight(60)
     U.itemHitList=S.list(frame,0,-142,300,260)
     U.itemHolderList=S.list(frame,320,-142,400,260)
     U.itemsBack=button(frame,'Back to results',0,-142,140,function()U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
@@ -594,7 +595,7 @@ function U.LayoutProfileCharacters()
         local searchWidth=math.min(360,math.floor(width*.5))
         placeEdit(U.itemSearch,0,-60,searchWidth)
         place(U.itemScope,searchWidth+16,-77,width-searchWidth-16,24)
-        place(U.itemsNote,0,-108,width,30)
+        place(U.itemsNote,0,-108,width,60)
     else
         local hiddenWidth=labelTextWidth(U.myCharactersShowHidden.text)+31
         local rest=width-hiddenWidth-30
@@ -608,7 +609,7 @@ function U.LayoutProfileCharacters()
     end
     -- Body: list left (wide) or list/detail alternating (narrow).
     local focusedDetail=not wide and (items and U.itemsDetailOpen or not items and U.myCharactersDetailOpen)
-    local top=focusedDetail and 60 or 142;local body=math.max(120,height-top-34)
+    local top=focusedDetail and 60 or (items and wide and 156 or 142);local body=math.max(120,height-top-34)
     local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
     local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
     local overviewDetail=wide or U.myCharactersDetailOpen

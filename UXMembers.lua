@@ -490,6 +490,7 @@ local function refreshMemberDetail()
     local target = updateContactActions(m)
     local group = linkedGroupOf(m)
     local groupLines = group and groupDetailLines(m, group, target) or {}
+    groupLines[#groupLines + 1] = dimText(Z.T('Private for %s', m.target or U.memberKey or m.key))
     if U.memberFavorite then
         local favorite = Z.Social.IsFavorite(m.key)
         U.memberFavorite:SetEnabled(not m.own)
