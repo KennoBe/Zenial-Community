@@ -619,6 +619,7 @@ function U.OpenQuestEditor(q)
     U.questSave:SetText(q and tr('Änderungen speichern') or tr('Questanfrage veröffentlichen'))
     S.restoringDraft = false
     U.CaptureQuestDraft()
+    U.Navigation.Pristine('activityCreator')
 end
 local function refreshQuestApplicants()
     local q = Z.db.quest

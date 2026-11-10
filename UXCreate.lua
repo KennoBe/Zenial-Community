@@ -171,14 +171,21 @@ function U.Create()
         p:SetSize(856, 500)
         p:Hide()
         U.pages[i] = p
+        local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings' }
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
-            if i == 6 then
-                U.Navigation.Open(U.Navigation.Resolve('characters', 'overview'), { skipGuard = true })
-            elseif i == 4 then
-                -- Main navigation stays direct like the other tabs (no unsaved-input guard).
-                U.Navigation.Open(U.Navigation.Resolve('quests', 'shared'), { skipGuard = true })
-            else
+            if U.Navigation.UnsavedInput() then
+                U.Navigation.Fail('unsaved-input')
+                return
+            end
+            if i ~= 4 and i ~= 6 then
                 U.Page(i)
+                return
+            end
+            local section = routes[i]
+            local route = U.Navigation.Resolve(section)
+            if route then
+                local ok, why = U.Navigation.Open(route)
+                if not ok then U.Navigation.Fail(why) end
             end
         end, MAIN_TAB_ICONS[i])
         U.tabs[i].zenialIndicator = U.navIndicator

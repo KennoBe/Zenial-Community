@@ -341,23 +341,25 @@ function U.OpenUpdate(entry)
         local ok, reason = U.OpenApplications(entry.area == 'groups' and 'group' or 'quest', entry.peer, entry.id)
         if ok then
             Z.Notifications.Read(entry.token)
+            U.UpdateBadges()
         end
         return ok, reason
     end
     if N.UnsavedInput() then
         return N.Fail('unsaved-input')
     end
-    Z.Notifications.Read(entry.token)
     if entry.area == 'groups' and entry.view == 'scheduled' then
         local key = 'EVENT:' .. entry.peer .. ':' .. entry.id
         if Z.ActivityBoard.Get(key) then
             local ok, reason = U.OpenActivity(key)
+            if ok then Z.Notifications.Read(entry.token); U.UpdateBadges() end
             if ok and entry.source ~= '' then
                 U.SelectActivityParticipant(Z.ResolvePeerKey(entry.source))
             end
             return ok, reason
         end
     end
+    local previous = { craftOrderID=U.craftOrderID, craftShowCompleted=U.craftShowCompleted and U.craftShowCompleted:GetChecked(), scheduledOwner=U.scheduledOwner, scheduledID=U.scheduledID, scheduledArchive=U.scheduledArchive and U.scheduledArchive:GetChecked(), tradeRuleID=U.tradeRuleID, groupOutgoingToken=U.groupOutgoingToken, questOutgoingToken=U.questOutgoingToken, groupApplicantKey=U.groupApplicantKey, questApplicantKey=U.questApplicantKey }
     if entry.area == 'craft' then
         U.craftOrderID = entry.id
         local order = Z.CraftOrders.orders[entry.id] or Z.db.craftOrderHistory[entry.id]
@@ -385,6 +387,14 @@ function U.OpenUpdate(entry)
         end
     end
     local ok, reason = U.Navigate(entry.area, entry.view)
+    if not ok then
+        U.craftOrderID=previous.craftOrderID; if U.craftShowCompleted then U.craftShowCompleted:SetChecked(previous.craftShowCompleted == true) end
+        U.scheduledOwner=previous.scheduledOwner; U.scheduledID=previous.scheduledID; if U.scheduledArchive then U.scheduledArchive:SetChecked(previous.scheduledArchive == true) end
+        U.tradeRuleID=previous.tradeRuleID; U.groupOutgoingToken=previous.groupOutgoingToken; U.questOutgoingToken=previous.questOutgoingToken
+        U.groupApplicantKey=previous.groupApplicantKey; U.questApplicantKey=previous.questApplicantKey
+    else
+        Z.Notifications.Read(entry.token); U.UpdateBadges()
+    end
     if ok and entry.view == 'pvp' then
         U.SetPvpView('mine')
         local own = Z.PvPHelp.Own()

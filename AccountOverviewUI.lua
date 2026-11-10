@@ -80,6 +80,12 @@ local function tooltip(frame,text)
     end)
     frame:SetScript('OnLeave',function()if GameTooltip then GameTooltip:Hide()end end)
 end
+local function buttonTooltip(button,text)
+    button:HookScript('OnEnter',function(self)
+        if GameTooltip then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:AddLine(text,1,.9,.7,true);GameTooltip:Show()end
+    end)
+    button:HookScript('OnLeave',function()if GameTooltip then GameTooltip:Hide()end end)
+end
 
 -- Filter options come from the known characters only, so a realm or faction
 -- filter never offers a choice that has no character behind it.
@@ -454,7 +460,7 @@ function U.CreateMyCharacters(frame,helpers)
     U.myCharactersPrivacy=label(frame,tr('Stored privately'),400,-4,200)
     U.myCharactersPrivacy:SetJustifyH('RIGHT')
     U.myCharactersPrivacyHit=CreateFrame('Frame',nil,frame)
-    tooltip(U.myCharactersPrivacyHit,function()return tr('Stored only on this computer and never shared with other players. The optional Companion export is a separate setting. Your public profile is separate from this data.')end)
+    tooltip(U.myCharactersPrivacyHit,function()return tr('Stored only on this computer. This list itself is not sent to other players. While your public profile is visible, your main character and up to 10 other characters of the same realm and faction are published with it. The optional Companion export is a separate setting.')end)
     -- Tabs.
     U.myCharactersOverviewTab=S.navButton(frame,'Overview',0,-26,110,function()setTab('overview')end)
     U.myCharactersItemsTab=S.navButton(frame,'Saved items',120,-26,150,function()setTab('items')end)
@@ -481,6 +487,7 @@ function U.CreateMyCharacters(frame,helpers)
         if canSetMain(r)and Z.SetMain(r.key)then U.Message(tr('%s is now your main.',r.name))end
         U.Refresh()
     end,'primary')
+    buttonTooltip(U.setMainButton,tr('While your public profile is visible, other players can see your main character and up to 10 other characters of this realm and faction.'))
     U.myCharactersMore=button(frame,'More',530,-182,80,toggleMenu)
     U.accountOverviewDetails=S.list(frame,320,-216,400,180)
     -- Saved items: its own search, hits on the left and holders on the right.
@@ -542,7 +549,6 @@ end
 -- U.PageUsesNativeScale), so the frame width is the real content width and the
 -- layout switches between one and two columns by it. The bottom row stays
 -- free for the page-wide Settings button.
-local PROFILE_FOOTER=48
 local function place(f,x,y,w,h)
     f:ClearAllPoints();f:SetPoint('TOPLEFT',x,y)
     if w then f:SetWidth(w)end
@@ -562,7 +568,7 @@ function U.LayoutProfileCharacters()
     if not frame or not U.myCharactersBuilt then return end
     local page=U.pages[6]
     local width=math.max(620,math.floor(page:GetWidth()))
-    local height=math.max(300,page:GetHeight()-42-PROFILE_FOOTER)
+    local height=math.max(300,page:GetHeight())
     frame:SetSize(width,height)
     local items=U.myCharactersTab=='items'
     local wide=width>=WIDE_WIDTH
@@ -601,12 +607,18 @@ function U.LayoutProfileCharacters()
         place(U.myCharactersSummaryHit,0,-108,width,30)
     end
     -- Body: list left (wide) or list/detail alternating (narrow).
-    local top=142;local body=math.max(120,height-top-34)
+    local focusedDetail=not wide and (items and U.itemsDetailOpen or not items and U.myCharactersDetailOpen)
+    local top=focusedDetail and 60 or 142;local body=math.max(120,height-top-34)
     local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
     local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
     local overviewDetail=wide or U.myCharactersDetailOpen
     local overviewList=wide or not U.myCharactersDetailOpen
     local itemsDetail=wide or U.itemsDetailOpen
+    if not wide and overviewDetail then
+        for _, control in ipairs({ U.accountOverviewSearch, U.accountOverviewSearch.caption, U.accountOverviewRealm, U.accountOverviewFaction, U.myCharactersShowHidden, U.myCharactersShowHidden.text, U.myCharactersSummary, U.myCharactersSummaryHit }) do shown(control,false) end
+    elseif not wide and itemsDetail then
+        for _, control in ipairs({ U.itemSearch, U.itemSearch.caption, U.itemScope, U.itemsNote }) do shown(control,false) end
+    end
     local itemsList=wide or not U.itemsDetailOpen
     shown(U.characterList,not items and overviewList)
     for _,f in ipairs({U.myCharactersIcon,U.myCharactersHeader,U.setMainButton,U.myCharactersMore,U.accountOverviewDetails})do shown(f,not items and overviewDetail)end
@@ -642,8 +654,9 @@ end
 function U.OpenMyCharacters()
     U.Create()
     if not U.frame:IsShown()then U.frame:Show()end
+    local ok=U.Navigate('profile','characters')
+    if not ok then return end
     U.myCharactersTab='overview';U.myCharactersDetailOpen=false;U.itemsDetailOpen=false
-    if not U.Navigate('profile','characters')then return end
     U.Refresh()
 end
 -- Former name of the account overview entry point; the overview is now part of

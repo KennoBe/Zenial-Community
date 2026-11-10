@@ -363,6 +363,10 @@ function U.OpenMaterialOffer(key, id, itemID)
             materialItemID = U.materialItemID,
             materialFindID = U.materialFindID,
         }, (N.Resolve('craft', 'materials')))
+        if not token then
+            U.Message(tr('The note is too long to keep in the return context. Shorten the note before opening this offer.'))
+            return
+        end
     end
     if not U.Navigate('trade', 'browse') then
         N.DiscardContext(token)
