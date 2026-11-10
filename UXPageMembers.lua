@@ -170,8 +170,7 @@ function S.createMembersPage(f)
             control:SetShown(advanced)
         end
         -- Category choices remain in the quick filter; the legacy category control is intentionally unreachable.
-        U.memberCategoryFilter:Hide()
-        U.memberCategoryFilter.caption:Hide()
+        U.memberCategoryFilter:SetShown(false)
         U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 0, advanced and -100 or -52)
         U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 310, advanced and -95 or -47)
         U.memberList:ClearAllPoints(); U.memberList:SetPoint('TOPLEFT', 0, advanced and -128 or -80)
