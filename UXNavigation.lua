@@ -143,7 +143,10 @@ function N.Pristine(name, baseline)
     else
     for i, field in ipairs(formFields()[name] or {}) do
         if field then
-            if field.GetChecked then snapshot[i] = field:GetChecked() else snapshot[i] = field:GetText() end
+            snapshot[i] = {
+                text = field.GetText and field:GetText() or nil,
+                checked = field.GetChecked and field:GetChecked() or nil,
+            }
         end
     end
     end
@@ -154,9 +157,10 @@ local function changedForm(name)
     if not snapshot then return true end
     for i, field in ipairs(formFields()[name] or {}) do
         if field then
-            local value
-            if field.GetChecked then value = field:GetChecked() else value = field:GetText() end
-            if value ~= snapshot[i] then return true end
+            local value = snapshot[i]
+            if type(value) ~= 'table' then return true end
+            if field.GetText and field:GetText() ~= value.text then return true end
+            if field.GetChecked and field:GetChecked() ~= value.checked then return true end
         end
     end
     return false
