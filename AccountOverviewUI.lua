@@ -316,6 +316,8 @@ local function refreshItems(context)
     if unresolved>0 then notes[#notes+1]=tr('%d item names are still loading. Search again in a moment.',unresolved)end
     if not overview.InventoryEnabled()then notes[#notes+1]=tr('Bags and bank are only searched once their recording is on.')end
     U.itemsNote:SetText(notes[1]..'\n'..notes[2]..(#notes>2 and ('\n'..table.concat({unpack(notes,3)},' '))or''))
+    local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
+    U.itemsNote:SetHeight(noteHeight)
     local selectedHit
     for _,hit in ipairs(hits)do if hit.id==U.itemHitId then selectedHit=hit end end
     if not selectedHit then selectedHit=hits[1];U.itemHitId=selectedHit and selectedHit.id end
@@ -595,7 +597,7 @@ function U.LayoutProfileCharacters()
         local searchWidth=math.min(360,math.floor(width*.5))
         placeEdit(U.itemSearch,0,-60,searchWidth)
         place(U.itemScope,searchWidth+16,-77,width-searchWidth-16,24)
-        place(U.itemsNote,0,-108,width,60)
+        place(U.itemsNote,0,-108,width,U.itemsNote:GetHeight())
     else
         local hiddenWidth=labelTextWidth(U.myCharactersShowHidden.text)+31
         local rest=width-hiddenWidth-30
@@ -609,7 +611,7 @@ function U.LayoutProfileCharacters()
     end
     -- Body: list left (wide) or list/detail alternating (narrow).
     local focusedDetail=not wide and (items and U.itemsDetailOpen or not items and U.myCharactersDetailOpen)
-    local top=focusedDetail and 60 or (items and wide and 156 or 142);local body=math.max(120,height-top-34)
+    local top=focusedDetail and 60 or (items and (108+U.itemsNote:GetHeight()+12) or 142);local body=math.max(120,height-top-34)
     local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
     local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
     local overviewDetail=wide or U.myCharactersDetailOpen

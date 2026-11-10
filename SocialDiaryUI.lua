@@ -114,8 +114,11 @@ function U.CreateSocialDiary(helpers)
     end)
     U.socialDiaryNoteSave=H.button(f,tr('Save note'),526,-446,108,function()
         local key=U.socialDiaryKey;if not key then return end
-        if U.noteDrafts and U.noteDrafts[key]~=nil and U.noteDrafts[key]~=U.socialDiaryNote:GetText() then U.Message(tr('A private note draft is open in the members page. Save it there first.'));return end
+        local saved=Z.Social.GetNote(key)
+        local draft=U.noteDrafts and U.noteDrafts[key]
+        if draft~=nil and draft~=saved and draft~=U.socialDiaryNote:GetText() then U.Message(tr('A private note draft is open in the members page. Save it there first.'));return end
         local ok,why=Z.Social.Note(key,U.socialDiaryNote:GetText())
+        if ok and U.noteDrafts and U.noteDrafts[key]==U.socialDiaryNote:GetText() then U.noteDrafts[key]=nil end
         if not ok then U.Message(tr(why))else U.Message(tr('Note saved.'))end
         U.socialDiaryNoteOwner=nil;U.RefreshSocialDiary()
     end)
