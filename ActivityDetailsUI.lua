@@ -31,6 +31,25 @@ local function diaryPlayer(r)
     local c=Z.db.contacts[key]
     return key,c and c.target or not r.own and r.data and r.data.ownerTarget or nil
 end
+function U.ActivityActionState(r)
+    local result={join=false,withdraw=false,whisper=false,diary=false,edit=false,manage=false}
+    if not r then return result end
+    result.whisper=whisperTarget(r)~=nil
+    result.diary=diaryPlayer(r)~=nil
+    if r.own then
+        local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
+        result.edit=r.kind~='PVP'and(r.kind~='EVENT'or e and(e.status=='OPEN'or e.status=='DRAFT')and e.startsAt>A.Now())or false
+        result.manage=r.kind~='PVP'
+        return result
+    end
+    local _,p=state(r);local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
+    local can=r.kind=='EVENT'and S.CanApply(r.owner,r.id)==true or r.kind~='EVENT'and not r.saved and Z.IsOnline(r.owner)and(not p or p.state=='withdrawn')
+    if r.kind=='PVP'then can=e and e.response~='coming'and Z.IsOnline(r.owner)end
+    result.join=can==true
+    local withdraw=r.kind=='EVENT'and S.CanWithdraw(r.owner,r.id)or r.kind~='EVENT'and(p and p.state~='withdrawn'or r.kind=='PVP'and e and e.response=='coming')
+    result.withdraw=withdraw and true or false
+    return result
+end
 local function canInviteParticipant(r,e,p,key,revision)
     local pending=U.activityInvitePending and U.activityInvitePending[r.key..':'..tostring(key)]
     return p~=nil and p.state=='CONFIRMED'and e.status=='OPEN'and e.endsAt>A.Now()
@@ -93,17 +112,33 @@ function U.OpenActivity(key)
     U.activityDetails:Show();U.RefreshActivityDetails()
     return true
 end
+function U.ActivityWhisper(key)
+    local r=key and B.Get(key);local target=r and whisperTarget(r)
+    if not target then return end
+    if not A.Whisper(target)then U.Message(tr('Whisper is unavailable.'))end
+end
+function U.ActivityDiary(key)
+    local r=key and B.Get(key);local player,target=r and diaryPlayer(r)
+    if player then U.OpenSocialDiary(player,target)end
+end
+local function actionRecord(key)
+    local r=key and B.Get(key)
+    if not r then U.Message(tr('This activity is no longer available.'));U.RefreshActivityBoard();return end
+    if Z.db.blocked[r.owner]then U.Message(tr('This activity is no longer available.'));U.RefreshActivityBoard();return end
+    return r
+end
 function U.RefreshActivityDetails()
     if not U.activityDetails then return end
     local r=current()
     for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction,U.activityDiary})do b:SetEnabled(false)end
     U.activityArchiveAction:SetShown(r~=nil and r.own and r.kind~='PVP'and(r.kind~='EVENT'or S.GetOwned(r.id).status=='OPEN'))
     if not r then U.activityDetailTitle:SetText(tr('This activity is no longer available.'));H.rows(U.activityInformation,{},44);H.rows(U.activityParticipants,{},42);U.LayoutActivityDetails(nil,0,0);return end
+    local actionState=U.ActivityActionState(r)
     local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
     U.activityDetailTitle:SetText(Z.Locale.Activity(r.title))
     -- Opening a chat does not require a current addon-presence report.
-    U.activityWhisper:SetEnabled(whisperTarget(r)~=nil)
-    U.activityDiary:SetEnabled(diaryPlayer(r)~=nil)
+    U.activityWhisper:SetEnabled(actionState.whisper)
+    U.activityDiary:SetEnabled(actionState.diary)
     local details={{text=r.ownerName..' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now'),height=32}}
     local party=Z.ActivityParty.Info(r)
     local capacity=r.kind=='EVENT'and(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)or e and e.size
@@ -136,15 +171,11 @@ function U.RefreshActivityDetails()
     U.activityInvite:SetShown(r.own and r.kind=='EVENT')
     U.activityInviteAll:SetShown(r.own and r.kind=='EVENT')
     if not r.own then
-        local _,p=state(r)
-        local can=r.kind=='EVENT'and S.CanApply(r.owner,r.id)==true or r.kind~='EVENT'and not r.saved and Z.IsOnline(r.owner)and(not p or p.state=='withdrawn')
-        if r.kind=='PVP'then can=e and e.response~='coming'and Z.IsOnline(r.owner)end
-        U.activityJoin:SetEnabled(can==true)
-        local withdraw=r.kind=='EVENT'and S.CanWithdraw(r.owner,r.id)or r.kind~='EVENT'and(p and p.state~='withdrawn'or r.kind=='PVP'and e and e.response=='coming')
-        U.activityWithdraw:SetEnabled(withdraw and true or false)
+        U.activityJoin:SetEnabled(actionState.join)
+        U.activityWithdraw:SetEnabled(actionState.withdraw)
         U.LayoutActivityDetails(r,infoHeight,0);return
     end
-    U.activityEdit:SetEnabled(r.kind~='PVP'and(r.kind~='EVENT'or(e.status=='OPEN'or e.status=='DRAFT')and e.startsAt>A.Now()))
+    U.activityEdit:SetEnabled(actionState.edit)
     U.activityArchiveAction:SetEnabled(r.kind~='PVP'and(r.kind~='EVENT'or e.status=='OPEN'))
     local source=r.kind=='EVENT'and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e.responses or Z.db.interests[r.id]
     local people={};local keys={};for key in pairs(source or{})do keys[#keys+1]=key end;table.sort(keys)
@@ -181,19 +212,28 @@ function U.SelectActivityParticipant(key)
     if r.kind=='LIVE'or r.kind=='QUEST'then Z.Notifications.Read('application:'..(r.kind=='QUEST'and'quest'or'group')..':'..r.id..':'..key)end
     U.RefreshActivityDetails();U.UpdateBadges()
 end
-function U.JoinActivity()
-    local r=current();if not r or r.own then return end
+function U.JoinActivity(key)
+    local r=actionRecord(key or U.activityDetailKey);if not r or r.own then return end
     local ok,why
-    if r.kind=='EVENT'then ok,why=S.Apply(r.owner,r.id,U.activityDetailRole:GetText())
-    elseif r.kind=='LIVE'then ok,why=Z.ApplyGroup(r.owner,r.id,U.activityDetailRole:GetText(),U.activityDetailNote:GetText())
-    elseif r.kind=='QUEST'then ok,why=Z.ApplyQuest(r.owner,r.id,U.activityDetailNote:GetText())
+    local role=key and(Z.Logic.Role(Z.db.roles)or'DAMAGER')or U.activityDetailRole:GetText()
+    local note=key and''or U.activityDetailNote:GetText()
+    if r.kind=='EVENT'then ok,why=S.Apply(r.owner,r.id,role)
+    elseif r.kind=='LIVE'then ok,why=Z.ApplyGroup(r.owner,r.id,role,note)
+    elseif r.kind=='QUEST'then ok,why=Z.ApplyQuest(r.owner,r.id,note)
     else ok,why=Z.PvPHelp.Respond(r.owner,r.id,'coming')end
     U.Message(ok and tr('Application submitted; awaiting response.')or tr(why));U.RefreshActivityDetails();U.Refresh()
 end
-function U.WithdrawActivity()
-    local r=current();if not r or r.own then return end;local ok,why
+function U.WithdrawActivity(key)
+    local r=actionRecord(key or U.activityDetailKey);if not r or r.own then return end;local ok,why
     if r.kind=='EVENT'then ok,why=S.Withdraw(r.owner,r.id)elseif r.kind=='LIVE'then ok,why=Z.WithdrawGroup(r.owner,r.id)elseif r.kind=='QUEST'then ok,why=Z.WithdrawQuest(r.owner,r.id)else ok,why=Z.PvPHelp.Respond(r.owner,r.id,'withdrawn')end
     U.Message(ok and tr('Withdrawal submitted.')or tr(why));U.RefreshActivityDetails();U.Refresh()
+end
+function U.EditActivity(key)
+    local r=actionRecord(key or U.activityDetailKey);if not r or not r.own then return end
+    if not U.ActivityActionState(r).edit then return end
+    U.activityDetailKey=r.key
+    local f=U.activityDetails;f:Hide();U.creatorFlow=false
+    if r.kind=='EVENT'then U.OpenScheduledEditor(S.GetOwned(r.id))elseif r.kind=='LIVE'then U.OpenGroupEditor(r.data)elseif r.kind=='QUEST'then U.OpenQuestEditor(r.data)end
 end
 function U.DecideActivity(decision)
     local r=current();if not r or not r.own or not U.activityParticipantKey or Z.db.blocked[U.activityParticipantKey]then return end
@@ -209,10 +249,9 @@ function U.CreateActivityDetails(helpers)
     H=helpers;local f=H.panel(U.frame);U.activityDetails=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,550)
     U.activityDetailTitle=H.label(f,'',16,-18,442,'GameFontNormalLarge');U.activityDetailTitle:SetHeight(40)
     U.activityWhisper=H.button(f,tr('Whisper'),474,-18,160,function()
-        local target=whisperTarget(current());if not target then return end
         -- Release the modal's keyboard capture before focusing native chat.
         U.CloseDialogs()
-        if not A.Whisper(target)then U.Message(tr('Whisper is unavailable.'))end
+        U.ActivityWhisper(U.activityDetailKey)
     end)
     U.activityArchiveAction=H.button(f,tr('Archive activity'),474,-50,160,function()
         local r=current();if r and r.own then U.RequestActivityArchive(r.kind,r.id)end
@@ -230,11 +269,8 @@ function U.CreateActivityDetails(helpers)
     U.activityWithdraw=H.button(f,tr('Withdraw'),224,-512,196,U.WithdrawActivity)
     U.activityInvite=H.button(f,tr('Invite'),224,-512,196,function()U.InviteConfirmedParticipants(false)end)
     U.activityInviteAll=H.button(f,tr('Invite all confirmed'),224,-480,196,function()U.InviteConfirmedParticipants(true)end)
-    U.activityEdit=H.button(f,tr('Edit'),432,-512,202,function()
-        local r=current();if not r or not r.own then return end;f:Hide();U.creatorFlow=false
-        if r.kind=='EVENT'then U.OpenScheduledEditor(S.GetOwned(r.id))elseif r.kind=='LIVE'then U.OpenGroupEditor(r.data)elseif r.kind=='QUEST'then U.OpenQuestEditor(r.data)end
-    end)
-    U.activityDiary=H.button(f,tr('Social diary'),16,-480,196,function()local key,target=diaryPlayer(current());if key then U.OpenSocialDiary(key,target)end end)
+    U.activityEdit=H.button(f,tr('Edit'),432,-512,202,function()U.EditActivity()end)
+    U.activityDiary=H.button(f,tr('Social diary'),16,-480,196,function()U.ActivityDiary(U.activityDetailKey)end)
     H.button(f,tr('Close'),16,-512,196,function()f:Hide()end)
     H.makeModal(f);f:Hide()
 end
