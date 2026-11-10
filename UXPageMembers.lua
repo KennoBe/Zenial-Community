@@ -73,8 +73,9 @@ function S.createMembersPage(f)
     U.memberStatus = selector(p, tr('Status'), 215, 0, 100, { 'ALL', 'ONLINE' }, refreshMembers)
     U.memberStatus:SetText(Z.uiCharacter and Z.uiCharacter.memberStatus == 'ONLINE' and 'ONLINE' or 'ALL')
     U.memberFavoriteFilter = selector(p, tr('Quick filter'), 325, 0, 145, { 'ALL', 'FAVORITES', 'MY_GUILD' }, refreshMembers, function(id)
-        return id == 'ALL' and tr('All') or id == 'FAVORITES' and tr('Favorites') or tr('Guild')
+        return id == 'ALL' and tr('All') or id == 'FAVORITES' and tr('Favorites') or id == 'MY_GUILD' and tr('Guild') or C.Label(id)
     end)
+    U.memberFavoriteFilter:SetPopupWidth(270)
     U.memberAdvanced = button(p, tr('Advanced'), 480, 0, 120, function()
         U.memberAdvancedOpen = not U.memberAdvancedOpen
         U.RefreshMembersPageLayout()
@@ -165,9 +166,12 @@ function S.createMembersPage(f)
     U.memberCategoryFilter:SetOptions(categoryOptions, 'ALL')
     function U.RefreshMembersPageLayout()
         local advanced = U.memberAdvancedOpen == true
-        for _, control in ipairs({ U.memberClass, U.memberClass.caption, U.memberProfession, U.memberProfession.caption, U.memberSort, U.memberSort.caption, U.memberCategoryFilter, U.memberCategoryFilter.caption }) do
+        for _, control in ipairs({ U.memberClass, U.memberClass.caption, U.memberProfession, U.memberProfession.caption, U.memberSort, U.memberSort.caption }) do
             control:SetShown(advanced)
         end
+        -- Category choices remain in the quick filter; the legacy category control is intentionally unreachable.
+        U.memberCategoryFilter:Hide()
+        U.memberCategoryFilter.caption:Hide()
         U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 0, advanced and -100 or -52)
         U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 310, advanced and -95 or -47)
         U.memberList:ClearAllPoints(); U.memberList:SetPoint('TOPLEFT', 0, advanced and -128 or -80)

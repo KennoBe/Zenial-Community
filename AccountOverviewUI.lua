@@ -597,7 +597,9 @@ function U.LayoutProfileCharacters()
         local searchWidth=math.min(360,math.floor(width*.5))
         placeEdit(U.itemSearch,0,-60,searchWidth)
         place(U.itemScope,searchWidth+16,-77,width-searchWidth-16,24)
-        place(U.itemsNote,0,-108,width,U.itemsNote:GetHeight())
+        place(U.itemsNote,0,-108,width)
+        local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
+        U.itemsNote:SetHeight(noteHeight)
     else
         local hiddenWidth=labelTextWidth(U.myCharactersShowHidden.text)+31
         local rest=width-hiddenWidth-30
