@@ -121,6 +121,13 @@ local function shown(name)
 end
 local pristine = {}
 local pristineHooks = {}
+local function fieldType(name, index, field)
+    if name == 'craftOrderForm' then
+        return index == 5 and 'checked' or 'text'
+    end
+    if field.GetText then return 'text' end
+    if field.GetChecked then return 'checked' end
+end
 local function formFields()
     return {
     craftOrderForm = { U.craftOrderQuantity, U.craftMaterialCount, U.craftOrderTip, U.craftOrderNote, U.craftOrderMaterials },
@@ -142,9 +149,8 @@ function N.Pristine(name, baseline)
         for i, value in pairs(baseline) do
             local field = (formFields()[name] or {})[i]
             if field then
-                snapshot[i] = {}
-                if field.GetText then snapshot[i].text = value end
-                if field.GetChecked then snapshot[i].checked = value end
+                local kind = fieldType(name, i, field)
+                snapshot[i] = kind == 'checked' and { checked = value and true or false } or { text = value }
             else
                 snapshot[i] = value
             end
@@ -152,10 +158,12 @@ function N.Pristine(name, baseline)
     else
     for i, field in ipairs(formFields()[name] or {}) do
         if field then
-            snapshot[i] = {
-                text = field.GetText and field:GetText() or nil,
-                checked = field.GetChecked and field:GetChecked() or nil,
-            }
+            local kind = fieldType(name, i, field)
+            if kind == 'checked' then
+                snapshot[i] = { checked = field:GetChecked() and true or false }
+            else
+                snapshot[i] = { text = field:GetText() }
+            end
         end
     end
     end
@@ -168,8 +176,9 @@ local function changedForm(name)
         if field then
             local value = snapshot[i]
             if type(value) ~= 'table' then return true end
-            if field.GetText and field:GetText() ~= value.text then return true end
-            if field.GetChecked and field:GetChecked() ~= value.checked then return true end
+            local kind = fieldType(name, i, field)
+            if kind == 'checked' and (field:GetChecked() and true or false) ~= value.checked then return true end
+            if kind == 'text' and field:GetText() ~= value.text then return true end
         end
     end
     return false
