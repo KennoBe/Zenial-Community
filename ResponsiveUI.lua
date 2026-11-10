@@ -100,6 +100,12 @@ function U.ApplyResponsiveLayout(activePage)
         for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-parent:GetHeight()+38)end
     end
     if U.RefreshMemberCategories and(not activePage or activePage==U.pages[1])then U.RefreshMemberCategories()end
+    if U.RefreshMembersPageLayout and(not activePage or activePage==U.pages[1])then
+        -- Responsive layout restores the list's base anchor and height; reapply
+        -- the advanced-filter offset without restoring hidden compact controls.
+        U.memberLayoutOffset = 0
+        U.RefreshMembersPageLayout()
+    end
     if U.LayoutHomeWishes and(not activePage or activePage==U.pages[9])then U.LayoutHomeWishes()end
     if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
     if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end

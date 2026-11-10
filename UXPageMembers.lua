@@ -166,17 +166,23 @@ function S.createMembersPage(f)
     U.memberCategoryFilter:SetOptions(categoryOptions, 'ALL')
     function U.RefreshMembersPageLayout()
         local advanced = U.memberAdvancedOpen == true
-        for _, control in ipairs({ U.memberClass, U.memberClass.caption, U.memberProfession, U.memberProfession.caption, U.memberSort, U.memberSort.caption }) do
-            control:SetShown(advanced)
+        if U.compactArea ~= 'members' then
+            for _, control in ipairs({ U.memberClass, U.memberClass.caption, U.memberProfession, U.memberProfession.caption, U.memberSort, U.memberSort.caption }) do
+                control:SetShown(advanced)
+            end
         end
         -- Category choices remain in the quick filter; the legacy category control is intentionally unreachable.
         U.memberCategoryFilter:SetShown(false)
         U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 0, advanced and -100 or -52)
         U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 310, advanced and -95 or -47)
         U.memberList:ClearAllPoints(); U.memberList:SetPoint('TOPLEFT', 0, advanced and -128 or -80)
-        U.memberList.height = (advanced and 262 or 314)
-        U.memberList:SetHeight(U.memberList.height)
+        local offset = advanced and 48 or 0
+        local previousOffset = U.memberLayoutOffset or 0
+        local height = U.memberList:GetHeight() - (offset - previousOffset)
+        U.memberList.height = height
+        U.memberList:SetHeight(height)
         U.memberList.child:SetHeight(U.memberList.height)
+        U.memberLayoutOffset = offset
     end
     U.memberAdvancedOpen = false
     U.RefreshMembersPageLayout()

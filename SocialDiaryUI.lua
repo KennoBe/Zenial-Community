@@ -118,7 +118,14 @@ function U.CreateSocialDiary(helpers)
         local draft=U.noteDrafts and U.noteDrafts[key]
         if draft~=nil and draft~=saved and draft~=U.socialDiaryNote:GetText() then U.Message(tr('A private note draft is open in the members page. Save it there first.'));return end
         local ok,why=Z.Social.Note(key,U.socialDiaryNote:GetText())
-        if ok and U.noteDrafts then U.noteDrafts[key]=nil end
+        if ok then
+            if U.noteDrafts then U.noteDrafts[key]=nil end
+            if U.memberNoteOwner==key and U.memberPrivateNote then
+                U.memberNoteBinding=true
+                U.memberPrivateNote:SetText(U.socialDiaryNote:GetText())
+                U.memberNoteBinding=false
+            end
+        end
         if not ok then U.Message(tr(why))else U.Message(tr('Note saved.'))end
         U.socialDiaryNoteOwner=nil;U.RefreshSocialDiary()
     end)
