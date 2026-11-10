@@ -131,17 +131,21 @@ local function formFields()
     scheduledSeries = { U.scheduledSeriesCount },
     }
 end
-function N.Pristine(name)
+function N.Pristine(name, baseline)
     if U[name] and not pristineHooks[name] then
         local formName = name
         U[name]:HookScript('OnHide', function() pristine[formName] = nil end)
         pristineHooks[name] = true
     end
     local snapshot = {}
+    if type(baseline) == 'table' then
+        for i, value in pairs(baseline) do snapshot[i] = value end
+    else
     for i, field in ipairs(formFields()[name] or {}) do
         if field then
             if field.GetChecked then snapshot[i] = field:GetChecked() else snapshot[i] = field:GetText() end
         end
+    end
     end
     pristine[name] = snapshot
 end
@@ -298,7 +302,7 @@ function N.Return(token)
     U.craftOrderNote:SetText(p.noteText)
     U.craftOrderMaterials:SetChecked(p.materialsProvided)
     U.RefreshCraftIngredients()
-    N.Pristine('craftOrderForm')
+    N.Pristine('craftOrderForm', { '1', '1', '0', '', false })
     context = nil
     return true
 end

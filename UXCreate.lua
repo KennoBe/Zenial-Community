@@ -173,8 +173,16 @@ function U.Create()
         U.pages[i] = p
         local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings' }
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
+            if U.Navigation.UnsavedInput() then
+                U.Navigation.Fail('unsaved-input')
+                return
+            end
+            if i ~= 4 and i ~= 6 then
+                U.Page(i)
+                return
+            end
             local section = routes[i]
-            local route = U.Navigation.Resolve(section, section == 'groups' and 'browse' or section == 'quests' and 'shared' or section == 'trade' and 'browse' or nil)
+            local route = U.Navigation.Resolve(section)
             if route then
                 local ok, why = U.Navigation.Open(route)
                 if not ok then U.Navigation.Fail(why) end

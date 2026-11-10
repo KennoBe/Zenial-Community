@@ -313,7 +313,7 @@ function S.createCraftPage(f)
             U.SetCraftView('search')
             U.craftOrderForm:Show()
             U.RefreshCraftIngredients()
-            U.Navigation.Pristine('craftOrderForm')
+            U.Navigation.Pristine('craftOrderForm', { '1', '1', '0', '', false })
         elseif plan and not plan.order then
             local token, planID = U.Navigation.ActiveContext('craft')
             if token and planID == plan.id then
