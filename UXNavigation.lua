@@ -139,7 +139,16 @@ function N.Pristine(name, baseline)
     end
     local snapshot = {}
     if type(baseline) == 'table' then
-        for i, value in pairs(baseline) do snapshot[i] = value end
+        for i, value in pairs(baseline) do
+            local field = (formFields()[name] or {})[i]
+            if field then
+                snapshot[i] = {}
+                if field.GetText then snapshot[i].text = value end
+                if field.GetChecked then snapshot[i].checked = value end
+            else
+                snapshot[i] = value
+            end
+        end
     else
     for i, field in ipairs(formFields()[name] or {}) do
         if field then
