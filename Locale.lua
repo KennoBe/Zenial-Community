@@ -1150,3 +1150,7 @@ end
 
 Z.Locale=I
 Z.T=function(value,...)return I.Format(value,...)end
+
+DE["Integrations"]="Integrationen"
+DE["History and categories"]="Verlauf und Kategorien"
+DE["Connection and privacy"]="Datenschutz und Verbindung"

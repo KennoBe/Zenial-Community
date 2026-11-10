@@ -22,7 +22,7 @@ local MAIN_TAB_NAMES = {
     tr('Groups'),
     tr('Quests'),
     tr('Trade'),
-    tr('Profile'),
+    tr('My characters'),
     tr('History'),
     tr('Addon Manager'),
     tr('Today'),
@@ -314,7 +314,7 @@ S.selectNav = selectNav
 local function mainTabSelected(index, page)
     return index == page
         or index == 10 and page == 3
-        or index == 11 and (page == 6 or page == 7 or page == ADDON_PAGE and not U.tabs[ADDON_PAGE]:IsShown())
+        or index == 11 and (page == 7 or page == ADDON_PAGE and not U.tabs[ADDON_PAGE]:IsShown())
 end
 S.mainTabSelected = mainTabSelected
 local function updateNavPath()

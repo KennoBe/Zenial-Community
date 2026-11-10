@@ -295,13 +295,7 @@ function U.CreateCommunityHome(helpers)
     U.creatorHint=label(f,'',16,-190,602);U.creatorHint:Hide()
     U.creatorContinue=button(f,tr('Continue'),16,-272,294,U.ContinueActivityCreator,'primary');U.creatorCancel=button(f,tr('Cancel'),324,-272,294,function()f:Hide()end)
     H.makeModal(f);f:Hide()
-    local settings=U.pages[11];label(settings,tr('Settings'),0,0,850,'GameFontNormalLarge')
-    local actions={{'Character profile',function()U.Navigate('profile','public')end},{'My characters',function()U.Navigate('profile','characters')end},
-        {'Display settings',function()U.Navigate('profile','display')end},{'Connection and privacy',function()U.Navigate('profile','network')end},
-        {'Addon Manager',function()U.Navigate('addons')end},{'History',function()U.OpenHistory()end},
-        {'Companion',function()Z.Companion.Show()end}}
-    for i,action in ipairs(actions)do local b=button(settings,tr(action[1]),0,-52-(i-1)*48,390,action[2]);if i==5 then U.settingsAddon=b end end
-    U.homeAddonNavigationOption=H.checkbox(settings,tr('Show Addon Manager in the left navigation'),0,-408,850,function(self)U.SetAddonManagerNavigation(self:GetChecked()==true)end)
+    U.CreateSettings(helpers)
     -- Categories belong to the selected contact. No category popup remains in the user flow.
     U.memberCategoryFrame=CreateFrame('Frame',nil,U.pages[1]);U.categoryChecks={}
     U.memberCategoryCaption=label(U.memberCategoryFrame,tr('Private categories'),12,16,256,'GameFontHighlightSmall');U.memberCategoryCaption:SetHeight(12)
@@ -319,7 +313,7 @@ function U.CreateCommunityHome(helpers)
     button(U.pages[3],tr('Create activity'),630,0,220,U.OpenActivityCreator)
     for _,tab in ipairs({U.questBrowseTab,U.questMineTab,U.questOutgoingTab})do tab:Hide()end
     button(U.pages[4],tr('Back to today'),630,0,220,function()U.Navigate('today')end)
-    for _,page in ipairs({6,7})do button(U.pages[page],tr('Settings'),690,-444,160,function()U.Navigate('settings')end)end
+    button(U.pages[7],tr('Settings'),690,-444,160,function()U.Navigate('settings')end)
     U.craftMaterialsTab:Hide()
     button(U.craftOrdersFrame,tr('All shopping lists'),495,-354,325,function()U.SetCraftView('materials')end)
     U.materialBackOrders=button(U.pages[2],tr('Back to orders'),560,0,290,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()

@@ -81,21 +81,18 @@ function U.OnItemData()
     refreshOffers()
 end
 function U.SetProfileView(v)
-    local allowed = { public = true, characters = true, display = true, network = true }
-    U.profileView = allowed[v] and v or 'public'
+    if v == 'display' then
+        U.Navigate('settings', 'display')
+        return
+    elseif v == 'network' then
+        U.Navigate('settings', 'privacy')
+        return
+    end
+    U.profileView = v == 'characters' and 'characters' or 'public'
     U.profilePublicFrame:SetShown(U.profileView == 'public')
     U.profileCharactersFrame:SetShown(U.profileView == 'characters')
-    U.profileDisplayFrame:SetShown(U.profileView == 'display')
-    if U.profileNetworkFrame then
-        U.profileNetworkFrame:SetShown(U.profileView == 'network')
-        if U.profileNetworkText then
-            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
-        end
-    end
     selectNav(U.profilePublicTab, U.profileView == 'public')
     selectNav(U.profileCharactersTab, U.profileView == 'characters')
-    selectNav(U.profileDisplayTab, U.profileView == 'display')
-    selectNav(U.profileNetworkTab, U.profileView == 'network')
     if Z.UIState then
         Z.UIState.Route('profile', U.profileView)
     end
