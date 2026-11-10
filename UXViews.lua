@@ -140,6 +140,8 @@ function U.OpenCompactArea(area)
     end
     U.compactArea = area
     if area == 'members' then
+        showControl(U.memberAdvanced, false)
+        showControl(U.memberDiary, false)
         showControl(U.memberSearch, false)
         showControl(U.memberStatus, false)
         showControl(U.memberClass, false)
@@ -226,12 +228,18 @@ function U.CloseCompactArea(area)
     area = area or U.compactArea
     U.compactArea = nil
     if area == 'members' then
+        showControl(U.memberAdvanced, true)
+        showControl(U.memberDiary, true)
         showControl(U.memberSearch, true)
         showControl(U.memberStatus, true)
-        showControl(U.memberClass, true)
-        showControl(U.memberProfession, true)
         showControl(U.memberFavoriteFilter, true)
-        showControl(U.memberSort, true)
+        if U.RefreshMembersPageLayout then
+            U.RefreshMembersPageLayout()
+        else
+            showControl(U.memberClass, U.memberAdvancedOpen == true)
+            showControl(U.memberProfession, U.memberAdvancedOpen == true)
+            showControl(U.memberSort, U.memberAdvancedOpen == true)
+        end
         showControl(U.memberCategoryFilter, false)
         showControl(U.memberGrouping, true)
         showControl(U.memberPrivateNote, true)
