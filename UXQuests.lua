@@ -64,7 +64,15 @@ function U.RefreshSharedQuests()
                 tooltip = q.title .. '\n' .. tr('Fellow players') .. ': ' .. #matches,
                 click = function()
                     U.sharedQuestID = id
-                    U.sharedMemberKey = nil
+                    local currentMatches = matchIndex[id] or {}
+                    local currentSelected
+                    for _, match in ipairs(currentMatches) do
+                        if match.key == U.sharedMemberKey then
+                            currentSelected = true
+                            break
+                        end
+                    end
+                    U.sharedMemberKey = currentSelected and U.sharedMemberKey or currentMatches[1] and currentMatches[1].key or nil
                     U.RefreshSharedQuests()
                 end,
             }
@@ -134,7 +142,7 @@ function U.RefreshSharedQuests()
                 Q.scanState == 'deferred' and 'Quest log scan pending. Close the map and leave combat.' or 'Reading your quest log…'
             )
             or not Q.Sharing() and tr('Quest sharing is disabled.')
-            or ''
+            or tr('Players below have this quest in their last shared quest list. Inviting is separate from a help request.')
     )
     if not selected then
         U.sharedQuestID = nil
@@ -208,7 +216,7 @@ function U.RefreshQuestGroups()
             tooltip = names .. '\n' .. G.Explain(s),
             click = function()
                 U.questGroupKey = key
-                U.questGroupMemberKey = nil
+                U.questGroupMemberKey = s.members[1] and s.members[1].key or nil
                 U.RefreshQuestGroups()
             end,
         }
@@ -485,6 +493,9 @@ S.refreshQuestOutgoing = function()
     U.questOutgoingWithdraw:SetEnabled(chosen.row.state == 'applied' or chosen.row.state == 'invited')
 end
 function U.SetQuestView(v)
+    if U.compactArea == 'quests' and v ~= U.questView then
+        U.CloseCompactArea('quests')
+    end
     U.questView = v
     if U.sharedQuestFrame then
         U.sharedQuestFrame:SetShown(v == 'shared')

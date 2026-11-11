@@ -941,6 +941,7 @@ DE["Quest log scan pending. Close the map and leave combat."]="Questlog-Scan aus
 DE["Quest sharing is disabled."]="Questfreigabe ist deaktiviert."
 DE["%d other shared quests"]="%d weitere gemeinsame Quests"
 DE["No other players with this quest found."]="Keine anderen Spieler mit dieser Quest gefunden."
+DE["Players below have this quest in their last shared quest list. Inviting is separate from a help request."]="Die Spieler unten haben diese Quest laut ihrer zuletzt geteilten Questliste. Einladen ist etwas anderes als eine Hilfsanfrage."
 DE["Quest data unavailable."]="Questdaten sind nicht verfügbar."
 DE["Quest match no longer available."]="Die Questübereinstimmung ist nicht mehr verfügbar."
 DE["Player is unavailable or already grouped."]="Spieler ist nicht verfügbar oder bereits in einer Gruppe."
