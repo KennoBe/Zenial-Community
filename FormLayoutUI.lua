@@ -193,10 +193,10 @@ function U.ApplyFormLayouts(helpers)
     field(U.craftMaterialCount,16,-112,190)
     U.craftYieldNote:SetText(tr('Craft count is the number of crafting operations.'))
     place(U.craftYieldNote,220,-114,560,38);place(U.craftIngredientTitle,16,-174,824,20)
-    place(U.craftIngredientList,16,-194,824,44);U.craftIngredientList.height=44
-    place(U.craftShoppingSave,16,-246,220);place(U.craftShoppingOpen,250,-246,220)
+    place(U.craftIngredientList,16,-194,792,44);U.craftIngredientList.height=44
+    place(U.craftShoppingSave,16,-244,220);place(U.craftShoppingOpen,250,-244,220)
     field(U.craftOrderNote,490,-246,330,true);U.craftOrderNote:SetHeight(44)
-    place(U.craftOrderSend,16,-334,220);place(U.craftOrderCancel,250,-334,220)
+    place(U.craftOrderSend,16,-326,220);place(U.craftOrderCancel,250,-326,220)
     center(U.materialOrderForm,330);place(U.materialOrderText,16,-50,618,80)
     field(U.materialOrderCount,16,-152,300);place(U.materialOrderSave,16,-278,294);place(U.materialOrderCancel,324,-278,310)
     -- Compact application forms follow the same label/input/action baselines.
