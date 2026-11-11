@@ -32,7 +32,7 @@ local function diaryPlayer(r)
     return key,c and c.target or not r.own and r.data and r.data.ownerTarget or nil
 end
 function U.ActivityActionState(r)
-    local result={join=false,withdraw=false,whisper=false,diary=false,edit=false,manage=false}
+    local result={join=false,withdraw=false,whisper=false,diary=false,edit=false,manage=false,archive=false,repeatSeries=false}
     if not r then return result end
     result.whisper=whisperTarget(r)~=nil
     result.diary=diaryPlayer(r)~=nil
@@ -40,6 +40,8 @@ function U.ActivityActionState(r)
         local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
         result.edit=r.kind~='PVP'and(r.kind~='EVENT'or e and(e.status=='OPEN'or e.status=='DRAFT')and e.startsAt>A.Now())or false
         result.manage=r.kind~='PVP'
+        result.archive=r.kind~='PVP'and(r.kind~='EVENT'or e and e.status=='OPEN')or false
+        result.repeatSeries=r.kind=='EVENT'and S.GetOwned(r.id)~=nil
         return result
     end
     local _,p=state(r);local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
@@ -127,19 +129,37 @@ local function actionRecord(key)
     if Z.db.blocked[r.owner]then U.Message(tr('This activity is no longer available.'));U.RefreshActivityBoard();return end
     return r
 end
+function U.ArchiveActivity(key)
+    local r=actionRecord(key);if not r or not r.own or r.owner~=Z.me.key then return end
+    if not U.ActivityActionState(r).archive then return end
+    U.RequestActivityArchive(r.kind,r.id)
+end
+function U.RepeatActivity(key)
+    local r=actionRecord(key);if not r or not r.own or r.owner~=Z.me.key then return end
+    if not U.ActivityActionState(r).repeatSeries then return end
+    U.OpenScheduledRecurrence(S.GetOwned(r.id))
+end
 function U.RefreshActivityDetails()
     if not U.activityDetails then return end
     local r=current()
     for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction,U.activityDiary})do b:SetEnabled(false)end
-    U.activityArchiveAction:SetShown(r~=nil and r.own and r.kind~='PVP'and(r.kind~='EVENT'or S.GetOwned(r.id).status=='OPEN'))
+    U.activityArchiveAction:SetShown(r~=nil and r.own and U.ActivityActionState(r).archive)
     if not r then U.activityDetailTitle:SetText(tr('This activity is no longer available.'));H.rows(U.activityInformation,{},44);H.rows(U.activityParticipants,{},42);U.LayoutActivityDetails(nil,0,0);return end
     local actionState=U.ActivityActionState(r)
+    U.activityArchiveAction:SetText(tr(r.kind=='EVENT'and'Cancel event'or'Archive activity'))
     local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
     U.activityDetailTitle:SetText(Z.Locale.Activity(r.title))
     -- Opening a chat does not require a current addon-presence report.
     U.activityWhisper:SetEnabled(actionState.whisper)
     U.activityDiary:SetEnabled(actionState.diary)
     local details={{text=r.ownerName..' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now'),height=32}}
+    if r.kind=='EVENT'and not r.own then
+        details[#details+1]={text=tr(S.Reach(r.owner)),height=32}
+        local following=S.Follow(r.owner,r.id)
+        if following then details[#details+1]={text=tr('Delivery: ')..S.DeliveryLabel(following.delivery),height=32}end
+    elseif r.kind=='EVENT'and r.own then
+        details[#details+1]={text=tr('Confirming records attendance only. It does not invite anyone to your group.'),height=42}
+    end
     local party=Z.ActivityParty.Info(r)
     local capacity=r.kind=='EVENT'and(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)or e and e.size
     details[#details+1]={text=tr('Current party size')..': '..(party and party.total or tr('Unknown'))..(capacity and' / '..capacity or''),height=32}
@@ -176,7 +196,8 @@ function U.RefreshActivityDetails()
         U.LayoutActivityDetails(r,infoHeight,0);return
     end
     U.activityEdit:SetEnabled(actionState.edit)
-    U.activityArchiveAction:SetEnabled(r.kind~='PVP'and(r.kind~='EVENT'or e.status=='OPEN'))
+    U.activityArchiveAction:SetEnabled(actionState.archive)
+    U.activityArchiveAction:SetText(tr(r.kind=='EVENT'and'Cancel event'or'Archive activity'))
     local source=r.kind=='EVENT'and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e.responses or Z.db.interests[r.id]
     local people={};local keys={};for key in pairs(source or{})do keys[#keys+1]=key end;table.sort(keys)
     for _,key in ipairs(keys)do local p=source[key];local who=key;local c=Z.db.contacts[key]

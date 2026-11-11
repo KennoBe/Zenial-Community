@@ -76,15 +76,29 @@ function U.RefreshActivityBoard()
     U.activityPrev:SetEnabled(U.activityPage>1);U.activityNext:SetEnabled(U.activityPage<pages);U.activityOpen:SetEnabled(selected~=nil)
     local actions=selected and U.ActivityActionState(selected)or{}
     local foreign=selected and not selected.own
+    local ownEvent=selected and selected.own and selected.kind=='EVENT'
     for _,button in ipairs({U.activityInlineJoin,U.activityInlineWithdraw,U.activityInlineWhisper,U.activityInlineDiary,U.activityInlineEdit,U.activityManageApplicants})do button:SetShown(selected~=nil and (foreign and button~=U.activityInlineEdit and button~=U.activityManageApplicants or selected.own and(button==U.activityInlineEdit or button==U.activityManageApplicants) and (button~=U.activityInlineEdit or selected.kind~='PVP') and (button~=U.activityManageApplicants or selected.kind~='PVP')))end
+    U.activityInlineArchive:SetShown(selected~=nil and selected.own and selected.kind~='PVP')
+    U.activityInlineArchive:SetText(tr(selected and selected.kind=='EVENT'and'Cancel event'or'Archive activity'))
+    U.activityInlineRepeat:SetShown(ownEvent)
+    U.activityInlineRepeat:SetText(tr('Repeat weekly'))
+    U.activityInlineForget:SetShown(selected~=nil and foreign and selected.kind=='EVENT')
     U.activityInlineJoin:SetEnabled(actions.join==true);U.activityInlineWithdraw:SetEnabled(actions.withdraw==true)
     U.activityInlineWhisper:SetEnabled(actions.whisper==true);U.activityInlineDiary:SetEnabled(actions.diary==true);U.activityInlineEdit:SetEnabled(actions.edit==true)
     U.activityManageApplicants:SetEnabled(actions.manage==true)
+    U.activityInlineArchive:SetEnabled(actions.archive==true)
+    U.activityInlineRepeat:SetEnabled(actions.repeatSeries==true)
+    U.activityInlineForget:SetEnabled(selected~=nil and foreign and selected.kind=='EVENT' and U.CanForgetScheduled(Z.ScheduledGroups.Get(selected.owner,selected.id))==true)
     local detail={};if selected then
         local summary,accent=activitySummary(selected)
         detail[#detail+1]={text=summary,accent=accent,height=measuredHeight(summary,U.activityDetail.width-20,72)}
         local e=selected.data
         if e then
+            if selected.kind=='EVENT'and not selected.own then
+                detail[#detail+1]={text=tr(Z.ScheduledGroups.Reach(selected.owner)),height=32}
+                local following=Z.ScheduledGroups.Follow(selected.owner,selected.id)
+                if following then detail[#detail+1]={text=tr('Delivery: ')..Z.ScheduledGroups.DeliveryLabel(following.delivery),height=32}end
+            end
             if e.min then detail[#detail+1]={text=tr('Level')..' '..e.min..' – '..e.max,height=32}end
             if selected.kind=='LIVE'then
                 local roles=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER')
@@ -290,6 +304,9 @@ function U.CreateCommunityHome(helpers)
     U.activityInlineEdit=button(board,tr('Edit'),370,-342,140,function()if U.activityKey then U.EditActivity(U.activityKey)end end)
     U.activityManageApplicants=button(board,tr('Manage applicants'),518,-342,190,function()if U.activityKey then U.OpenActivity(U.activityKey)end end)
     U.activityOpen=button(board,tr('All details'),716,-342,134,function()if U.activityKey then U.OpenActivity(U.activityKey)end end)
+    U.activityInlineArchive=button(board,tr('Archive activity'),370,-302,140,function()if U.activityKey then U.ArchiveActivity(U.activityKey)end end,'danger')
+    U.activityInlineRepeat=button(board,tr('Repeat weekly'),518,-302,190,function()if U.activityKey then U.RepeatActivity(U.activityKey)end end)
+    U.activityInlineForget=button(board,tr('Remove from my list'),370,-342,190,function()if U.activityKey then U.ForgetScheduledActivity(U.activityKey)end end,'danger')
     U.activityPrev=button(board,tr('Previous'),0,-408,88,function()U.activityPage=(U.activityPage or 1)-1;U.RefreshActivityBoard()end)
     U.activityNext=button(board,tr('Next'),96,-408,88,function()U.activityPage=(U.activityPage or 1)+1;U.RefreshActivityBoard()end)
     button(board,tr('Follow activities'),192,-408,164,function()U.Navigate('groups','follow')end)
@@ -319,7 +336,6 @@ function U.CreateCommunityHome(helpers)
     end
     -- Existing details retain their actions, with one route back to the shared board.
     for _,tab in ipairs({U.groupBrowseTab,U.groupMineTab,U.groupOutgoingTab,U.groupFollowTab,U.sessionPlanTab,U.scheduledTab,U.pvpTab})do tab:Hide()end
-    button(U.pages[3],tr('Back to activities'),0,0,220,function()U.Navigate('activities')end)
     button(U.pages[3],tr('Create activity'),630,0,220,U.OpenActivityCreator)
     for _,tab in ipairs({U.questBrowseTab,U.questMineTab,U.questOutgoingTab})do tab:Hide()end
     button(U.pages[4],tr('Back to today'),630,0,220,function()U.Navigate('today')end)
