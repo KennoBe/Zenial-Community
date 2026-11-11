@@ -106,29 +106,37 @@ end
 
 function S.createAddonPage(f)
     local p = U.pages[ADDON_PAGE]
-    U.addonTabs = {}
-    for i, entry in ipairs(ADDON_CATALOG) do
-        U.addonTabs[i] = navButton(p, entry.label, (i - 1) * 180, 0, 170, function()
-            U.SetAddonView(i)
-        end)
-        -- Name and version share a narrow tab; the small font fits six of them.
-        -- Set on the button itself, which reapplies its fonts on every state change.
-        local tab = U.addonTabs[i]
-        if tab.SetNormalFontObject then
-            tab:SetNormalFontObject('GameFontHighlightSmall')
-            tab:SetHighlightFontObject('GameFontHighlightSmall')
-            tab:SetDisabledFontObject('GameFontDisableSmall')
+    local addonNames = {}
+    for _, entry in ipairs(ADDON_CATALOG) do addonNames[#addonNames + 1] = entry.addon end
+    U.addonSelector = selector(p, tr('ZENIAL Addon'), 0, 0, 360, addonNames, function(addon)
+        for i, entry in ipairs(ADDON_CATALOG) do
+            if entry.addon == addon then U.SetAddonView(i); return end
         end
-        local tabText = tab.GetFontString and tab:GetFontString()
-        if tabText then tabText:SetWordWrap(false) end
-    end
-    U.addonStatus = label(p, '', 0, -40, 850, 'GameFontNormalLarge')
-    U.addonDescription = label(p, '', 0, -66, 850, 'GameFontHighlight')
+    end, function(addon)
+        for _, entry in ipairs(ADDON_CATALOG) do
+            if entry.addon == addon then
+                local state = U.GetAddonState and U.GetAddonState(entry)
+                return entry.label .. (state and state.version and state.version ~= '' and ' (' .. state.version .. ')' or '')
+                    .. (state and state.kind == 'missing' and ' · ' .. tr('Not installed') or '')
+            end
+        end
+        return addon
+    end)
+    U.addonSelector.caption:Hide()
+    U.addonSelector.button:ClearAllPoints()
+    U.addonSelector.button:SetPoint('TOPLEFT', 0, 0)
+    U.addonStatus = label(p, '', 372, 0, 260, 'GameFontNormal')
+    U.addonStatus:SetHeight(32)
+    U.addonStatus:SetWordWrap(false)
+    U.addonBack = button(p, tr('Back to Integrations'), 638, 0, 218, function()
+        U.Navigate('settings', 'tools')
+    end)
+    U.addonDescription = label(p, '', 0, -60, 850, 'GameFontHighlight')
     U.addonDescription:SetHeight(32)
-    U.addonAction = button(p, '', 0, -98, 220, function() end)
+    U.addonAction = button(p, '', 0, -104, 220, function() end)
     U.addonAction:Hide()
     U.addonHost = CreateFrame('Frame', nil, p)
-    U.addonHost:SetPoint('TOPLEFT', 0, -36)
+    U.addonHost:SetPoint('TOPLEFT', 0, -52)
     U.addonHost:SetPoint('BOTTOMRIGHT', 0, 0)
     U.addonHost:SetFrameLevel(p:GetFrameLevel() + 5)
     U.addonHost:EnableMouse(false)
