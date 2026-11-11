@@ -83,15 +83,16 @@ function U.SetTradeView(v)
         U.tradeManageFrame:SetShown(U.tradeView == 'manage')
     end
     selectNav(U.tradeBrowseTab, U.tradeView == 'browse')
-    selectNav(U.tradeMineTab, U.tradeView == 'mine')
     selectNav(U.tradeRulesTab, U.tradeView == 'rules')
-    selectNav(U.tradeManageTab, U.tradeView == 'manage')
+    selectNav(U.tradeManageTab, U.tradeView == 'manage' or U.tradeView == 'mine')
     if Z.UIState then
         Z.UIState.Route('trade', U.tradeView)
     end
     refreshOffers()
     refreshTradeRules()
     refreshTradeManage()
+    if U.RefreshTradeAdvanced then U.RefreshTradeAdvanced() end
+    if U.RefreshTradeContext then U.RefreshTradeContext() end
 end
 function U.OnItemData()
     if U.craftOrderForm and U.craftOrderForm:IsShown() then
@@ -244,12 +245,19 @@ function U.OpenCompactArea(area)
         showControl(U.tradeMinPrice, false)
         showControl(U.tradeMaxPrice, false)
         showControl(U.tradeSort, false)
+        U.tradeSaveSearch:Hide()
+        U.tradeAdvancedToggle:Hide()
+        U.tradeFilterSummary:Hide()
         U.tradeResetButton:Hide()
         U.offerCount:Hide()
         U.offerList:Hide()
         place(U.offerDetail, 0, -46, 820, 280)
-        place(U.offerWhisper, 0, -342)
+        place(U.offerWhisper, 0, -350)
+        place(U.tradeContextText, 0, -382, 275, 32)
+        place(U.tradeContextBack, 285, -388, 190)
+        place(U.offerManageOwn, 485, -388, 220)
         U.tradeBack:Show()
+        if U.RefreshTradeContext then U.RefreshTradeContext() end
     end
     if area == 'members' and U.RefreshMemberCategories then
         U.RefreshMemberCategories()
@@ -332,16 +340,24 @@ function U.CloseCompactArea(area)
     elseif area == 'trade' then
         showControl(U.offerSearch, true)
         showControl(U.tradeKindFilter, true)
-        showControl(U.tradeCategoryFilter, true)
-        showControl(U.tradeMinPrice, true)
-        showControl(U.tradeMaxPrice, true)
-        showControl(U.tradeSort, true)
+        showControl(U.tradeCategoryFilter, U.tradeAdvancedOpen == true)
+        showControl(U.tradeMinPrice, U.tradeAdvancedOpen == true)
+        showControl(U.tradeMaxPrice, U.tradeAdvancedOpen == true)
+        showControl(U.tradeSort, U.tradeAdvancedOpen == true)
+        U.tradeSaveSearch:Show()
+        U.tradeAdvancedToggle:Show()
+        U.tradeFilterSummary:SetShown(not U.tradeAdvancedOpen)
         U.tradeResetButton:Show()
         U.offerCount:Show()
         U.offerList:Show()
-        place(U.offerDetail, 480, -112, 360, 240)
-        place(U.offerWhisper, 480, -365)
+        place(U.offerDetail, 480, -112, 360, 230)
+        place(U.offerWhisper, 480, -350)
+        place(U.tradeContextText, 0, -382, 275, 32)
+        place(U.tradeContextBack, 285, -388, 190)
+        place(U.offerManageOwn, 485, -388, 220)
         U.tradeBack:Hide()
+        if U.RefreshTradeAdvanced then U.RefreshTradeAdvanced() end
+        if U.RefreshTradeContext then U.RefreshTradeContext() end
     end
     U.Refresh()
     if U.ApplyResponsiveLayout then
