@@ -21,9 +21,16 @@ function U.SetCraftView(v)
         U.materialPlanFrame:SetShown(U.craftView == 'materials')
         selectNav(U.craftMaterialsTab, U.craftView == 'materials')
     end
+    if U.craftOrderFilterBar then
+        U.craftOrderFilterBar:SetShown(U.craftView == 'orders' or U.craftView == 'materials')
+        selectNav(U.craftFilterAll, U.craftView == 'orders' and U.craftOrderFilter == 'all')
+        selectNav(U.craftFilterIncoming, U.craftView == 'orders' and U.craftOrderFilter == 'incoming')
+        selectNav(U.craftFilterOutgoing, U.craftView == 'orders' and U.craftOrderFilter == 'outgoing')
+        selectNav(U.craftFilterLists, U.craftView == 'materials')
+    end
     selectNav(U.craftSearchTab, U.craftView == 'search')
     selectNav(U.craftMineTab, U.craftView == 'mine')
-    selectNav(U.craftOrdersTab, U.craftView == 'orders')
+    selectNav(U.craftOrdersTab, U.craftView == 'orders' or U.craftView == 'materials')
     if U.materialBackOrders then
         U.materialBackOrders:SetShown(U.craftView == 'materials')
     end
@@ -39,6 +46,15 @@ function U.SetCraftView(v)
         U.RefreshMaterialPlans()
     end
     U.UpdateBadges()
+end
+function U.SetCraftOrderFilter(value)
+    if value == 'lists' then
+        U.SetCraftView('materials')
+        return
+    end
+    if value ~= 'all' and value ~= 'incoming' and value ~= 'outgoing' then value = 'all' end
+    U.craftOrderFilter = value
+    U.SetCraftView('orders')
 end
 function U.SetTradeView(v)
     local allowed = { browse = true, mine = true, rules = true, manage = true }

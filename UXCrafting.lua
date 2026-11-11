@@ -5,7 +5,7 @@ local A = Z.Adapter
 local T = Z.Theme
 local S = U.Shared
 local tr = S.tr
-local ORDER_TERMINAL, NAV_ICONS, rows, itemIcon, peerOnline = S.ORDER_TERMINAL, S.NAV_ICONS, S.rows, S.itemIcon, S.peerOnline
+local ORDER_TERMINAL, NAV_ICONS, rows, itemIcon, peerOnline, selectNav = S.ORDER_TERMINAL, S.NAV_ICONS, S.rows, S.itemIcon, S.peerOnline, S.selectNav
 
 local function recipeScanCoverage()
     local total, scanned = 0, 0
@@ -79,6 +79,8 @@ local function refreshProfessions()
         if not key or not profession then
             rows(U.professionRecipeList, {}, 40)
             U.professionRecipeTitle:SetText(tr('Recipes'))
+            for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
+                U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
             return
         end
         local c = catalog(key, profession)
@@ -158,6 +160,12 @@ local function refreshProfessions()
                 not own and selectedRecipe ~= nil and peerOnline(key) and Z.db.peers[key] and Z.db.peers[key].cap30
             )
         end
+        local hasRecipe = L.ValidRecipe(selectedRecipe)
+        for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
+            U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do
+            control:SetShown(hasRecipe)
+        end
+        if hasRecipe then U.RefreshCraftDetailMaterials() end
     end
     local valid = false
     local function addEntry(key, target, text, own, icon, profession, kind, recipe)
@@ -249,6 +257,8 @@ local function refreshProfessions()
     else
         rows(U.professionRecipeList, {}, 42)
         U.professionRecipeTitle:SetText(tr('Recipes'))
+        for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
+            U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
         U.professionDetail:SetText(
             #items == 0
                     and (q == '' and tr('Keine Handwerker entsprechen den Filtern.') or tr(
@@ -320,6 +330,59 @@ local function materialRow(row, perCraft)
             row.open,
             tostring(row.reservedElsewhere or unknown)
         )
+end
+local function sameCraftRecipe(a, b)
+    return a and b and a.id == b.id and a.itemID == b.itemID
+end
+function U.SaveCraftDetailShopping()
+    local recipe = U.professionRecipe
+    local crafts = tonumber(U.craftDetailCrafts:GetText())
+    if not L.ValidRecipe(recipe) then return nil, 'Recipe data is unavailable.' end
+    if not L.Int(crafts, 1, 100000) then return nil, 'Craft count must be 1 to 100000.' end
+    local existing = Z.MaterialPlanner.Get(U.craftDetailPlanID)
+    if existing and not existing.order and Z.MaterialPlanner.Active(existing)
+        and sameCraftRecipe(existing.recipe, recipe) and existing.crafts == crafts then
+        return existing.id
+    end
+    local copy = {}
+    for k, v in pairs(recipe) do copy[k] = v end
+    local id, err = Z.MaterialPlanner.BuildShoppingList(copy, crafts)
+    if id then U.craftDetailPlanID = id end
+    return id, err
+end
+function U.RefreshCraftDetailMaterials()
+    if not U.craftDetailMaterials or not U.professionRecipe then
+        if U.craftDetailMaterials then rows(U.craftDetailMaterials, {}, 48) end
+        return
+    end
+    local recipe, crafts = U.professionRecipe, tonumber(U.craftDetailCrafts:GetText())
+    local validCount = L.Int(crafts, 1, 100000)
+    local P, result, reason = Z.MaterialPlanner
+    local saved = P.Get(U.craftDetailPlanID)
+    if not L.ValidRecipe(recipe) then
+        reason = 'Recipe data is unavailable.'
+    elseif not validCount then
+        reason = 'Craft count must be 1 to 100000.'
+    elseif saved and not saved.order and P.Active(saved) and sameCraftRecipe(saved.recipe, recipe) and saved.crafts == crafts then
+        result = P.Progress(saved.id)
+    else
+        result, reason = P.Calculate(recipe, crafts, P.ReadInventory())
+    end
+    local items = {}
+    U.craftDetailMissingItem = nil
+    for _, row in ipairs(result and result.rows or {}) do
+        items[#items + 1] = { icon = itemIcon(row.itemID) or NAV_ICONS.crafting, text = materialRow(row, false) }
+        if not U.craftDetailMissingItem and (row.missing or 0) > 0 then U.craftDetailMissingItem = row.itemID end
+    end
+    if #items == 0 then items[1] = { text = tr(reason or result and result.reason or 'Recipe data is unavailable.') } end
+    rows(U.craftDetailMaterials, items, 62)
+    local inventory = P.ReadInventory()
+    local bagState = not inventory.known and tr('Bag contents could not be read. Unknown is not zero.')
+        or type(inventory.at) == 'number' and Z.T('Bags read at %s.', date('%d.%m.%Y %H:%M', inventory.at))
+        or tr('Bags read just now.')
+    U.craftDetailMaterialState:SetText(bagState .. ' · ' .. tr('Bags only; oldest active list reserves first.'))
+    U.craftDetailSaveList:SetEnabled(L.ValidRecipe(recipe) and validCount)
+    U.craftDetailOffers:SetEnabled(L.ValidRecipe(recipe) and validCount)
 end
 function U.SaveCraftShopping()
     local context = U.craftOrderContext
@@ -527,8 +590,24 @@ local function refreshCraftOrders()
     local items = {}
     local selected
     local includeClosed = U.craftShowCompleted and U.craftShowCompleted:GetChecked()
-    for _, order in ipairs(Z.CraftOrders.List()) do
+    local allOrders = Z.CraftOrders.List()
+    if U.craftOrderID and U.craftOrderFilter ~= 'all' then
+        for _, order in ipairs(allOrders) do
+            if order.key == U.craftOrderID and order.direction ~= U.craftOrderFilter then
+                U.craftOrderFilter = 'all'
+                break
+            end
+        end
+    end
+    if U.craftFilterAll then
+        selectNav(U.craftFilterAll, U.craftView == 'orders' and U.craftOrderFilter == 'all')
+        selectNav(U.craftFilterIncoming, U.craftView == 'orders' and U.craftOrderFilter == 'incoming')
+        selectNav(U.craftFilterOutgoing, U.craftView == 'orders' and U.craftOrderFilter == 'outgoing')
+        selectNav(U.craftFilterLists, U.craftView == 'materials')
+    end
+    for _, order in ipairs(allOrders) do
         if includeClosed or not ORDER_TERMINAL[order.state] then
+          if U.craftOrderFilter == 'all' or order.direction == U.craftOrderFilter then
             local token = order.key
             if token == U.craftOrderID then
                 selected = order
@@ -554,6 +633,7 @@ local function refreshCraftOrders()
                     refreshCraftOrders()
                 end,
             }
+          end
         end
     end
     U.SetEmptyHint(U.craftOrderList, 'No craft requests yet. Search a recipe and press Request crafting.')
