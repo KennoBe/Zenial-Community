@@ -215,8 +215,11 @@ function U.RefreshQuestGroups()
             noWrap = true,
             tooltip = names .. '\n' .. G.Explain(s),
             click = function()
+                local changed = U.questGroupKey ~= key
                 U.questGroupKey = key
-                U.questGroupMemberKey = s.members[1] and s.members[1].key or nil
+                if changed then
+                    U.questGroupMemberKey = s.members[1] and s.members[1].key or nil
+                end
                 U.RefreshQuestGroups()
             end,
         }

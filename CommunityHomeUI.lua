@@ -381,9 +381,8 @@ function U.CreateCommunityHome(helpers)
     button(U.pages[3],tr('Create activity'),630,0,220,U.OpenActivityCreator)
     button(U.pages[4],tr('Back to today'),630,-444,220,function()U.Navigate('today')end)
     button(U.pages[7],tr('Settings'),690,-444,160,function()U.Navigate('settings')end)
-    U.craftMaterialsTab:Hide()
     button(U.craftOrdersFrame,tr('All shopping lists'),495,-354,325,function()U.SetCraftView('materials')end)
-    U.materialBackOrders=button(U.pages[2],tr('Back to orders'),560,0,290,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()
+    U.materialBackOrders=button(U.pages[2],tr('Back to orders'),630,-444,220,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()
     U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

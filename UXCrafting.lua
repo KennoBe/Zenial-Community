@@ -137,6 +137,13 @@ local function refreshProfessions()
         if not online and selectedRecipe then
             U.professionDetail:SetText(U.professionDetail:GetText() .. '\n' .. tr('Saved recipe data (offline).'))
         end
+        if not own then
+            local received = Z.db.peers[key] and Z.db.peers[key].received
+            local profileState = not received and tr('No profile data received.')
+                or online and Z.T('Profile data from %s', date('%d.%m.%Y %H:%M', received))
+                or Z.T('Saved profile data from %s (player offline)', date('%d.%m.%Y %H:%M', received))
+            U.professionDetail:SetText(U.professionDetail:GetText() .. '\n' .. profileState)
+        end
         U.professionWhisper:SetEnabled(not own)
         if U.craftFavorite then
             local favorite = not own and Z.Social.IsFavorite(key)
@@ -428,6 +435,10 @@ function U.RefreshMaterialPlans(force)
     end
     local order = P.Order(selected)
     local state = P.State(selected)
+    local inventory = P.ReadInventory()
+    local bagState = not inventory.known and tr('Bag contents could not be read. Unknown is not zero.')
+        or type(inventory.at) == 'number' and Z.T('Bags read at %s.', date('%d.%m.%Y %H:%M', inventory.at))
+        or tr('Bags read just now.')
     local details = {
         { text = selected.recipe.name, height = 48 },
         {
@@ -439,6 +450,7 @@ function U.RefreshMaterialPlans(force)
             height = 32,
         },
         { text = tr('Ingredient list completeness is unverified.'), height = 36 },
+        { text = bagState, height = 36 },
         {
             text = tr('Bags only; oldest active list reserves first.') .. '\n' .. tr('Manual marks do not confirm inventory or handoff.'),
             height = 56,

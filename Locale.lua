@@ -956,6 +956,12 @@ DE["Quest log could not be read. Details are available in Diagnostics."]="Questl
 DE["%d days ago"]="vor %d Tagen"
 DE["Offline · recipes cannot be fetched"]="Offline · kein Rezeptabruf"
 DE["Saved recipe data (offline)."]="Gespeicherte Rezeptdaten (offline)."
+DE["Profile data from %s"]="Profildaten von %s"
+DE["Saved profile data from %s (player offline)"]="Gespeicherte Profildaten von %s (Spieler offline)"
+DE["No profile data received."]="Keine Profildaten empfangen."
+DE["Bag contents could not be read. Unknown is not zero."]="Beutelinhalt konnte nicht gelesen werden. Unbekannt ist nicht null."
+DE["Bags read at %s."]="Beutel gelesen um %s."
+DE["Bags read just now."]="Beutel gerade gelesen."
 
 DE["Layer ID %d"]="Layer-ID %d"
 DE["Layer unknown"]="Layer unbekannt"

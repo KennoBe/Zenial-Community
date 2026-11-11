@@ -23,7 +23,7 @@ function U.SetCraftView(v)
     end
     selectNav(U.craftSearchTab, U.craftView == 'search')
     selectNav(U.craftMineTab, U.craftView == 'mine')
-    selectNav(U.craftOrdersTab, U.craftView == 'orders' or U.craftView == 'materials')
+    selectNav(U.craftOrdersTab, U.craftView == 'orders')
     if U.materialBackOrders then
         U.materialBackOrders:SetShown(U.craftView == 'materials')
     end
