@@ -364,6 +364,19 @@ local function refreshOffers()
 end
 S.refreshOffers = refreshOffers
 function U.RefreshTradeAdvanced()
+    if U.compactArea == 'trade' then
+        U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
+        U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
+        U.tradeMaxPrice:Hide(); U.tradeMaxPrice.caption:Hide()
+        U.tradeSort.button:Hide(); U.tradeSort.caption:Hide()
+        U.tradeFilterSummary:Hide()
+        U.tradeAdvancedToggle:Hide()
+        U.tradeSaveSearch:Hide()
+        refreshOffers()
+        return
+    end
+    U.tradeAdvancedToggle:Show()
+    U.tradeSaveSearch:Show()
     if not U.tradeAdvancedOpen then
         U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
         U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
@@ -603,7 +616,7 @@ local function refreshTradeManage()
     end
     if matching then U.tradeOfferFilter = 'all' end
     for key, control in pairs(U.tradeFilterButtons or {}) do
-        control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
+        control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed offers',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
         control:SetEnabled(key ~= U.tradeOfferFilter)
     end
     if U.tradeLimitInfo then
@@ -668,6 +681,7 @@ S.refreshTradeManage = refreshTradeManage
 function U.SetTradeOfferFilter(key)
     local valid = { all=true, active=true, draft=true, paused=true, expired=true, completed=true, template=true }
     U.tradeOfferFilter = valid[key] and key or 'all'
+    U.tradeManageID = nil
     refreshTradeManage()
 end
 -- "My characters" lives in AccountOverviewUI.lua; kept as the shared refresh hook.
