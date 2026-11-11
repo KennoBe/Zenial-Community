@@ -173,8 +173,30 @@ function S.createGroupsPage(f)
         U.Message('Check the template name and save it below.')
     end)
     U.groupOwnTemplate:Hide()
-    U.groupApplicantCount = label(U.groupMineSummary, tr('Eigene Bewerber (0)'), 0, -120, 350, 'GameFontNormal')
-    U.groupApplicantList = list(U.groupMineSummary, 0, -143, 545, 205)
+    U.groupActiveTemplate = selector(U.groupMineSummary, 'Manage templates', 12, -111, 275, { 'Choose template' }, function(value)
+        U.groupActiveTemplateDelete:SetEnabled(Z.db.groupTemplates[value] ~= nil)
+    end)
+    U.groupActiveTemplateUse = button(U.groupMineSummary, 'Use template', 302, -111, 150, function()
+        local g = Z.GroupFinder.FromTemplate(U.groupActiveTemplate:GetText())
+        if not g then
+            U.Message('Choose a template first.')
+            return
+        end
+        local current = Z.db.lfg[1]
+        if current then g.id = current.id end
+        U.OpenGroupEditor(g)
+    end, 'primary')
+    U.groupActiveTemplateDelete = button(U.groupMineSummary, 'Delete template', 462, -111, 150, function()
+        local ok, err = Z.GroupFinder.DeleteTemplate(U.groupActiveTemplate:GetText())
+        U.Message(ok and 'Group template deleted.' or err)
+        if ok then
+            U.groupActiveTemplate:SetText('Choose template')
+            S.refreshGroupMine()
+        end
+    end, 'danger')
+    U.groupActiveTemplateDelete:SetEnabled(false)
+    U.groupApplicantCount = label(U.groupMineSummary, tr('Eigene Bewerber (0)'), 0, -151, 350, 'GameFontNormal')
+    U.groupApplicantList = list(U.groupMineSummary, 0, -174, 545, 205)
     U.groupAccept = button(U.groupMineSummary, tr('Annehmen & einladen'), 565, -143, 200, function()
         decideGroup('eingeladen')
     end)

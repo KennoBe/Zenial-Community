@@ -734,6 +734,12 @@ S.refreshGroupMine = function()
         if U.groupTemplateDelete then
             U.groupTemplateDelete:SetEnabled(Z.db.groupTemplates[U.groupTemplate:GetText()] ~= nil)
         end
+        if U.groupActiveTemplate then
+            U.groupActiveTemplate:SetOptions(names, U.groupActiveTemplate:GetText())
+            if U.groupActiveTemplateDelete then
+                U.groupActiveTemplateDelete:SetEnabled(Z.db.groupTemplates[U.groupActiveTemplate:GetText()] ~= nil)
+            end
+        end
     end
     if U.groupEditing then
         if U.groupEditID and (not g or g.id ~= U.groupEditID) then

@@ -29,8 +29,7 @@ local function center(f,height)
     f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,height)
 end
 local function showSelection(shown)
-    for _,f in ipairs({U.creatorTitle,U.creatorWhen,U.creatorKind,U.creatorGoal,U.creatorText,U.creatorContinue,U.creatorCancel})do H.showControl(f,shown)end
-    U.creatorHint:Hide()
+    for _,f in ipairs({U.creatorTitle,U.creatorWhen,U.creatorKind,U.creatorGoal,U.creatorText,U.creatorTemplate,U.creatorHint,U.creatorContinue,U.creatorCancel})do H.showControl(f,shown)end
 end
 function U.CaptureScheduledDraft()
     if not U.scheduledDate or U.activityStepBody~=U.scheduledEditor then return end
@@ -41,10 +40,10 @@ end
 function U.ShowActivityStep(step,body)
     if U.activityChanging then return end;U.activityChanging=true;if U.calendarPicker then U.calendarPicker:Hide()end;U.CloseDropdowns();clearInputs(activityInputs())
     if step==1 then U.CaptureScheduledDraft();U.groupEditing,U.questEditing=false,false end
-    U.activityStepBody=body
+    U.activityStepBody=body;U.activityStep=step
     for _,f in ipairs({U.groupForm,U.questForm,U.scheduledEditor})do f:SetShown(step==2 and f==body)end
     showSelection(step==1)
-    center(U.activityCreator,step==1 and 300 or 440)
+    center(U.activityCreator,step==1 and 380 or 440)
     if step==1 then U.creatorTitle:SetText(tr('Create activity')..' · '..tr('1/2 · Activity'));U.ConfigureActivityCreator()
     else body.formTitle:SetText(tr(body.formName)..' · '..tr(body.editorContext or(U.creatorFlow and '2/2 · Details'or'Details')))end
     U.activityCreator:Show();if U.Navigation then U.Navigation.Pristine('activityCreator') end;U.activityChanging=false
@@ -64,10 +63,12 @@ end
 function U.ApplyFormLayouts(helpers)
     H=helpers
     -- Activity selection and all three detail editors share one dialog host.
-    center(U.activityCreator,300)
+    center(U.activityCreator,380)
     field(U.creatorWhen,16,-66,300);field(U.creatorKind,334,-66,300)
     field(U.creatorGoal,16,-140,618);field(U.creatorText,16,-140,618)
-    place(U.creatorContinue,16,-252,294);place(U.creatorCancel,324,-252,310)
+    field(U.creatorTemplate,16,-206,618)
+    U.creatorHint:SetWidth(618);U.creatorHint:SetHeight(42);U.creatorHint:SetWordWrap(true)
+    place(U.creatorContinue,16,-324,294);place(U.creatorCancel,324,-324,310)
     U.creatorTitle:SetHeight(30)
     for _,f in ipairs({U.groupForm,U.questForm,U.scheduledEditor})do
         f:SetParent(U.activityCreator);f:SetFrameLevel(U.activityCreator:GetFrameLevel()+1)

@@ -165,20 +165,40 @@ function U.RefreshCommunityHome()
     local P=Z.SessionPlans;local state=P.State();refreshWishSummary(P,state)
     local home=B.Home();local items={}
     local function heading(text)items[#items+1]={text='|cffffd36b'..tr(text)..'|r',height=32}end
-    local function section(label,entries)
+    local function section(label,entries,emptyText)
         heading(tr(label)..' ('..#entries..')')
-        if#entries==0 then items[#items+1]={text=tr('No matching activities received.'),height=34}end
+        if#entries==0 then items[#items+1]={text=tr(emptyText),height=34}end
         for i,entry in ipairs(entries)do if i>20 then break end
             local r=entry.activity or entry;items[#items+1]={text=line(r)..(entry.reason and('\n'..Z.T('Matches wish %d',entry.priority))or'')..(entry.outside and('\n'..tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'))or''),height=entry.outside and 118 or 98,click=function()U.OpenActivity(r.key)end}
         end
         if#entries>20 then items[#items+1]={text=tr('More matches are available under Activities.'),height=40,click=function()U.Navigate('activities')end}end
     end
-    section('Now for you',home.now);section('Planned today',home.later);section('Your activities today',home.mine)
-    heading('Matching fellow players')
-    if#home.people==0 then items[#items+1]={text=tr('No verified matches in the considered candidates.'),height=42}end
-    for _,m in ipairs(home.people)do local member=m;items[#items+1]={text=m.target..' · '..tr(m.status)..'\n'..table.concat(m.reasons,'\n'),height=math.max(84,24*(1+#m.reasons)+12),click=function()
+    local relevant,appointments={},{}
+    for _,entry in ipairs(home.now)do relevant[#relevant+1]=entry end
+    for _,entry in ipairs(home.later)do
+        local r=entry.activity or entry
+        if r.kind=='EVENT' then appointments[#appointments+1]=entry else relevant[#relevant+1]=entry end
+    end
+    local appointmentKeys={}
+    for _,entry in ipairs(appointments)do local r=entry.activity or entry;appointmentKeys[r.key]=true end
+    for _,r in ipairs(home.mine)do if r.kind=='EVENT' and r.startsAt>A.Now()+120 and not appointmentKeys[r.key] then
+        local noAction=false
+        if r.own then
+            noAction=r.data and r.data.status=='OPEN'
+            if noAction then for _,participant in pairs(r.data.participants or{})do if participant.state=='REQUESTED'then noAction=false;break end end end
+        else
+            local following=Z.ScheduledGroups.Follow(r.owner,r.id)
+            noAction=following and(following.state=='CONFIRMED'or following.state=='WAITLIST')and not following.pending
+        end
+        if noAction then appointments[#appointments+1]=r;appointmentKeys[r.key]=true end
+    end end
+    table.sort(appointments,function(a,b)local x=a.activity or a;local y=b.activity or b;if x.startsAt~=y.startsAt then return x.startsAt<y.startsAt end;return x.key<y.key end)
+    section('Open own tasks',home.mine,'No open tasks today.')
+    section('Now relevant',relevant,'No matching activities received.')
+    for i,m in ipairs(home.people)do if i>3 then break end;local member=m;items[#items+1]={text=tr('Matching player')..': '..m.target..' · '..tr(m.status),height=36,click=function()
         if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
     end}end
+    section('Next appointments',appointments,'No upcoming appointments today.')
     H.rows(U.homeList,items,48)
     U.homeWishState:SetText(state=='active'and(P.store.mode=='DAY'and Z.T('%d private wishes for today',#P.store.wishes)or Z.T('%d private wishes · %d min remaining',#P.store.wishes,math.ceil((P.store.expiresAt-A.Now())/60)))
         or tr(state=='expired'and'Session expired. Save explicitly to start again.'or state=='unsupported'and'Saved session wishes use an unsupported version. Data was preserved.'or state=='unknown'and'Server time is unavailable.'or'Your wishes for today · private'))
@@ -191,9 +211,25 @@ end
 function U.ConfigureActivityCreator()
     local kind=U.creatorKind:GetText();local values=Z.GroupFinder.Activities[kind]or(kind=='QUEST'and{'Questing','Level together'}or{})
     U.creatorGoal:SetOptions(values,U.creatorGoal:GetText());H.showControl(U.creatorGoal,kind~='CUSTOM');H.showControl(U.creatorText,kind=='CUSTOM')
+    local names={};for name in pairs(Z.db.groupTemplates or{})do names[#names+1]=name end;table.sort(names)
+    if U.creatorTemplate then
+        local options={'Choose template'};for _,name in ipairs(names)do options[#options+1]=name end
+        U.creatorTemplate:SetOptions(options,U.creatorTemplate:GetText())
+        H.showControl(U.creatorTemplate,U.creatorWhen:GetText()=='NOW'and kind~='QUEST')
+    end
+    if U.creatorHint then
+        U.creatorHint:SetText(tr(U.creatorWhen:GetText()=='NOW'and'Creates a live request that you review before it is published.'or'Creates a scheduled event that others can apply to after you publish it.'))
+        U.creatorHint:SetShown(U.activityStep==1 or U.activityStepBody==nil)
+    end
 end
 function U.ContinueActivityCreator()
     local kind,when=U.creatorKind:GetText(),U.creatorWhen:GetText();local goal=kind=='CUSTOM'and U.creatorText:GetText()or U.creatorGoal:GetText()
+    local template=U.creatorTemplate and U.creatorTemplate:GetText()
+    if when=='NOW'and kind~='QUEST'and template and template~=''and template~='Choose template'then
+        local g=Z.GroupFinder.FromTemplate(template)
+        if not g then U.Message(tr('Choose a template first.'));return end
+        U.creatorFlow=true;U.OpenGroupEditor(g);return
+    end
     if not L.Text(goal,64)or not goal:find('%S')then U.Message(tr('Enter an activity.'));return end
     U.creatorFlow=true
     if when=='PLANNED'then U.OpenScheduledEditor(nil);U.scheduledActivity:SetText(goal);U.ConfigureScheduledActivity(kind,goal)
@@ -315,11 +351,12 @@ function U.CreateCommunityHome(helpers)
     button(board,tr('Create activity'),630,-408,220,U.OpenActivityCreator,'primary')
     U.activityCreator=H.panel(U.frame);local f=U.activityCreator;f:ClearAllPoints();f:SetPoint('CENTER');f:SetSize(650,330)
     U.creatorTitle=label(f,tr('Create activity'),16,-18,618,'GameFontNormalLarge')
-    U.creatorWhen=selector(f,'When',16,-66,300,{'NOW','PLANNED'},nil,function(v)return tr(v=='NOW'and'Now'or'Planned')end)
+    U.creatorWhen=selector(f,'When',16,-66,300,{'NOW','PLANNED'},U.ConfigureActivityCreator,function(v)return tr(v=='NOW'and'Now'or'Planned')end)
     U.creatorKind=selector(f,'Activity',334,-66,284,{'DUNGEON','RAID','PVP','QUEST','CUSTOM'},U.ConfigureActivityCreator,function(v)return tr(kindLabels[v])end)
     U.creatorGoal=selector(f,'Goal',16,-124,602,{})
     U.creatorText=edit(f,'Activity',16,-124,602,64)
-    U.creatorHint=label(f,'',16,-190,602);U.creatorHint:Hide()
+    U.creatorTemplate=selector(f,'Use template',16,-178,602,{'Choose template'},nil,function(v)return v end)
+    U.creatorHint=label(f,'',16,-272,602);U.creatorHint:SetHeight(42);U.creatorHint:SetWordWrap(true);U.creatorHint:Hide()
     U.creatorContinue=button(f,tr('Continue'),16,-272,294,U.ContinueActivityCreator,'primary');U.creatorCancel=button(f,tr('Cancel'),324,-272,294,function()f:Hide()end)
     H.makeModal(f);f:Hide()
     U.CreateSettings(helpers)
