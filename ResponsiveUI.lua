@@ -102,6 +102,7 @@ function U.ApplyResponsiveLayout(activePage)
         local titleY=145+recipeHeight;U.craftDetailMaterialsTitle:ClearAllPoints();U.craftDetailMaterialsTitle:SetPoint('TOPLEFT',495,-titleY)
         U.craftDetailMaterials:ClearAllPoints();U.craftDetailMaterials:SetPoint('TOPLEFT',495,-(titleY+22));U.craftDetailMaterials:SetHeight(65);U.craftDetailMaterials.height=65
         U.craftDetailMaterialState:ClearAllPoints();U.craftDetailMaterialState:SetPoint('TOPLEFT',0,-(titleY+91))
+        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',0,-(h-48-17));U.craftDetailCrafts.caption:SetWidth(U.craftDetailCrafts:GetWidth())
         U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',0,-(h-48))
         U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',100,-(h-48))
         U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',236,-(h-48))

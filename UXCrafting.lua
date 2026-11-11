@@ -80,7 +80,7 @@ local function refreshProfessions()
             rows(U.professionRecipeList, {}, 40)
             U.professionRecipeTitle:SetText(tr('Recipes'))
             for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
-                U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
+                U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
             return
         end
         local c = catalog(key, profession)
@@ -162,7 +162,7 @@ local function refreshProfessions()
         end
         local hasRecipe = L.ValidRecipe(selectedRecipe)
         for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
-            U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do
+            U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do
             control:SetShown(hasRecipe)
         end
         if hasRecipe then U.RefreshCraftDetailMaterials() end
@@ -258,7 +258,7 @@ local function refreshProfessions()
         rows(U.professionRecipeList, {}, 42)
         U.professionRecipeTitle:SetText(tr('Recipes'))
         for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
-            U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
+            U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
         U.professionDetail:SetText(
             #items == 0
                     and (q == '' and tr('Keine Handwerker entsprechen den Filtern.') or tr(
