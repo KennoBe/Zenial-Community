@@ -99,7 +99,7 @@ function U.RefreshScheduledGroups()
     U.scheduledStoreState:SetText(tr(not S.store and'Saved scheduled groups are unavailable. Data was preserved.'or S.loadError and'Invalid scheduled data was rejected.'or''))
     local e=selected();local own=e and e.ownerKey==Z.me.key
     local storeUnavailable=U.scheduledStoreState:GetText()~=''
-    U.scheduledReminderHint:Hide()
+    U.scheduledReminderHint:SetShown(e~=nil and not own and not storeUnavailable)
     U.scheduledConfirmHint:SetShown(not storeUnavailable and own==true)
     U.scheduledRecreate:SetShown(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
     U.scheduledRecreate:SetEnabled(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
