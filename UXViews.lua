@@ -11,7 +11,14 @@ local refreshCharacters = S.refreshCharacters
 
 function U.SetCraftView(v)
     local allowed = { search = true, mine = true, orders = true, materials = true }
-    U.craftView = allowed[v] and v or 'search'
+    v = allowed[v] and v or 'search'
+    if v ~= U.craftView and U.craftOrderForm and U.craftOrderForm:IsShown()
+        and U.Navigation and U.Navigation.UnsavedInput() == 'craftOrderForm'
+    then
+        U.Message(U.Navigation.TEXT['unsaved-input'])
+        return false
+    end
+    U.craftView = v
     U.craftSearchFrame:SetShown(U.craftView == 'search')
     U.craftMineFrame:SetShown(U.craftView == 'mine')
     if U.craftOrdersFrame then

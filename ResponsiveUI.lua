@@ -96,6 +96,7 @@ function U.ApplyResponsiveLayout(activePage)
         end
     end end
     if U.compactArea=='craft'and(not activePage or activePage==U.pages[2])then
+        if U.LayoutCraftOrderForm then U.LayoutCraftOrderForm()end
         local parent=U.craftSearchFrame;local h=parent:GetHeight()
         local recipeHeight=math.max(70,math.min(100,h-290));U.professionRecipeList:SetHeight(recipeHeight);U.professionRecipeList.height=recipeHeight
         local titleY=145+recipeHeight;U.craftDetailMaterialsTitle:ClearAllPoints();U.craftDetailMaterialsTitle:SetPoint('TOPLEFT',495,-titleY)

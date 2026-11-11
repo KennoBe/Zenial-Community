@@ -316,6 +316,7 @@ function N.Return(token)
     U.materialPlanID, U.materialItemID, U.materialFindID = p.materialPlanID, p.materialItemID, p.materialFindID
     local contact = Z.db.contacts[p.peerKey]
     U.craftOrderContextText:SetText(Z.T('Request from %s: %s', contact.target or p.peerKey, p.recipeRef.name))
+    U.LayoutCraftOrderForm()
     U.craftOrderForm:Show()
     -- The context must exist before the craft count changes (its OnTextChanged refreshes the ingredients).
     U.craftOrderQuantity:SetText(p.quantityText)
