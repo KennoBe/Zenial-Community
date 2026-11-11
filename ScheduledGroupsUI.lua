@@ -99,7 +99,7 @@ function U.RefreshScheduledGroups()
     U.scheduledStoreState:SetText(tr(not S.store and'Saved scheduled groups are unavailable. Data was preserved.'or S.loadError and'Invalid scheduled data was rejected.'or''))
     local e=selected();local own=e and e.ownerKey==Z.me.key
     local storeUnavailable=U.scheduledStoreState:GetText()~=''
-    U.scheduledReminderHint:SetShown(not storeUnavailable and e~=nil and not own)
+    U.scheduledReminderHint:Hide()
     U.scheduledConfirmHint:SetShown(not storeUnavailable and own==true)
     U.scheduledRecreate:SetShown(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
     U.scheduledRecreate:SetEnabled(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
@@ -113,6 +113,7 @@ function U.RefreshScheduledGroups()
     local following=S.Follow(e.ownerKey,e.id);local used=e.participants and S.Counts(e)or e.used
     local details={{text=U.ActivityName(e.activity)..' · '..S.StateLabel(e.status),height=40},{text=T.Format(e.startsAt)..' – '..T.Format(e.endsAt),height=56},
         {text=tr(S.Reach(e.ownerKey))..'\n'..S.Participation(e.ownerKey,e.id),height=48}}
+    if not own and not storeUnavailable then details[#details+1]={text=tr('Local reminders run only while WoW and the addon are running.'),height=36}end
 
     local free={};for _,role in ipairs({'TANK','HEALER','DAMAGER'})do free[#free+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
     details[#details+1]={text=tr('Free roles: ')..table.concat(free,' · '),height=40}

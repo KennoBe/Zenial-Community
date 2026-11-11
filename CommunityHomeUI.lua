@@ -181,19 +181,24 @@ function U.RefreshCommunityHome()
     end
     local appointmentKeys={}
     for _,entry in ipairs(appointments)do local r=entry.activity or entry;appointmentKeys[r.key]=true end
-    for _,r in ipairs(home.mine)do if r.kind=='EVENT' and r.startsAt>A.Now()+120 and not appointmentKeys[r.key] then
-        local noAction=false
-        if r.own then
-            noAction=r.data and r.data.status=='OPEN'
-            if noAction then for _,participant in pairs(r.data.participants or{})do if participant.state=='REQUESTED'then noAction=false;break end end end
-        else
-            local following=Z.ScheduledGroups.Follow(r.owner,r.id)
-            noAction=following and(following.state=='CONFIRMED'or following.state=='WAITLIST')and not following.pending
-        end
-        if noAction then appointments[#appointments+1]=r;appointmentKeys[r.key]=true end
-    end end
+    local tasks={}
+    for _,r in ipairs(home.mine)do
+        if r.kind=='EVENT' and r.startsAt>A.Now()+120 then
+            if not appointmentKeys[r.key] then
+                local noAction=false
+                if r.own then
+                    noAction=r.data and r.data.status=='OPEN'
+                    if noAction then for _,participant in pairs(r.data.participants or{})do if participant.state=='REQUESTED'then noAction=false;break end end end
+                else
+                    local following=Z.ScheduledGroups.Follow(r.owner,r.id)
+                    noAction=following and(following.state=='CONFIRMED'or following.state=='WAITLIST')and not following.pending
+                end
+                if noAction then appointments[#appointments+1]=r;appointmentKeys[r.key]=true else tasks[#tasks+1]=r end
+            end
+        else tasks[#tasks+1]=r end
+    end
     table.sort(appointments,function(a,b)local x=a.activity or a;local y=b.activity or b;if x.startsAt~=y.startsAt then return x.startsAt<y.startsAt end;return x.key<y.key end)
-    section('Open own tasks',home.mine,'No open tasks today.')
+    section('Open own tasks',tasks,'No open tasks today.')
     section('Now relevant',relevant,'No matching activities received.')
     for i,m in ipairs(home.people)do if i>3 then break end;local member=m;items[#items+1]={text=tr('Matching player')..': '..m.target..' · '..tr(m.status),height=36,click=function()
         if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
@@ -355,7 +360,7 @@ function U.CreateCommunityHome(helpers)
     U.creatorKind=selector(f,'Activity',334,-66,284,{'DUNGEON','RAID','PVP','QUEST','CUSTOM'},U.ConfigureActivityCreator,function(v)return tr(kindLabels[v])end)
     U.creatorGoal=selector(f,'Goal',16,-124,602,{})
     U.creatorText=edit(f,'Activity',16,-124,602,64)
-    U.creatorTemplate=selector(f,'Use template',16,-178,602,{'Choose template'},nil,function(v)return v end)
+    U.creatorTemplate=selector(f,'Use template',16,-178,602,{'Choose template'},nil,function(v)return v=='Choose template'and tr(v)or v end)
     U.creatorHint=label(f,'',16,-272,602);U.creatorHint:SetHeight(42);U.creatorHint:SetWordWrap(true);U.creatorHint:Hide()
     U.creatorContinue=button(f,tr('Continue'),16,-272,294,U.ContinueActivityCreator,'primary');U.creatorCancel=button(f,tr('Cancel'),324,-272,294,function()f:Hide()end)
     H.makeModal(f);f:Hide()
