@@ -76,7 +76,7 @@ function U.RefreshActivityBoard()
     U.activityPrev:SetEnabled(U.activityPage>1);U.activityNext:SetEnabled(U.activityPage<pages);U.activityOpen:SetEnabled(selected~=nil)
     local actions=selected and U.ActivityActionState(selected)or{}
     local foreign=selected and not selected.own
-    for _,button in ipairs({U.activityInlineJoin,U.activityInlineWithdraw,U.activityInlineWhisper,U.activityInlineDiary,U.activityInlineEdit,U.activityManageApplicants})do button:SetShown(selected~=nil and (foreign and button~=U.activityInlineEdit and button~=U.activityManageApplicants or selected.own and(button==U.activityInlineEdit or button==U.activityManageApplicants) and (button~=U.activityManageApplicants or selected.kind~='PVP')))end
+    for _,button in ipairs({U.activityInlineJoin,U.activityInlineWithdraw,U.activityInlineWhisper,U.activityInlineDiary,U.activityInlineEdit,U.activityManageApplicants})do button:SetShown(selected~=nil and (foreign and button~=U.activityInlineEdit and button~=U.activityManageApplicants or selected.own and(button==U.activityInlineEdit or button==U.activityManageApplicants) and (button~=U.activityInlineEdit or selected.kind~='PVP') and (button~=U.activityManageApplicants or selected.kind~='PVP')))end
     U.activityInlineJoin:SetEnabled(actions.join==true);U.activityInlineWithdraw:SetEnabled(actions.withdraw==true)
     U.activityInlineWhisper:SetEnabled(actions.whisper==true);U.activityInlineDiary:SetEnabled(actions.diary==true);U.activityInlineEdit:SetEnabled(actions.edit==true)
     U.activityManageApplicants:SetEnabled(actions.manage==true)
