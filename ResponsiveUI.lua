@@ -98,15 +98,17 @@ function U.ApplyResponsiveLayout(activePage)
     if U.compactArea=='craft'and(not activePage or activePage==U.pages[2])then
         if U.LayoutCraftOrderForm then U.LayoutCraftOrderForm()end
         local parent=U.craftSearchFrame;local h=parent:GetHeight()
-        local recipeHeight=math.max(70,math.min(100,h-290));U.professionRecipeList:SetHeight(recipeHeight);U.professionRecipeList.height=recipeHeight
+        local recipeHeight=math.max(70,math.min(80,h-290));U.professionRecipeList:SetHeight(recipeHeight);U.professionRecipeList.height=recipeHeight
         local titleY=145+recipeHeight;U.craftDetailMaterialsTitle:ClearAllPoints();U.craftDetailMaterialsTitle:SetPoint('TOPLEFT',495,-titleY)
         U.craftDetailMaterials:ClearAllPoints();U.craftDetailMaterials:SetPoint('TOPLEFT',495,-(titleY+22));U.craftDetailMaterials:SetHeight(65);U.craftDetailMaterials.height=65
         U.craftDetailMaterialState:ClearAllPoints();U.craftDetailMaterialState:SetPoint('TOPLEFT',0,-(titleY+91))
-        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',0,-(h-48-17));U.craftDetailCrafts.caption:SetWidth(U.craftDetailCrafts:GetWidth())
-        U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',0,-(h-48))
-        U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',100,-(h-48))
-        U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',236,-(h-48))
-        for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-(h-12))end
+        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',0,-(h-84-17));U.craftDetailCrafts.caption:SetSize(345,16)
+        U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',0,-(h-84))
+        U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',100,-(h-84))
+        U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',236,-(h-84))
+        for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-(h-38))end
+    elseif not activePage or activePage==U.pages[2]then
+        U.professionRecipeList:SetHeight(70);U.professionRecipeList.height=70
     end
     if U.RefreshMemberCategories and(not activePage or activePage==U.pages[1])then U.RefreshMemberCategories()end
     if U.RefreshMembersPageLayout and(not activePage or activePage==U.pages[1])then

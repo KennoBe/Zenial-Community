@@ -187,10 +187,10 @@ function U.ApplyFormLayouts(helpers)
     place(U.homeWishClose,16,-392,618)
     -- Crafting and material forms keep the same field baselines and footer.
     U.LayoutCraftOrderForm()
-    place(U.craftOrderTitle,16,-8,824,24);place(U.craftOrderContextText,16,-32,824,28)
+    place(U.craftOrderTitle,16,0,824,24);place(U.craftOrderContextText,16,-28,824,24)
     field(U.craftOrderQuantity,16,-56,190);field(U.craftOrderTip,220,-56,190)
     place(U.craftOrderMaterials,432,-72);place(U.craftOrderMaterials.text,459,-76,270,36)
-    field(U.craftMaterialCount,16,-112,190)
+    field(U.craftMaterialCount,16,-116,190)
     U.craftYieldNote:SetText(tr('Craft count is the number of crafting operations.'))
     place(U.craftYieldNote,220,-114,560,38);place(U.craftIngredientTitle,16,-174,824,20)
     place(U.craftIngredientList,16,-194,792,44);U.craftIngredientList.height=44
