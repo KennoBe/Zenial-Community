@@ -164,17 +164,19 @@ function S.RefreshInvite()
 end
 function S.ShowInvite()
     if not S.linkFrame then
-        local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
+        local f=CreateFrame("Frame","ZenialCommunityInvite",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
         label(f,"Click the text field, then press Ctrl+A and Ctrl+C.",15,-15,720,35)
         S.linkName=label(f,"",15,-52,620,24)
         S.linkPrevious=button(f,"<",655,-49,32,function()S.linkGroupIndex=(S.linkGroupIndex-2)%#S.invitationRows+1;S.RefreshInvite()end)
         S.linkNext=button(f,">",695,-49,32,function()S.linkGroupIndex=S.linkGroupIndex%#S.invitationRows+1;S.RefreshInvite()end)
         S.linkEdit=edit(f,15,-86,720,180,false)
+        S.linkEdit:SetScript("OnEscapePressed",function()f:Hide()end)
         S.linkEdit:SetScript("OnEditFocusGained",function(self)self:HighlightText()end)
         S.linkEdit:SetScript("OnMouseUp",function(self)self:HighlightText()end)
         S.linkEdit:SetScript("OnTextChanged",function(self)if S.invitationLink and self:GetText()~=S.invitationLink then self:SetText(S.invitationLink)end end)
         button(f,"Select all",15,-153,130,function()S.SelectText(S.linkEdit)end)
         button(f,"Close",625,-153,110,function()f:Hide()end);f:SetScript("OnHide",function()S.linkEdit:ClearFocus()end)
+        if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityInvite"end
     end
     local links={};for _,id in ipairs(D.config.assignment)do for _,row in ipairs(D.config.groups)do if row.id==id then links[#links+1]=row end end end
     if#links==0 then links[1]={name=D.DISPLAY_NAME,invite=D.BOOTSTRAP_INVITE}end
