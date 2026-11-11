@@ -53,6 +53,14 @@ function U.SetCraftOrderFilter(value)
         return
     end
     if value ~= 'all' and value ~= 'incoming' and value ~= 'outgoing' then value = 'all' end
+    if value ~= 'all' and U.craftOrderID and Z.CraftOrders then
+        for _, order in ipairs(Z.CraftOrders.List()) do
+            if order.key == U.craftOrderID and order.direction ~= value then
+                U.craftOrderID = nil
+                break
+            end
+        end
+    end
     U.craftOrderFilter = value
     U.SetCraftView('orders')
 end
