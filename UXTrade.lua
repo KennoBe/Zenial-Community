@@ -584,6 +584,7 @@ local TRADE_DELETE = {
     expired = 'Delete archived entry',
     template = 'Delete template',
 }
+local tradeFilterChangeInProgress = false
 local function refreshTradeManage()
     if not U.tradeManageList then
         return
@@ -614,7 +615,7 @@ local function refreshTradeManage()
     for _, entry in ipairs(entries) do
         if U.tradeManageID == entry.state .. '\0' .. entry.id and U.tradeOfferFilter ~= 'all' and U.tradeOfferFilter ~= entry.state then matching = true end
     end
-    if matching then U.tradeOfferFilter = 'all' end
+    if matching and not tradeFilterChangeInProgress then U.tradeOfferFilter = 'all' end
     for key, control in pairs(U.tradeFilterButtons or {}) do
         control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed offers',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
         control:SetEnabled(key ~= U.tradeOfferFilter)
@@ -681,8 +682,13 @@ S.refreshTradeManage = refreshTradeManage
 function U.SetTradeOfferFilter(key)
     local valid = { all=true, active=true, draft=true, paused=true, expired=true, completed=true, template=true }
     U.tradeOfferFilter = valid[key] and key or 'all'
-    U.tradeManageID = nil
+    local selected = U.tradeManageSelected
+    if selected and U.tradeOfferFilter ~= 'all' and U.tradeOfferFilter ~= selected.state then
+        U.tradeManageID = nil
+    end
+    tradeFilterChangeInProgress = true
     refreshTradeManage()
+    tradeFilterChangeInProgress = false
 end
 -- "My characters" lives in AccountOverviewUI.lua; kept as the shared refresh hook.
 local function refreshCharacters()
