@@ -936,6 +936,13 @@ DE["Technical details"]="Technische Details"
 DE["Hide technical details"]="Technische Details ausblenden"
 DE["Status and account-wide export; includes all characters, chat, and private notes."]="Status und accountweiter Export; umfasst alle Charaktere, Chat und private Notizen."
 
+DE["Disabled"]="Ausgeschaltet"
+DE["Export stopped"]="Export angehalten"
+DE["Chat logging required"]="Chatlogging erforderlich"
+DE["Connection probe"]="Verbindungsprobe"
+DE["Export active"]="Export aktiv"
+DE["Account-wide export for all characters, including chat and private notes."]="Accountweiter Export für alle Charaktere, einschließlich Chat und privater Notizen."
+
 local reverse={}
 DE["Find"]="Finden"
 DE["My Offers"]="Meine Angebote"

@@ -107,13 +107,12 @@ function U.SetSettingsView(v, skipRoute)
     end
     if U.settingsCompanionSummary and Z.Companion and Z.Companion.Status then
         local status = Z.Companion.Status()
-        local states = { disabled = { 'Ausgeschaltet', 'Disabled' }, blocked = { 'Export angehalten', 'Export stopped' },
-            ['logging-required'] = { 'Chatlogging erforderlich', 'Chat logging required' }, probing = { 'Verbindungsprobe', 'Connection probe' },
-            unverified = { 'Export aktiv', 'Export active' } }
+        local states = { disabled = 'Disabled', blocked = 'Export stopped',
+            ['logging-required'] = 'Chat logging required', probing = 'Connection probe',
+            unverified = 'Export active' }
         local current = states[status.state] or { status.state, status.state }
-        U.settingsCompanionSummary:SetText(tr('Status: ', 'Status: ') .. tr(current[1], current[2]) .. ' · '
-            .. tr('Accountweiter Export für alle Charaktere, einschließlich Chat und privater Notizen.',
-                'Account-wide export for all characters, including chat and private notes.'))
+        U.settingsCompanionSummary:SetText(tr('Status: ') .. tr(current[1] or current) .. ' · '
+            .. tr('Account-wide export for all characters, including chat and private notes.'))
     end
     if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
