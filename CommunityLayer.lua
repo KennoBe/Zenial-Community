@@ -8,7 +8,7 @@
 -- locally and for the legacy LY record that older clients still compare.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local C={TTL=300,SAMPLE_TTL=60,MAX_ROWS=5000,EVENT_DELAY=.5,MAX_SEEN=64,WINDOW=5,CONFIRM_VOTES=2,SWITCH_VOTES=3,
-    TRANSFER_IGNORE=10,RESCAN={2,5,12},ALGORITHM=2};Z.CommunityLayer=C
+    TRANSFER_IGNORE=10,BORDER_IGNORE=15,RESCAN={2,5,12},ALGORITHM=2};Z.CommunityLayer=C
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local function cleanLayer(value)return L.Int(value,1,4294967295)and value or nil end
 local function cleanCall(id,rev,mapID,layerID)
@@ -219,8 +219,9 @@ local function invalidate()
     if C.own then C.stale={layerID=C.own.layerID,zoneMapID=C.own.zoneMapID,observedAt=C.own.at};C.own=nil;C.changed=true end
     C.window={};C.windowZone=nil;C.seen=nil
 end
--- Deterministic vote: highest count, ties to the most recent vote; no pairs()
--- order is ever used for the decision.
+-- Deterministic vote: highest count; `unique` is true only if that count is
+-- strictly greater than every other layer's (a tie is never a majority). No
+-- pairs() order is ever used for the decision.
 local function tally(window)
     local votes,last,order={}, {}, {}
     for index,entry in ipairs(window)do
@@ -231,7 +232,9 @@ local function tally(window)
     for _,layer in ipairs(order)do
         if not best or votes[layer]>votes[best]or votes[layer]==votes[best]and last[layer]>last[best]then best=layer end
     end
-    return votes,last,best
+    local unique=best~=nil
+    for _,layer in ipairs(order)do if layer~=best and votes[layer]>=votes[best]then unique=false end end
+    return votes,last,best,unique
 end
 local function observe(zone,found,now,clock)
     local ignore=C.ignore and clock<C.ignore.untilAt and C.ignore.guids or nil
@@ -250,12 +253,12 @@ local function observe(zone,found,now,clock)
         end
     end
     C.window=window
-    local votes,last,best=tally(window);local current=C.own and C.own.zoneMapID==zone and C.own.layerID or nil
+    local votes,last,best,unique=tally(window);local current=C.own and C.own.zoneMapID==zone and C.own.layerID or nil
     local target
     if current then
-        if best and best~=current and votes[best]>=C.SWITCH_VOTES and votes[best]>(votes[current]or 0)then target=best
+        if best and unique and best~=current and votes[best]>=C.SWITCH_VOTES and votes[best]>(votes[current]or 0)then target=best
         elseif fresh[current]then C.own.at=now end
-    elseif best and votes[best]>=C.CONFIRM_VOTES then target=best end
+    elseif best and unique and votes[best]>=C.CONFIRM_VOTES then target=best end
     if target then
         C.own={layerID=target,zoneUID=window[last[target]].zoneUID,zoneMapID=zone,at=now};C.stale=nil;C.changed=true
     end
@@ -319,11 +322,15 @@ end
 -- A shard transfer moves the player to another layer. NPCs seen before it must
 -- not confirm the old layer again for a short time; the cache is dropped and
 -- targeted rescans follow.
-local function transfer()
+local function lockKnown(duration)
     local clock=A.Clock();local guids=C.ignore and clock<C.ignore.untilAt and C.ignore.guids or{}
     for _,entry in ipairs(C.window or{})do guids[entry.guid]=true end
     local zone,visible=scan();if zone then for _,entry in ipairs(visible)do guids[entry.guid]=true end end
-    C.ignore={guids=guids,untilAt=clock+C.TRANSFER_IGNORE}
+    C.ignore={guids=guids,untilAt=math.max(clock+duration,C.ignore and C.ignore.untilAt or 0)}
+    return clock
+end
+local function transfer()
+    local clock=lockKnown(C.TRANSFER_IGNORE)
     invalidate();C.zoneCache=nil;scheduleRescans();C.nextScan=clock+1
 end
 -- Events only invalidate the local sample and request a rescan. Publishing is
@@ -334,7 +341,9 @@ function C.OnEvent(event)
         -- Subzone changes keep zone and layer; rescan without dropping the sample.
         C.nextScan=0;return
     end
-    if event=="SHARD_TRANSFER"or event=="SHARD_TRANSFER_IMMINENT"then transfer();return end
+    -- SHARD_TRANSFER_IMMINENT only announces a transfer; the layer stays valid until it happens.
+    if event=="SHARD_TRANSFER"then transfer();return end
+    if event=="SHARD_TRANSFER_IMMINENT"then return end
     if event=="GROUP_ROSTER_UPDATE"then
         -- Joining or leaving a group can move the player, but the roster is no
         -- proof of a layer change: only rescan and let the votes decide.
@@ -342,6 +351,8 @@ function C.OnEvent(event)
         scheduleRescans();C.nextScan=0;return
     end
     if event=="PLAYER_ENTERING_WORLD"or event=="ZONE_CHANGED_NEW_AREA"then
+        -- Units carried over the border still belong to the old zone's layer; only new NPCs may vote at once.
+        if event=="ZONE_CHANGED_NEW_AREA"then lockKnown(C.BORDER_IGNORE)end
         invalidate();C.zoneCache=nil;C.changed=true;C.nextScan=0
     end
 end
