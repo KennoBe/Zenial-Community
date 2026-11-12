@@ -322,16 +322,11 @@ local function materialRow(row, perCraft)
     local title = perCraft and (row.perCraft .. ' × ' .. materialName(row.itemID)) or materialName(row.itemID)
     local summary = Z.T('Need %d · Available %s · Missing %s', row.needed,
         tostring(row.allocated or unknown), tostring(row.missing or unknown))
-    local details = Z.T(
-        'Need %d · Bags %s · Allocated %s · Missing %s',
-        row.needed,
-        tostring(row.available or unknown),
-        tostring(row.allocated or unknown),
-        tostring(row.missing or unknown)
-    ) .. '\n' .. Z.T('Marked %d · Still unconfirmed %d · Reserved elsewhere %s',
-        row.manual, row.open, tostring(row.reservedElsewhere or unknown))
-        .. '\n' .. tr('Bags only; oldest active list reserves first.')
-        .. '\n' .. Z.T('Available %s for this list', tostring(row.allocated or unknown))
+    local details = row.available == nil and tr('Bag quantity unknown.')
+        or Z.T('In bags: %s', tostring(row.available))
+    if (row.reservedElsewhere or 0) > 0 then
+        details = details .. '\n' .. Z.T('Reserved for other lists: %s', tostring(row.reservedElsewhere))
+    end
     return title .. '\n' .. summary, details
 end
 local function sameCraftRecipe(a, b)

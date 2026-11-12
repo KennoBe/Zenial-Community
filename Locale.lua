@@ -121,6 +121,9 @@ local DE={
     ["Save list"]="Liste speichern",
     ["Offers"]="Angebotsliste",
     ["Need %d · Available %s · Missing %s"]="Benötigt %d · Verfügbar %s · Fehlt %s",
+    ["Bag quantity unknown."]="Taschenbestand unbekannt.",
+    ["In bags: %s"]="In Taschen: %s",
+    ["Reserved for other lists: %s"]="Für andere Listen reserviert: %s",
     ["Available %s for this list"]="Für diese Liste vorgemerkt: %s",
     ["Crafts to plan"]="Herstellungen",
     ["Set craft count explicitly; recipe yield is unknown."]="Lege die Zahl der Herstellungen selbst fest; die Rezeptausbeute ist unbekannt.",
@@ -1244,11 +1247,73 @@ DE["Past contacts and requests"]="Vergangene Kontakte und Anfragen"
 DE["Settings of your installed ZENIAL addons"]="Einstellungen deiner installierten ZENIAL-Addons"
 DE["Your wishes, open tasks and next appointments"]="Deine Wünsche, offenen Aufgaben und nächsten Termine"
 DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge und Daten"
+-- English display copy is separate from stable source keys and stored values.
+local EN={
+    ["%d characters taken over from ZENIAL Utility, %d not assignable."]="%d characters imported from ZENIAL Utility; %d could not be matched safely.",
+    ["%d matches · %d contacts left to check"]="%d matches · %d contacts not checked yet",
+    ["%d not assignable"]="%d could not be matched safely",
+    ["%s has not been seen with ZENIAL yet."]="ZENIAL has not recorded %s yet.",
+    ["%s is offline; no current snapshot."]="%s is offline. Offer data may be out of date.",
+    ["Available %s for this list"]="Set aside for this list: %s",
+    ["Bag and bank recording must be on. Bank contents exist only after you opened the bank while recording. Saved amounts can be older than your current inventory."]="Turn on bag and bank recording. Bank data is saved only when you open the bank while recording. Saved amounts may be out of date.",
+    ["Bag contents could not be read. Unknown is not zero."]="Bag contents could not be read, so the quantity is unknown—not zero.",
+    ["Bags only; oldest active list reserves first."]="Bag stock is shared between lists; older lists take priority.",
+    ["Bags read at %s."]="Bags last checked: %s.",
+    ["Bags read just now."]="Bags checked just now.",
+    ["Bank never opened while recording."]="No bank data saved. Open the bank while recording is on to capture it.",
+    ["Choose one to four upcoming instances."]="Choose 1 to 4 upcoming dates.",
+    ["Crafts for material planning"]="Number of crafts",
+    ["Crafts to plan"]="Number of crafts",
+    ["Create reviewed instances"]="Create the reviewed events",
+    ["Ingredient list completeness is unverified."]="This ingredient list may be incomplete.",
+    ["Local time conversion is unavailable or this clock time does not exist. Use an explicit UTC time."]="That local time is invalid or unavailable. Enter a UTC time instead.",
+    ["Local time conversion is unavailable."]="This local time cannot be converted.",
+    ["Main and alts as declared by their addon; not verified."]="Main and alt links are reported by the addon and have not been verified.",
+    ["Manual marks do not confirm inventory or handoff."]="Checked items are not proof of ownership or delivery.",
+    ["Marked %d · Still unconfirmed %d · Reserved elsewhere %s"]="Marked %d · Not yet confirmed %d · Reserved for other lists %s",
+    ["Matching requires addon exchange. Wishes stay private."]="Finding matches requires addon exchange. Your wishes stay private.",
+    ["Matching uses existing shared quests."]="Matches use quests players have already shared.",
+    ["Need %d · Bags %s · Allocated %s · Missing %s"]="Needed %d · In bags %s · For this list %s · Missing %s",
+    ["New templates are created in the group form. Templates remain local and do not publish a group."]="Create templates in the group form. They stay private and do not publish a group.",
+    ["No matching members. Save a session wish above so players can be matched."]="No players match your wishes yet. Save a session wish above to find players.",
+    ["No verified matches in the considered candidates."]="No matches among the players checked so far.",
+    ["Nothing stored locally. Drafts, templates and finished offers appear after you create an offer."]="No offers saved yet. Drafts, templates, and completed offers will appear here.",
+    ["Number of instances"]="Number of dates",
+    ["Offer is no longer in the latest snapshot of %s."]="This offer is no longer listed in %s's latest data.",
+    ["Old orders use your exact local recipe, if available."]="Older orders use your saved recipe, if available.",
+    ["Only known from the data taken over from ZENIAL Utility. Log in with this character to record more."]="This character's data was imported from ZENIAL Utility. Log in as this character to record more.",
+    ["Organizer offline or not directly reachable"]="The organizer is offline or cannot be contacted right now.",
+    ["Player availability is unknown."]="We do not know whether this player is available.",
+    ["Preview one to four future dates. New instances are private drafts with empty participant lists. No background recurrence."]="Preview 1 to 4 dates. They become private drafts with no participants and will not repeat automatically.",
+    ["Private and local. Never shared."]="Stored on this computer. Never shared.",
+    ["Queued operation"]="Action queued",
+    ["Recording is off. Turn it on to update each character at login."]="Recording is off. Turn it on to update each character when you log in.",
+    ["Reported online; not directly reachable"]="Reported online, but no direct connection is available.",
+    ["Same guild"]="Guild",
+    ["Save a private draft, then publish it explicitly. Times are stored as UTC."]="Save a private draft, then publish it. Times are stored in UTC.",
+    ["Saved confirmation; organizer verification is pending."]="Your response is saved, but the organizer has not confirmed it yet.",
+    ["Saved material plans use an unsupported version. Data was preserved."]="These shopping lists use an unsupported version. They were kept unchanged.",
+    ["Saved scheduled groups are unavailable. Data was preserved."]="Saved events could not be read. Your data was kept.",
+    ["Saved state; verification pending"]="Saved status; not checked with the organizer yet.",
+    ["Saves locally without publishing the group."]="This template is saved on this computer and does not publish a group.",
+    ["Scheduled revision limit reached."]="Too many changes to this event.",
+    ["Select a member to see the evidence."]="Choose a player to see why they match.",
+    ["Select all, then Ctrl+C. Refresh updates this snapshot. Escape closes the window."]="Select all, then press Ctrl+C. Refresh to update the report. Press Escape to close the window.",
+    ["Set craft count explicitly; recipe yield is unknown."]="Enter how many crafts you want. Recipe yield is unknown.",
+    ["Shopping list storage is full (100 lists)."]="You can save up to 100 shopping lists.",
+    ["Status and account-wide export; includes all characters, chat, and private notes."]="This account-wide export includes status, every character, chat, and private notes.",
+    ["Status transfer unknown"]="Delivery status unknown",
+    ["Unsaved changes. Save to update the matches."]="Save your changes to refresh the matches.",
+    ["Verification in progress"]="Checking with the organizer…",
+    ["Weekly instances: same organizer local time"]="Weekly, at the organizer's local time.",
+    ["Withdraw and verify an active application before forgetting it."]="Withdraw your active application and check its status before removing it.",
+}
 
 local I={locale=locale,isGerman=german,strings=DE,activities=ACTIVITY_DE}
 local function atomic(value)
     local english=reverse[value]or value
-    return german and(DE[english]or ACTIVITY_DE[english]or english)or english
+    if german then return DE[english]or ACTIVITY_DE[english]or english end
+    return EN[english]or english
 end
 function I.Text(value)
     if type(value)~="string"then return value end
