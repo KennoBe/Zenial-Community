@@ -250,7 +250,7 @@ function S.createTradePage(f)
     U.tradeManageList = list(U.tradeManageFrame, 0, -118, 470, 275)
     U.tradeManageDetail = label(U.tradeManageFrame, tr('Wähle einen Eintrag aus.'), 495, -106, 345, 'GameFontHighlight')
     U.tradeManageDetail:SetHeight(70)
-    U.tradeManageOpen = button(U.tradeManageFrame, tr('Öffnen / erneut anbieten'), 495, -165, 210, function()
+    U.tradeManageOpen = button(U.tradeManageFrame, tr('Öffnen / erneut anbieten'), 495, -185, 210, function()
         local e = U.tradeManageSelected
         if not e then
             return
@@ -270,7 +270,7 @@ function S.createTradePage(f)
         end
         U.SetTradeView('mine')
     end, 'primary')
-    U.tradeManagePause = button(U.tradeManageFrame, tr('Pausieren'), 495, -200, 125, function()
+    U.tradeManagePause = button(U.tradeManageFrame, tr('Pausieren'), 495, -220, 125, function()
         local e = U.tradeManageSelected
         if e then
             local ok, err = Z.TradeManager.Pause(e.id)
@@ -279,14 +279,14 @@ function S.createTradePage(f)
             refreshTradeManage()
         end
     end)
-    U.tradeManageDone = button(U.tradeManageFrame, tr('Erledigt'), 630, -200, 125, function()
+    U.tradeManageDone = button(U.tradeManageFrame, tr('Erledigt'), 630, -220, 125, function()
         local e = U.tradeManageSelected
         if e and Z.TradeManager.Complete(e.id) then
             U.tradeManageID = nil
             refreshTradeManage()
         end
     end, 'danger')
-    U.tradeManageDuplicate = button(U.tradeManageFrame, tr('Duplizieren'), 495, -235, 125, function()
+    U.tradeManageDuplicate = button(U.tradeManageFrame, tr('Duplizieren'), 495, -255, 125, function()
         local e = U.tradeManageSelected
         if e then
             local ok, err = Z.TradeManager.Duplicate(e.id)
@@ -294,7 +294,7 @@ function S.createTradePage(f)
             refreshTradeManage()
         end
     end)
-    U.tradeManageDelete = button(U.tradeManageFrame, 'Delete draft', 495, -235, 345, function()
+    U.tradeManageDelete = button(U.tradeManageFrame, 'Delete draft', 495, -255, 345, function()
         local e = U.tradeManageSelected
         if not e or e.state == 'active' then
             return
@@ -311,7 +311,7 @@ function S.createTradePage(f)
         U.tradeManageID = nil
         refreshTradeManage()
     end, 'danger')
-    U.tradeManageTemplate = button(U.tradeManageFrame, tr('Als Vorlage speichern'), 495, -270, 210, function()
+    U.tradeManageTemplate = button(U.tradeManageFrame, tr('Als Vorlage speichern'), 495, -290, 210, function()
         local e = U.tradeManageSelected
         if e then
             local ok, err = Z.TradeManager.SaveTemplate(e.row.name, e.row)

@@ -618,7 +618,7 @@ local function refreshTradeManage()
     end
     if matching and not tradeFilterChangeInProgress then U.tradeOfferFilter = 'all' end
     for key, control in pairs(U.tradeFilterButtons or {}) do
-        control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed offers',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
+        control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
         control:SetEnabled(key ~= U.tradeOfferFilter)
     end
     if U.tradeLimitInfo then
@@ -667,7 +667,7 @@ local function refreshTradeManage()
         U.tradeManageTemplate:SetEnabled(selected ~= nil)
         U.tradeManageTemplate:SetShown(selected ~= nil)
         U.tradeManageTemplate:ClearAllPoints()
-        U.tradeManageTemplate:SetPoint('TOPLEFT', 495, active and -270 or -200)
+        U.tradeManageTemplate:SetPoint('TOPLEFT', 495, active and -290 or -220)
     end
     U.tradeManageDetail:SetText(
         selected
