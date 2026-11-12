@@ -34,8 +34,14 @@ function D.Classify(e,myGUID)
     if guid and myGUID and guid==myGUID then return{cause="self"}end
     local kind=guidKind(guid)
     local control,pet,object=objectFlag("ControlPlayer"),objectFlag("TypePet"),objectFlag("TypeObject")
+    local mine,hostile,guardian=objectFlag("AffiliationMine"),objectFlag("ReactionHostile"),objectFlag("TypeGuardian")
     if flags and control then
-        if flagSet(flags,control)then return{cause="player",pet=(pet and flagSet(flags,pet))or kind=="Pet"or nil,guid=guid,name=text(e.sourceName,80)}end
+        if mine and flagSet(flags,mine)then return{cause="self"}end -- own damage (also with a secret GUID)
+        if flagSet(flags,control)then
+            -- A player-controlled source must be hostile when the client says so; pets and guardians (totems) never count as a player.
+            if hostile and not flagSet(flags,hostile)then return{cause="unknown"}end
+            return{cause="player",pet=(pet and flagSet(flags,pet))or(guardian and flagSet(flags,guardian))or kind=="Pet"or nil,guid=guid,name=text(e.sourceName,80)}
+        end
         if flagSet(flags,object or 0)or kind=="GameObject"then return{cause="unknown"}end
         return{cause="mob"}
     end
@@ -105,7 +111,7 @@ function D.Evaluate(events,snapshot,myGUID)
     if c.cause~="player"then return nil,c.cause end
     local order,seen={},{}
     local function add(class)
-        if class.cause=="player"and not class.pet and class.guid and not seen[class.guid]then seen[class.guid]=true;order[#order+1]=class end
+        if class.cause=="player"and not class.pet and guidKind(class.guid)=="Player"and not seen[class.guid]then seen[class.guid]=true;order[#order+1]=class end
     end
     for i=1,math.min(#events,D.MAX_EVENTS)do add(i==1 and c or D.Classify(events[i],myGUID))end
     local death={id=snapshot.at.."."..snapshot.serial,at=snapshot.at,cause="player",confirmed=true,
@@ -134,9 +140,11 @@ function D.Initialize()D.pending=nil;D.cache={};D.armed=not A.IsDeadOrGhost()end
 function D.OnEvent(event)
     if event=="PLAYER_DEAD"then
         if not D.armed or D.pending then return end
+        if A.Call(UnitIsFeignDeath,"player")==true then return end -- feigning is no death: stay armed
         D.armed=false
-        if A.Call(UnitIsFeignDeath,"player")==true or not A.OpenWorld()then return end
-        D.pending={snapshot=snapshotNow(A.Now()),due=A.Clock()+D.WAIT,stage=1}
+        -- A death outside the open world is not evaluated, but its recap is still read and remembered, so that it cannot be
+        -- taken as the fresh recap of a later open-world death.
+        D.pending={snapshot=snapshotNow(A.Now()),due=A.Clock()+D.WAIT,stage=1,ignore=not A.OpenWorld()}
     elseif(event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST")and not A.IsDeadOrGhost()then D.armed=true end
 end
 
@@ -144,23 +152,29 @@ local function readEvents()
     local api=C_DeathRecap;if type(api)~="table"or type(api.GetRecapEvents)~="function"then return nil end
     if type(api.HasRecapEvents)=="function"then local ok,has=pcall(api.HasRecapEvents);if not ok or public(has)~=true then return nil end end
     local ok,events=pcall(api.GetRecapEvents);events=ok and public(events)or nil
-    return type(events)=="table"and events or nil
+    if type(events)~="table"or not A.PublicTable(events)then return nil end
+    local first=events[1];if type(first)~="table"or not A.PublicTable(first)then return nil end
+    return events
 end
 
 function D.Tick()
     local p=D.pending;if not p or A.Clock()<p.due then return end
-    local events=readEvents();local e=events and events[1];local sig=signature(e)
-    local store=Z.PvPHelp and Z.PvPHelp.store
-    -- A recap identical to the one of the previous death is stale: it belongs to an earlier life.
-    local fresh=sig~=nil and(not store or sig~=store.recapSig)
-    if not fresh then
-        if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;return end
-        D.pending=nil;D.last={cause="unknown"};return
-    end
-    D.pending=nil
-    if store then store.recapSig=sig end
-    local death,cause=D.Evaluate(events,p.snapshot,public(A.Call(UnitGUID,"player")))
-    D.last={cause=cause,death=death}
-    if death and Z.PvPHelp then Z.PvPHelp.RecordDeath(death)end
+    D.pending=nil -- cleared first: an error below must never repeat on every tick
+    local ok,err=pcall(function()
+        local events=readEvents();local sig=events and signature(events[1])
+        local store=Z.PvPHelp and Z.PvPHelp.store
+        -- A recap identical to the one of the previous death is stale: it belongs to an earlier life.
+        local fresh=sig~=nil and(not store or sig~=store.recapSig)
+        if not fresh then
+            if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;D.pending=p else D.last={cause="unknown"}end
+            return
+        end
+        if store then store.recapSig=sig end
+        if p.ignore then D.last={cause="ignored"};return end
+        local death,cause=D.Evaluate(events,p.snapshot,public(A.Call(UnitGUID,"player")))
+        D.last={cause=cause,death=death}
+        if death and Z.PvPHelp then Z.PvPHelp.RecordDeath(death)end
+    end)
+    if not ok then D.last={cause="error"}end
 end
 return D

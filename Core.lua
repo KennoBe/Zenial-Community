@@ -335,7 +335,7 @@ function L.Encode(s)
     elseif s.kind=="L1" then put(s.at,s.faction,s.mapID or 0,s.area or "",s.subzone or "")
     elseif s.kind=="G1" then put(s.generation,s.rev,s.rank or "")
     elseif s.kind=="H1R" then put(s.enabled and 1 or 0,s.scope or "all",s.mapID or 0)
-    elseif s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" then put(s.id)
+    elseif s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H2D" then put(s.id)
     elseif s.kind=="H1J" then put(s.id,s.state)
     elseif s.kind=="H1C" or s.kind=="H1U" then put(s.id,s.rev,s.at,s.expires,s.mapID or 0,s.area or "",s.subzone or "",s.hasPos and 1 or 0,s.x or 0,s.y or 0)
     elseif s.kind=="H1I" then put(s.id,s.rev,s.note or "",s.hasEnemy and 1 or 0,s.enemyName or "",s.enemyClass or "",s.enemyLevel or 0,s.enemyFaction or "")
@@ -380,7 +380,7 @@ function L.Decode(wire,now,historical)
         end
     elseif s.kind=="L1" then s.at,s.faction,s.mapID=num(1,4102444800),str(16),num(0,1000000);s.area,s.subzone=str(64,true),str(64,true);if not L.ValidLocation(s,now,historical)or(s.faction~="Alliance"and s.faction~="Horde"and s.faction~="Neutral")then return nil end
     elseif s.kind=="H1R" then local enabled=num(0,1);s.scope=str(4);s.mapID=num(0,1000000);if enabled==nil or (s.scope~="all" and s.scope~="zone") or not s.mapID then return nil end;s.enabled=enabled==1
-    elseif s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" then s.id=str(32)
+    elseif s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H2D" then s.id=str(32)
     elseif s.kind=="H1J" then s.id=str(32);s.state=str(9);if s.state~="coming" and s.state~="withdrawn" then return nil end
     elseif s.kind=="H1C" or s.kind=="H1U" then
         s.id,s.rev,s.at,s.expires,s.mapID=str(32),num(1,2147483646),num(1,4102444800),num(1,4102444800),num(0,1000000);s.area,s.subzone=str(64,true),str(64,true);local hasPos=num(0,1);s.x,s.y=num(0,10000),num(0,10000)
@@ -423,7 +423,7 @@ function L.Decode(wire,now,historical)
         for i=1,n do local v=str(113);if not v or not L.Identity(v) or seen[string.lower(v)] then return nil end;seen[string.lower(v)]=true;s.linkAlts[i]=v end
         s.recipeRev,s.recipeCount,s.recipeScan=num(0,2147483646),num(0,L.MAX_RECIPES),num(0,4102444800);if not (s.recipeRev and s.recipeCount and s.recipeScan) then return nil end
     else return nil end
-    if not s.id and (s.kind=="A" or s.kind=="GA" or s.kind=="GW" or s.kind=="GS" or s.kind=="QA" or s.kind=="QW" or s.kind=="QS" or s.kind=="RQ" or s.kind=="RS" or s.kind=="CQ" or s.kind=="CS" or s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H1J" or s.kind=="H1C" or s.kind=="H1U" or s.kind=="H1I" or s.kind=="H2I") then return nil end
+    if not s.id and (s.kind=="A" or s.kind=="GA" or s.kind=="GW" or s.kind=="GS" or s.kind=="QA" or s.kind=="QW" or s.kind=="QS" or s.kind=="RQ" or s.kind=="RS" or s.kind=="CQ" or s.kind=="CS" or s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H1J" or s.kind=="H1C" or s.kind=="H1U" or s.kind=="H1I" or s.kind=="H2I" or s.kind=="H2D") then return nil end
     if s.id and not s.id:match("^[%d%.]+$") then return nil end;if at~=#f+1 then return nil end;return s
 end
 -- Fits a kill log into one H2I message: newest deaths first, killer kept first, at most 8 deaths and 5 attackers each.

@@ -107,7 +107,7 @@ end
 function M.Initialize()
     if optional and Z.QuestHelper and Z.QuestHelper.quests then Z.QuestHelper.publishedSignature=nil;Z.QuestHelper.nextRefresh=0 end
     M.records,M.durable,M.index,M.keys,M.pending,M.assemblies,M.byOrigin,M.sync,M.ignored={},{},{},{},{},{},{},{},{}
-    M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={};M.replayed={}
+    M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={};M.replay={}
     M.stats={published=0,received=0,forwarded=0,duplicates=0,rejected=0,dropped=0,reconciled=0}
     M.region=D.Region()
     M.scope=tostring(M.region or 0)..":"..tostring(D.Project()or 0)..":"..tostring(D.World(Z.me.realm))..":"..Z.me.faction
@@ -214,6 +214,12 @@ function M.Accept(row,source,own)
     if key and Z.db.blocked[key]then if L.Count(M.ignored)<M.MAX_RECORDS then M.ignored[recordHash(token(row))]=key end;return false end
     local id=token(row);local old=M.records[id]
     if not newer(row,old)then M.stats.duplicates=M.stats.duplicates+1;return true end
+    if row.kind=="PD"and not old then
+        -- At most eight living markers per origin.
+        local live,now=0,A.Now()
+        for other in pairs(M.byOrigin[L.Identity(row.origin)]or{})do local r=M.records[other];if r and r.kind=="PD"and now-r.at<=lifetime(r)then live=live+1 end end
+        if live>=8 then M.stats.rejected=M.stats.rejected+1;return false end
+    end
     if not old and#M.keys>=M.MAX_RECORDS or M.bytes-(old and#old.wire or 0)+#row.wire>M.MAX_STORE_BYTES then M.stats.dropped=M.stats.dropped+1;return false end
     if not old then
         M.keys[#M.keys+1]=id;local h=recordHash(id);M.index[h]=M.index[h]or{};M.index[h][id]=true
@@ -247,6 +253,10 @@ function M.Publish(kind,wire)
     end
     if M.Accept(row,nil,true)then M.stats.published=M.stats.published+1;return"mesh."..row.seq end
 end
+-- (Re)starts the direct PD delivery for one neighbour; any earlier state of that route is replaced.
+function M.ReplayTo(route)
+    if M.replay and route and route.transport=="BNET"and not M.optionalMesh then M.replay[route.target]={due=A.Clock()+3,round=1}end
+end
 function M.OnConnected(route)
     if not enabled()then return end
     if scheduled then
@@ -257,6 +267,7 @@ function M.OnConnected(route)
         if route.transport=="BNET"then queueData(route,protocol,"H1",false,"quest-hello:"..route.target,5)end
         return
     end
+    M.ReplayTo(route)
     local hasPresence,hasBundle=false,false
     for id,row in pairs(M.records)do if row.origin==Z.me.target and row.session==Z.session then
         if row.kind=="P"then hasPresence=true elseif row.kind=="B"then hasBundle=true end
@@ -430,22 +441,37 @@ function M.Tick()
         for id,p in pairs(M.assemblies)do if clock-p.at>45 then M.assemblies[id]=nil;M.assemblyBytes=M.assemblyBytes-p.size end end
         local now=A.Now();compact(function(_,row)return now-row.at>lifetime(row)end)
     end
+    -- Late join: PD markers are never inventoried (older clients cannot read them). Each (re)connected neighbour instead gets the
+    -- still living markers directly, in frames that contain only PD, twice (a few seconds after the connect and again later, in case
+    -- the first batch arrived before the neighbour was ready). The pending queue is never touched; duplicates are rejected by seq.
+    if not optional and not scheduled then
+        for target,r in pairs(M.replay)do if clock>=r.due then
+            local route=B.routes["BNET:"..target]
+            if not route then M.replay[target]=nil
+            else
+                local live={};local now=A.Now()
+                for _,row in pairs(M.records)do if row.kind=="PD"and now-row.at<=lifetime(row)then live[#live+1]=row end end
+                table.sort(live,function(x,y)if x.at~=y.at then return x.at>y.at end;return x.seq>y.seq end)
+                local frames,size,n={},0,0
+                local function send()
+                    if#frames==0 then return end
+                    n=n+1;queueData(route,protocol,batch(frames),false,"pd-replay:"..target..":"..n,15);frames,size={},0
+                end
+                for i=1,math.min(#live,16)do
+                    local frame=recordFrame(live[i],1);local bytes=#frame+#tostring(#frame)+1
+                    if#live[i].wire<=M.CHUNK and bytes<=3700 then
+                        if size+bytes>3700 or#frames>=24 then send()end
+                        frames[#frames+1]=frame;size=size+bytes
+                    end
+                end
+                send()
+                if r.round>=2 then M.replay[target]=nil else r.round=r.round+1;r.due=clock+12 end
+            end
+        end end
+    end
     local groups=pools()
     if clock>=M.nextBatch then
         M.nextBatch=clock+2
-        -- PD markers are never inventoried (older clients cannot read them). A neighbour that shows up in a pool for the
-        -- first time instead receives every still living marker once, in flush()'s separate optional frames; all other
-        -- routes are marked as served, so only the new neighbour is sent to.
-        if not optional and not scheduled then
-            M.replayed=M.replayed or{}
-            for _,list in pairs(groups)do for _,route in ipairs(list)do if not M.replayed[route.target]then
-                M.replayed[route.target]=true;local sent=0
-                for id,row in pairs(M.records)do if row.kind=="PD"and A.Now()-row.at<=lifetime(row)and sent<16 and enqueue(id,nil)then
-                    sent=sent+1;local p=M.pending[id]
-                    for _,other in pairs(groups)do for _,r in ipairs(other)do if r.target~=route.target then p.sent[r.target]=true end end end
-                end end
-            end end end
-        end
         for group,list in pairs(groups)do flush(group,list)end
         for id,p in pairs(M.pending)do
             local complete=true;local any=false

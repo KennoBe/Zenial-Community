@@ -133,7 +133,8 @@ local function confirm(transport,target,f,identityProof)
     peer.cap4=true;peer.cap3=true;peer.lastContact=A.Now();peer.lastContactClock=A.Clock();peer.state="reached"
     if Z.WhisperGuard then Z.WhisperGuard.Verified(f[4])end
     if Z.Network3.ConfirmSession then Z.Network3.ConfirmSession(f[4],f[10])end
-    if first and Z.CommunityMesh then Z.CommunityMesh.OnConnected(B.routes[routeKey])end
+    if first and Z.CommunityMesh then Z.CommunityMesh.OnConnected(B.routes[routeKey])
+    elseif oldRoute and oldRoute.session~=f[10]and Z.CommunityMesh and Z.CommunityMesh.ReplayTo then Z.CommunityMesh.ReplayTo(B.routes[routeKey])end -- neighbour restarted (/reload)
     if Z.QuestMesh and(first or not B.routes[routeKey].questHelper)then Z.QuestMesh.OnConnected(B.routes[routeKey])end
     if first then local field=transport=="BNET"and"confirmedBNet"or"confirmedWhisper";B.stats[field]=B.stats[field]+1 end
     if Z.ScheduledGroups then Z.ScheduledGroups.OnConnected(B.routes[routeKey])end

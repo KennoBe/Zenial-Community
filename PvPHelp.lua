@@ -253,7 +253,7 @@ function P.ListReceived()
 end
 function P.GetReceived(key,id)return Z.IsOnline(key)and P.store.received[key..":"..id]or nil end
 function P.MarkRead(key,id)local r=P.GetCall(key,id);if r then r.unread=false;local h=P.store.history[key..":"..id];if h then h.unread=false end;refresh();return true end end
-function P.RequestDetails(key,id)local r=P.GetCall(key,id);if not P.IsActive(r)or key==Z.me.key then return false end;P.MarkRead(key,id);if not r.detail then enqueue(key,{kind="H1D",id=id},100,"H1D:"..key..":"..id)end;return true end
+function P.RequestDetails(key,id)local r=P.GetCall(key,id);if not P.IsActive(r)or key==Z.me.key then return false end;P.MarkRead(key,id);if not r.detail then enqueue(key,{kind="H1D",id=id},100,"H1D:"..key..":"..id)end;if not r.killLog then enqueue(key,{kind="H2D",id=id},90,"H2D:"..key..":"..id)end;return true end
 function P.Respond(key,id,state)
     local r=P.GetCall(key,id);if not P.IsActive(r)or key==Z.me.key or(state~="coming"and state~="withdrawn")then return false,"Hilferuf nicht mehr aktiv."end
     enqueue(key,{kind="H1J",id=id,state=state},100,"H1J:"..key..":"..id);r.response=state=="coming"and"coming"or"";refresh();return true
@@ -300,6 +300,7 @@ local function acceptCall(key,s,noAck)
     if not noAck then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end
     -- Enrolled helpers fetch the details right away for the banner; once per call, and it stays unread.
     if not r.detail then enqueue(key,{kind="H1D",id=s.id},100,"H1D:"..key..":"..s.id)end
+    enqueue(key,{kind="H2D",id=s.id},90,"H2D:"..key..":"..s.id) -- new clients ask for the kill log separately; old senders ignore H2D
     if Z.OnPvpHelpIncoming then Z.OnPvpHelpIncoming(key,s.id)end;refresh()
 end
 function P.Receive(key,s)
@@ -307,9 +308,10 @@ function P.Receive(key,s)
     if s.kind=="H1R"then P.store.helpers[key]={enabled=s.enabled,scope=s.scope,mapID=s.mapID,at=now};local o=currentCall();if o then enqueueCallFor(key,o)end
     elseif s.kind=="H1C"then acceptCall(key,s)
     elseif s.kind=="H1A"then local o=currentCall();local r=o and o.id==s.id and o.recipients[key];if r then r.state="confirmed";r.at=now end
-    elseif s.kind=="H1D"then local o=currentCall();if o and o.id==s.id then local e=o.enemy;enqueue(key,{kind="H1I",id=o.id,rev=o.rev,note=o.note,hasEnemy=e~=nil,enemyName=e and e.name or"",enemyClass=e and e.class or"",enemyLevel=e and e.level or 0,enemyFaction=e and e.faction or""},100,"H1I:"..key..":"..o.id)
-        -- Structured kill log (H2I) only when the player shared the detected combat data; old clients ignore it.
-        local fit=o.killLog and L.FitH2I({id=o.id,rev=o.rev,note=o.note,deaths=o.killLog});if fit then enqueue(key,fit,100,"H2I:"..key..":"..o.id)end end
+    elseif s.kind=="H1D"then local o=currentCall();if o and o.id==s.id then local e=o.enemy;enqueue(key,{kind="H1I",id=o.id,rev=o.rev,note=o.note,hasEnemy=e~=nil,enemyName=e and e.name or"",enemyClass=e and e.class or"",enemyLevel=e and e.level or 0,enemyFaction=e and e.faction or""},100,"H1I:"..key..":"..o.id)end
+    elseif s.kind=="H2D"then
+        -- Structured kill log (H2I) only on this explicit request and only when the player shared the detected combat data.
+        local o=currentCall();if o and o.id==s.id then local fit=o.killLog and L.FitH2I({id=o.id,rev=o.rev,note=o.note,deaths=o.killLog});if fit then enqueue(key,fit,90,"H2I:"..key..":"..o.id)end end
     elseif s.kind=="H2I"then local r=P.GetCall(key,s.id);if P.IsActive(r)and s.rev>=(r.killRev or 0)then r.killRev=s.rev;r.rev=math.max(r.rev,s.rev);r.note=s.note;r.detail=true;r.killLog=cleanKillLog(s.deaths,A.Now());r.killTruncated=s.truncated;remember(key,r);if Z.UI and Z.UI.RefreshPvPNotice then Z.UI.RefreshPvPNotice(key,s.id)end end
     elseif s.kind=="H1I"then local r=P.GetCall(key,s.id);if P.IsActive(r)and s.rev>=(r.detailRev or 0)then r.detailRev=s.rev;r.rev=math.max(r.rev,s.rev);r.note=s.note;r.detail=true;r.enemy=s.hasEnemy and{name=s.enemyName,class=s.enemyClass,level=s.enemyLevel,faction=s.enemyFaction}or nil;remember(key,r);if Z.UI and Z.UI.RefreshPvPNotice then Z.UI.RefreshPvPNotice(key,s.id)end end
     elseif s.kind=="H1U"then local r=P.GetReceived(key,s.id);if r and s.rev>(r.locationRev or 0)then copyLocation(r,cleanLocation(s));r.locationRev=s.rev;r.rev=math.max(r.rev,s.rev)end
