@@ -222,6 +222,7 @@ function S.createTradePage(f)
             U.offerEditID = nil
             U.offerStoredState, U.offerStoredID = 'draft', id
             U.tradeManageID = 'draft\0' .. id
+            U.tradeEditorTitle:SetText(tr('Create offer'))
             U.offerSave:SetText(tr('Publish offer'))
             U.CaptureOfferDraft()
             refreshTradeManage()
