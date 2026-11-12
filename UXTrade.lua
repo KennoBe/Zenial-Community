@@ -147,7 +147,8 @@ function U.EditOffer(o)
             U.offerStoredState, U.offerStoredID = state, draft.storedID
         end
     end
-    U.offerEditID = o and o.id or draft and draft.editID and draft.editID ~= '' and draft.editID or nil
+    local storedOffer = draft and draft.storedState and draft.storedState ~= ''
+    U.offerEditID = o and o.id or not storedOffer and draft and draft.editID and draft.editID ~= '' and draft.editID or nil
     if U.tradeEditorTitle then
         U.tradeEditorTitle:SetText(tr(U.offerEditID and 'Edit offer' or 'Create offer'))
     end

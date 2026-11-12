@@ -113,7 +113,7 @@ function S.createTradePage(f)
     U.tradeEditorBack = button(U.tradeMineFrame, tr('← My Offers'), 650, 0, 190, function()
         U.SetTradeView('manage')
     end)
-    U.tradeEditorLimitInfo = label(U.tradeMineFrame, '', 0, -300, 840, 'GameFontHighlight')
+    U.tradeEditorLimitInfo = label(U.tradeMineFrame, '', 0, -320, 840, 'GameFontHighlight')
     U.tradeEditorLimitInfo:SetHeight(40)
     U.offerKind = selector(U.tradeMineFrame, 'Type', 0, -38, 195, { 'SELL', 'BUY', 'SERVICE' }, U.CaptureOfferDraft)
     U.offerFields = {}
@@ -247,7 +247,7 @@ function S.createTradePage(f)
     end
     U.tradeLimitInfo = label(U.tradeManageFrame, '', 0, -62, 840, 'GameFontHighlight')
     U.tradeLimitInfo:SetHeight(40)
-    U.tradeManageList = list(U.tradeManageFrame, 0, -106, 470, 287)
+    U.tradeManageList = list(U.tradeManageFrame, 0, -118, 470, 275)
     U.tradeManageDetail = label(U.tradeManageFrame, tr('Wähle einen Eintrag aus.'), 495, -106, 345, 'GameFontHighlight')
     U.tradeManageDetail:SetHeight(70)
     U.tradeManageOpen = button(U.tradeManageFrame, tr('Öffnen / erneut anbieten'), 495, -165, 210, function()
@@ -264,6 +264,9 @@ function S.createTradePage(f)
                 Z.UIState.Draft('offer', storedOfferDraft(e.row, e.state, e.id))
             end
             U.EditOffer(nil)
+            U.offerEditID = nil
+            U.tradeEditorTitle:SetText(tr('Create offer'))
+            U.offerSave:SetText(tr('Publish offer'))
         end
         U.SetTradeView('mine')
     end, 'primary')
