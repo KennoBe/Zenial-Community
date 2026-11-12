@@ -490,7 +490,7 @@ local function groupDetailLines(m, g, target)
             .. (c.online and tr('Online') or age(c.seen))
             .. (where ~= '' and ' · ' .. where or '')
     end
-    lines[#lines + 1] = ''
+    lines[#lines + 1] = dimText(tr('Main and alts as declared by their addon; not verified.'))
     return lines
 end
 local function updateContactActions(m)
@@ -691,7 +691,7 @@ local function characterItem(m, ctx)
         s.roles
     ) or '')) or tr('Profile not received yet')
     local location = m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where) or ''
-    if m.main and m.main ~= '' then
+    if m.main and m.main ~= '' and L.Identity(m.main) ~= L.Identity(m.target) then
         if location ~= '' then
             location = location .. ' · ' .. tr('Main') .. ': ' .. m.main
         else
@@ -712,12 +712,11 @@ local function characterItem(m, ctx)
         tooltip = tooltip .. '\n' .. tr('Favorite')
     end
     if Z.Social.IsGuildMember(m.key) then
-        tooltip = tooltip .. '\n' .. tr('Same guild') .. ': ' .. Z.Social.GuildName()
+        tooltip = tooltip .. '\n' .. tr('Guild') .. ': ' .. Z.Social.GuildName()
     end
     local chip, layerText = layerChip(m)
-    if not layerText then
-        tooltip = tooltip .. '\n' .. Z.CommunityLayer.Label(nil)
-    else
+    if layerText then
+        tooltip = tooltip .. '\n' .. layerText
         if m.layerRelation == 'probable' then
             tooltip = tooltip .. '\n' .. tr('Probably the same layer')
         end
@@ -753,7 +752,7 @@ local function characterItem(m, ctx)
     }
 end
 local function neutralIcon()
-    return T and T.assets and T.assets.neutralIcon and { file = T.assets.neutralIcon } or nil
+    return { file = 'Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon' }
 end
 local function roleLabel(g, m)
     return tr(m == g.mainMember and 'Main' or 'Alt')
@@ -835,25 +834,23 @@ local function groupItem(g, hits, ctx)
         .. '    '
         .. status
     local favorite, sameGuild = false, false
-    local lines = { title, subtitle, '' }
+    local lines = { g.mainName .. ' (' .. tr('Main') .. ')' }
+    if active then
+        lines[#lines + 1] = (active == main and tr('Online') or Z.T('Online: %s', active.target)) .. ' · ' .. classLevel(active)
+        if active.where and active.where ~= '' then lines[#lines + 1] = active.where end
+        local _, knownLayer = layerChip(active)
+        if knownLayer then lines[#lines + 1] = knownLayer end
+    else
+        lines[#lines + 1] = g.lastSeen > 0 and Z.T('Offline · last seen %s', age(g.lastSeen)) or tr('Offline')
+    end
     for _, m in ipairs(g.members) do
         favorite = favorite or Z.Social.IsFavorite(m.key)
         sameGuild = sameGuild or Z.Social.IsGuildMember(m.key)
-        lines[#lines + 1] = m.target
-            .. ' · '
-            .. roleLabel(g, m)
-            .. ' · '
-            .. classLevel(m)
-            .. ' · '
-            .. (m.online and tr('Online') or age(m.seen))
-            .. (Z.Social.IsGuildMember(m.key) and ' · ' .. tr('Same guild') or '')
     end
-    if g.virtual and not g.isOwn then
-        lines[#lines + 1] = Z.T('%s has not been seen with ZENIAL yet.', g.mainName)
+    local hoverMember = active or main
+    if hoverMember and Z.Social.IsGuildMember(hoverMember.key) then
+        lines[#lines + 1] = tr('Guild') .. ': ' .. Z.Social.GuildName()
     end
-    lines[#lines + 1] = ''
-    lines[#lines + 1] = tr('Main and alts as declared by their addon; not verified.')
-    lines[#lines + 1] = tr(expanded and 'Click again to collapse the characters.' or 'Click to show the characters.')
     -- The concrete character a selection uses: the active one, else the main, else the first known.
     local pick = active or main or g.members[1]
     return {
@@ -862,7 +859,7 @@ local function groupItem(g, hits, ctx)
         ageAt = not g.online and g.lastSeen > 0 and g.lastSeen or nil,
         ageText = not g.online and g.lastSeen > 0 and age(g.lastSeen) or nil,
         selected = not expanded and containsKey(g, U.memberKey),
-        icon = T and (ms and T.ClassIcon(ms.classFile, ms.class) or neutralIcon()),
+        icon = T and (classHex and T.ClassIcon(ms.classFile, ms.class) or neutralIcon()),
         iconSize = 28,
         textInset = 46,
         text = title,
@@ -923,7 +920,7 @@ local function groupMemberItem(g, m, hit, ctx)
         display = display,
         subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
         subtitleDisplay = paint('textSoft', classLevel(m)) .. ' · ' .. chip .. locationLine(m),
-        tooltip = Z.Social.IsGuildMember(m.key) and tr('Same guild') .. ': ' .. Z.Social.GuildName() or nil,
+        tooltip = Z.Social.IsGuildMember(m.key) and tr('Guild') .. ': ' .. Z.Social.GuildName() or nil,
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
         click = function()

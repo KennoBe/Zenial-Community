@@ -364,12 +364,16 @@ local function refreshOffers()
     if U.RefreshTradeContext then U.RefreshTradeContext() end
 end
 S.refreshOffers = refreshOffers
+local function setAdvancedControl(control, shown)
+    if control.SetShown then control:SetShown(shown) end
+    if control.caption then control.caption:SetShown(shown) end
+    if control.button then control.button:SetShown(shown) end
+    if not shown and control.popup then control.popup:Hide() end
+end
 function U.RefreshTradeAdvanced()
     if U.compactArea == 'trade' then
-        U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
-        U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
-        U.tradeMaxPrice:Hide(); U.tradeMaxPrice.caption:Hide()
-        U.tradeSort.button:Hide(); U.tradeSort.caption:Hide()
+        U.tradeAdvancedFrame:Hide()
+        for _,control in ipairs({U.tradeCategoryFilter,U.tradeMinPrice,U.tradeMaxPrice,U.tradeSort})do setAdvancedControl(control,false)end
         U.tradeFilterSummary:Hide()
         U.tradeAdvancedToggle:Hide()
         U.tradeSaveSearch:Hide()
@@ -378,17 +382,12 @@ function U.RefreshTradeAdvanced()
     end
     U.tradeAdvancedToggle:Show()
     U.tradeSaveSearch:Show()
+    U.tradeAdvancedFrame:SetShown(U.tradeAdvancedOpen == true)
     if not U.tradeAdvancedOpen then
-        U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
-        U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
-        U.tradeMaxPrice:Hide(); U.tradeMaxPrice.caption:Hide()
-        U.tradeSort.button:Hide(); U.tradeSort.caption:Hide()
+        for _,control in ipairs({U.tradeCategoryFilter,U.tradeMinPrice,U.tradeMaxPrice,U.tradeSort})do setAdvancedControl(control,false)end
         U.tradeFilterSummary:Show()
     else
-        U.tradeCategoryFilter.button:Show(); U.tradeCategoryFilter.caption:Show()
-        U.tradeMinPrice:Show(); U.tradeMinPrice.caption:Show()
-        U.tradeMaxPrice:Show(); U.tradeMaxPrice.caption:Show()
-        U.tradeSort.button:Show(); U.tradeSort.caption:Show()
+        for _,control in ipairs({U.tradeCategoryFilter,U.tradeMinPrice,U.tradeMaxPrice,U.tradeSort})do setAdvancedControl(control,true)end
         U.tradeFilterSummary:Hide()
     end
     refreshOffers()

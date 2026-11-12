@@ -161,11 +161,13 @@ local function refreshProfessions()
             )
         end
         local hasRecipe = L.ValidRecipe(selectedRecipe)
-        for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
-            U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do
-            control:SetShown(hasRecipe)
-        end
-        if hasRecipe then U.RefreshCraftDetailMaterials() end
+        U.craftDetailMaterialsOpen = hasRecipe and U.craftDetailMaterialsOpen == true or false
+        U.craftDetailCrafts:SetShown(hasRecipe)
+        U.craftDetailCrafts.caption:SetShown(hasRecipe)
+        U.craftDetailSaveList:SetShown(hasRecipe)
+        U.craftDetailOffers:SetShown(hasRecipe)
+        U.craftDetailMaterialsToggle:SetShown(hasRecipe)
+        U.RefreshCraftDetailMaterials()
     end
     local valid = false
     local function addEntry(key, target, text, own, icon, profession, kind, recipe)
@@ -181,6 +183,7 @@ local function refreshProfessions()
             icon = icon,
             text = text,
             click = function()
+                U.craftDetailMaterialsOpen = false
                 U.professionSelection, U.professionKey, U.professionTarget, U.professionName, U.professionEntryKind, U.professionRecipe =
                     token, key, target, profession, kind, recipe
                 if kind == 'profession' and not own and isOnline(key) then
@@ -266,6 +269,7 @@ local function refreshProfessions()
                     ))
                 or tr('Wähle einen Beruf oder einen Rezepttreffer aus.')
         )
+        U.RefreshCraftDetailMaterials()
         U.professionWhisper:SetEnabled(false)
         if U.craftFavorite then
             U.craftFavorite:SetEnabled(false)
@@ -315,21 +319,20 @@ local function materialName(id)
 end
 local function materialRow(row, perCraft)
     local unknown = tr('Unknown')
-    return (perCraft and (row.perCraft .. ' × ' .. materialName(row.itemID) .. '\n') or (materialName(row.itemID) .. '\n'))
-        .. Z.T(
-            'Need %d · Bags %s · Allocated %s · Missing %s',
-            row.needed,
-            tostring(row.available or unknown),
-            tostring(row.allocated or unknown),
-            tostring(row.missing or unknown)
-        )
-        .. '\n'
-        .. Z.T(
-            'Marked %d · Still unconfirmed %d · Reserved elsewhere %s',
-            row.manual,
-            row.open,
-            tostring(row.reservedElsewhere or unknown)
-        )
+    local title = perCraft and (row.perCraft .. ' × ' .. materialName(row.itemID)) or materialName(row.itemID)
+    local summary = Z.T('Need %d · Available %s · Missing %s', row.needed,
+        tostring(row.allocated or unknown), tostring(row.missing or unknown))
+    local details = Z.T(
+        'Need %d · Bags %s · Allocated %s · Missing %s',
+        row.needed,
+        tostring(row.available or unknown),
+        tostring(row.allocated or unknown),
+        tostring(row.missing or unknown)
+    ) .. '\n' .. Z.T('Marked %d · Still unconfirmed %d · Reserved elsewhere %s',
+        row.manual, row.open, tostring(row.reservedElsewhere or unknown))
+        .. '\n' .. tr('Bags only; oldest active list reserves first.')
+        .. '\n' .. Z.T('Available %s for this list', tostring(row.allocated or unknown))
+    return title .. '\n' .. summary, details
 end
 local function sameCraftRecipe(a, b)
     return a and b and a.id == b.id and a.itemID == b.itemID
@@ -353,6 +356,13 @@ end
 function U.RefreshCraftDetailMaterials()
     if not U.craftDetailMaterials or not U.professionRecipe then
         if U.craftDetailMaterials then rows(U.craftDetailMaterials, {}, 48) end
+        U.craftDetailMaterialsOpen = false
+        if U.craftDetailMaterialsToggle then U.craftDetailMaterialsToggle:Hide() end
+        if U.craftDetailMaterialsTitle then U.craftDetailMaterialsTitle:Hide() end
+        if U.craftDetailMaterials then U.craftDetailMaterials:Hide() end
+        if U.craftDetailMaterialState then U.craftDetailMaterialState:Hide() end
+        if U.professionRecipeList then U.professionRecipeList:Show() end
+        if U.professionRecipeTitle then U.professionRecipeTitle:SetText(tr('Recipes')) end
         return
     end
     local recipe, crafts = U.professionRecipe, tonumber(U.craftDetailCrafts:GetText())
@@ -371,18 +381,28 @@ function U.RefreshCraftDetailMaterials()
     local items = {}
     U.craftDetailMissingItem = nil
     for _, row in ipairs(result and result.rows or {}) do
-        items[#items + 1] = { icon = itemIcon(row.itemID) or NAV_ICONS.crafting, text = materialRow(row, false) }
+        local summary, details = materialRow(row, false)
+        items[#items + 1] = { icon = itemIcon(row.itemID) or NAV_ICONS.crafting, text = summary, tooltip = details }
         if not U.craftDetailMissingItem and (row.missing or 0) > 0 then U.craftDetailMissingItem = row.itemID end
     end
     if #items == 0 then items[1] = { text = tr(reason or result and result.reason or 'Recipe data is unavailable.') } end
-    rows(U.craftDetailMaterials, items, 62)
+    rows(U.craftDetailMaterials, items, 48)
     local inventory = P.ReadInventory()
     local bagState = not inventory.known and tr('Bag contents could not be read. Unknown is not zero.')
         or type(inventory.at) == 'number' and Z.T('Bags read at %s.', date('%d.%m.%Y %H:%M', inventory.at))
         or tr('Bags read just now.')
-    U.craftDetailMaterialState:SetText(bagState .. ' · ' .. tr('Bags only; oldest active list reserves first.'))
+    U.craftDetailMaterialState:SetText(bagState)
     U.craftDetailSaveList:SetEnabled(L.ValidRecipe(recipe) and validCount)
     U.craftDetailOffers:SetEnabled(L.ValidRecipe(recipe) and validCount)
+    local hasRecipe = L.ValidRecipe(recipe)
+    local expanded = hasRecipe and U.craftDetailMaterialsOpen == true
+    U.craftDetailMaterialsToggle:SetShown(hasRecipe)
+    U.craftDetailMaterialsToggle:SetText(tr(expanded and 'Recipes' or 'Materials'))
+    U.professionRecipeTitle:SetText(tr(expanded and 'Materials' or 'Recipes'))
+    U.professionRecipeList:SetShown(not expanded)
+    U.craftDetailMaterialsTitle:Hide()
+    U.craftDetailMaterials:SetShown(expanded)
+    U.craftDetailMaterialState:SetShown(expanded)
 end
 function U.SaveCraftShopping()
     local context = U.craftOrderContext
