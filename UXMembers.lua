@@ -124,6 +124,10 @@ local function memberEntries(ownOnly)
             m.sourceMain = s and s.linkMain
             m.sourceLinkVersion = s and s.linkVersion
             m.layerID = Z.CommunityLayer and (m.own and Z.CommunityLayer.Own() or not m.own and Z.CommunityLayer.Member(m.key)) or nil
+            -- Heuristic hints only: "probable" never claims a certain shared layer.
+            m.layerRelation = not m.own and m.layerID and Z.CommunityLayer.Relation and Z.CommunityLayer.Relation(m.key) or nil
+            local layerSnapshot = not m.own and m.layerID and Z.CommunityLayer.MemberSnapshot and Z.CommunityLayer.MemberSnapshot(m.key) or nil
+            m.layerSeenAt = layerSnapshot and layerSnapshot.observedAt or nil
             m.where = locationText(m.location)
             if
                 not m.own
@@ -539,6 +543,13 @@ local function refreshMemberDetail()
     end
     if not layerText then
         lines[#lines + 1] = '\n|cff' .. paletteHex('muted') .. Z.CommunityLayer.Label(nil) .. '|r'
+    else
+        if m.layerRelation == 'probable' then
+            lines[#lines + 1] = dimText(tr('Probably the same layer'))
+        end
+        if m.layerSeenAt then
+            lines[#lines + 1] = dimText(Z.T('Layer last detected %s', age(m.layerSeenAt)))
+        end
     end
     U.memberDetail:SetText(table.concat(lines, '\n'))
 end
@@ -666,6 +677,13 @@ local function characterItem(m, ctx)
     local chip, layerText = layerChip(m)
     if not layerText then
         tooltip = tooltip .. '\n' .. Z.CommunityLayer.Label(nil)
+    else
+        if m.layerRelation == 'probable' then
+            tooltip = tooltip .. '\n' .. tr('Probably the same layer')
+        end
+        if m.layerSeenAt then
+            tooltip = tooltip .. '\n' .. Z.T('Layer last detected %s', age(m.layerSeenAt))
+        end
     end
     local level = s and type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
     local at = ctx.category == 'RECONTACT' and ctx.C.LastTogether(m.key)

@@ -8,7 +8,8 @@ if scheduled then Z.ScheduledMesh=M elseif optional then Z.QuestMesh=M else Z.Co
 local function queueData(route,_,payload,private,dedupe,priority,...)
     return B.QueueData(route,protocol,payload,private,dedupe,optional and 5 or priority,...)
 end
-local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true}
+local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true}
+local TRANSIENT={MP=true,LY=true,L2=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
 local function enabled()return B.Enabled()and Z.db.autoDiscovery end
 local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record((scheduled and "scheduledmesh:"or optional and "questmesh:"or"mesh:")..event,...)end end
 local function hash(value)
@@ -31,7 +32,7 @@ local function token(row)
     local family=(row.kind=="PC"or row.kind=="PU"or row.kind=="PX")and"PV"or row.kind
     return L.Identity(row.origin).."/"..family.."/"..suffix
 end
-local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;return(row.kind=="P"or row.kind=="MP"or row.kind=="LY")and 300 or 86400 end
+local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;return(row.kind=="P"or TRANSIENT[row.kind])and 300 or 86400 end
 local function validSession(session,now)
     if not L.Text(session,32)or not session:match("^%d+%.%d+%.%d+$")then return false end
     local epoch=tonumber(session:match("^(%d+)%."))
@@ -74,6 +75,10 @@ local function validate(row,now)
         local layer=Z.CommunityLayer and Z.CommunityLayer.Decode(row.wire)
         return layer and layer.session==row.session and layer.at==row.at or false
     end
+    if row.kind=="L2"then
+        local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(row.wire)
+        return layer and layer.session==row.session and layer.at==row.at or false
+    end
     if row.kind=="B"then
         local s=L.Decode(row.wire,A.Now());return s and s.kind=="S3"and s.generation==row.session and s.faction==Z.me.faction
             and s.community==""and s.class==""and s.classFile==""and s.level==0 and s.guild==""and s.guid==""and s.roles==""
@@ -88,7 +93,7 @@ local function validate(row,now)
 end
 -- Presence/position/layer rows live for minutes; they are relayed from memory
 -- only and never written to the account-wide SavedVariables store.
-local function durable(row)return row.kind~="P"and row.kind~="MP"and row.kind~="LY"end
+local function durable(row)return row.kind~="P"and not TRANSIENT[row.kind]end
 local function persist()
     if optional or scheduled or not M.scope or not M.region then return end -- No persistent public cache under an unknown region.
     D.config.stores[M.scope]=M.durable;D.config.storeUsed[M.scope]=A.Now()
@@ -153,7 +158,7 @@ local function pools()
 end
 local function enqueue(id,source)
     local row=M.records[id];if not row then return false end
-    local priority=optional and 5 or(row.kind=="MP"or row.kind=="LY")and 5 or row.kind=="P"and 70 or row.kind=="B"and row.seq<=2 and 10 or 80
+    local priority=optional and 5 or TRANSIENT[row.kind]and 5 or row.kind=="P"and 70 or row.kind=="B"and row.seq<=2 and 10 or 80
     local old=M.pending[id]
     if old then M.pendingBytes=M.pendingBytes-#old.row.wire;M.pending[id]=nil;M.pendingCount=M.pendingCount-1 end
     while M.pendingCount>=M.MAX_PENDING or M.pendingBytes+#row.wire>M.MAX_PENDING_BYTES do
@@ -226,6 +231,10 @@ function M.Publish(kind,wire)
         local layer=Z.CommunityLayer and Z.CommunityLayer.Decode(wire);if not layer then return nil end
         row.at=layer.at
     end
+    if kind=="L2"then
+        local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(wire);if not layer then return nil end
+        row.at=layer.at
+    end
     if M.Accept(row,nil,true)then M.stats.published=M.stats.published+1;return"mesh."..row.seq end
 end
 function M.OnConnected(route)
@@ -278,7 +287,7 @@ local function replyRecords(route,requested)
         frames,size,signature={},0,{};return ok
     end
     for _,id in ipairs(requested)do local row=M.records[id]
-        if row.kind~="MP"and row.kind~="LY"then for part=1,math.ceil(#row.wire/M.CHUNK)do
+        if not TRANSIENT[row.kind]then for part=1,math.ceil(#row.wire/M.CHUNK)do
             local frame=recordFrame(row,part);local bytes=#frame+#tostring(#frame)+1
             if size+bytes>3700 and not send()then return end
             if bytes<=3700 then frames[#frames+1]=frame;signature[#signature+1]=id..":"..row.seq..":"..part;size=size+bytes end
@@ -334,7 +343,7 @@ function M.Receive(route,payload)
         elseif f[1]=="S"and#f==2 then
             local cursor=tonumber(f[2]);if not L.Int(cursor,1,M.MAX_RECORDS+1)then return false end
             local last=math.min(#M.keys,cursor+15);local values={"J",cursor,last<#M.keys and last+1 or 0}
-            for i=cursor,last do local id=M.keys[i];local row=M.records[id];if row.kind~="MP"and row.kind~="LY"then values[#values+1]=recordHash(id);values[#values+1]=row.session;values[#values+1]=row.seq;values[#values+1]=row.at end end
+            for i=cursor,last do local id=M.keys[i];local row=M.records[id];if not TRANSIENT[row.kind]then values[#values+1]=recordHash(id);values[#values+1]=row.session;values[#values+1]=row.seq;values[#values+1]=row.at end end
             queueData(route,protocol,batch({Z.Network3.Pack(values)}),false,"page:"..route.target,10)
         elseif(f[1]=="I"and(#f-1)%4==0)or(f[1]=="J"and(#f-3)%4==0)then
             local start=2;local sync
@@ -369,7 +378,7 @@ local function flush(group,list)
     -- Older clients reject unknown records and stop reading their frame. Keep
     -- optional positions in separate frames, outside their inventory sync too.
     for _,entry in ipairs(ordered)do local id,p=entry.id,entry.p
-        local optional=p.row.kind=="MP"and"MP"or p.row.kind=="LY"and"LY"or""
+        local optional=TRANSIENT[p.row.kind]and p.row.kind or""
         if p.source~=route.target and not p.sent[route.target]and(optionalBatch==nil or optionalBatch==optional)then
             local part=(p.parts[route.target]or 0)+1;p.frames=p.frames or{};local frame=p.frames[part]or recordFrame(p.row,part);p.frames[part]=frame;local bytes=#frame+#tostring(#frame)+1
             if size+bytes<=3700 then optionalBatch=optional;frames[#frames+1]=frame;selected[#selected+1]={id=id,p=p,part=part};size=size+bytes;priority=math.max(priority,p.priority)end
@@ -430,7 +439,7 @@ function M.Tick()
             local route=list[(math.floor(clock/((optional or scheduled)and 30 or 5)))%#list+1];local cursor=M.cursors[route.target]or 1;local values={"I"};local count=0
             while count<16 and#M.keys>0 do
                 if cursor>#M.keys then cursor=1;break end
-                local id=M.keys[cursor];local r=M.records[id];if r.kind~="MP"and r.kind~="LY"then values[#values+1]=recordHash(id);values[#values+1]=r.session;values[#values+1]=r.seq;values[#values+1]=r.at end;count=count+1;cursor=cursor+1
+                local id=M.keys[cursor];local r=M.records[id];if not TRANSIENT[r.kind]then values[#values+1]=recordHash(id);values[#values+1]=r.session;values[#values+1]=r.seq;values[#values+1]=r.at end;count=count+1;cursor=cursor+1
             end
             -- An entire page may contain only transient positions. Advance over
             -- it even though no inventory frame is needed, or later public data

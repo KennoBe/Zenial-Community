@@ -1037,6 +1037,8 @@ DE["Bags read just now."]="Beutel gerade gelesen."
 
 DE["Layer ID %d"]="Layer-ID %d"
 DE["Layer unknown"]="Layer unbekannt"
+DE["Probably the same layer"]="Vermutlich gleicher Layer"
+DE["Layer last detected %s"]="Layer zuletzt erkannt %s"
 DE["Backups"]="Backups"
 DE["Delete backup"]="Backup löschen"
 DE["Confirm deletion"]="Löschen bestätigen"

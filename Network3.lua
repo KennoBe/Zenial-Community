@@ -3,7 +3,7 @@ local N={PREFIX=L.PREFIX3,FRAME_BYTES=180,MAX_JOBS=256,MAX_QUEUE_BYTES=65536}
 Z.Network3=N
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
-local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true}
+local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true}
 local DIRECT={RQ=true,RR=true,RB=true,OC=true,OO=true,OS=true,OQ=true,OA=true,AV=true,SH=true,SA=true,SQ=true,SS=true,SK=true,SP=true}
 local function allowedKind(channel,kind)return channel=="PUBLIC"and PUBLIC[kind]or channel=="WHISPER"and DIRECT[kind]or false end
 local function trace(reason,...)
@@ -284,6 +284,10 @@ function N.ProcessComplete(sender,channel,kind,wire)
     if kind=="MP"then return Z.CommunityMap and Z.CommunityMap.Receive(sender,wire,N.meshContext)or false end
     if kind=="LY"then
         if Z.CommunityLayer then return Z.CommunityLayer.Receive(sender,wire,N.meshContext)end
+        return false
+    end
+    if kind=="L2"then
+        if Z.CommunityLayer then return Z.CommunityLayer.ReceiveV2(sender,wire,N.meshContext)end
         return false
     end
     if kind=="RX"then

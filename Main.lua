@@ -638,6 +638,8 @@ register("PLAYER_TARGET_CHANGED")
 register("UPDATE_MOUSEOVER_UNIT")
 register("NAME_PLATE_UNIT_ADDED")
 register("NAME_PLATE_UNIT_REMOVED")
+-- Layer transfer signals; registration is defensive because the client may not know them.
+register("SHARD_TRANSFER");register("SHARD_TRANSFER_IMMINENT")
 register("BAG_UPDATE_DELAYED")
 register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
@@ -660,6 +662,7 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"or event=="PLAYER_FLAGS_CHANGED"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event,...)end
     elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if Z.db and Z.SocialDiary and event=="ZONE_CHANGED_NEW_AREA"then Z.SocialDiary.OnEvent(event)end;Z.RefreshLocation(false)
     elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then local unit=event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil;if Z.CommunityLayer then Z.CommunityLayer.RequestScan(unit)end;if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event,unit)end
+    elseif event=="SHARD_TRANSFER"or event=="SHARD_TRANSFER_IMMINENT"then if Z.db and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
     elseif event=="GROUP_ROSTER_UPDATE" then
         if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
         Z.CommunityMap.Refresh()
