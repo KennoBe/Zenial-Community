@@ -130,7 +130,7 @@ end
 function P.Initialize(root,key)
     root.pvpHelp=type(root.pvpHelp)=="table"and root.pvpHelp or{};P.store=loadStore(root.pvpHelp[key],A.Now());root.pvpHelp[key]=P.store;P.deathArmed=not A.IsDeadOrGhost();P.notified=nil;if Z.PvPDeath then Z.PvPDeath.Initialize()end;P.jobs={};P.nextAnnounce=0;if P.store.own then remember(Z.me.key,P.store.own)end;P.Expire()
 end
-function P.UnreadCount()local n=0;for _,r in pairs(P.store and P.store.received or{})do if r.unread and Z.IsOnline(r.key)then n=n+1 end end;return n end
+function P.UnreadCount()local n,now=0,A.Now();for _,r in pairs(P.store and P.store.received or{})do if r.unread and r.expires>now and not Z.db.blocked[r.key]and Z.IsOnline(r.key)then n=n+1 end end;return n end
 -- Confirmed PvP deaths of the last 60 minutes (older or future records are dropped).
 function P.DeathCount()
     local now=A.Now();for i=#P.store.deaths,1,-1 do local d=P.store.deaths[i];if type(d)~="table"or d.at<=now-DEATH_WINDOW or d.at>now+120 then table.remove(P.store.deaths,i)end end;return #P.store.deaths
@@ -284,19 +284,21 @@ end
 local function acceptCall(key,s,noAck)
     if peerFaction(key)~=Z.me.faction or Z.db.blocked[key]then return end
     if not P.store.cancelled[key..":"..s.id]then remember(key,s)end
-    if not P.store.receive or peerFaction(key)~=Z.me.faction then return end
-    if P.store.scope=="zone"and A.CurrentMapID()~=s.mapID then return end
+    -- Every active call of the same faction is listed (and counted as unread); only a helper who opted in (and whose area
+    -- filter matches) is also acked, fetches the details at once and gets the banner.
+    local listen=P.store.receive and(P.store.scope~="zone"or A.CurrentMapID()==s.mapID)or false
     local now=A.Now();local token=key..":"..s.id
     if P.store.cancelled[token]then return end
     if P.store.received[token]then
         local r=P.store.received[token];rememberDeathPlace(token,s)
         if s.rev>(r.locationRev or 0)then copyLocation(r,cleanLocation(s));r.locationRev=s.rev;r.rev=math.max(r.rev,s.rev)end
-        if not noAck then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end;return end
+        if not noAck and listen then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end;return end
     if P.store.seen[token]or(P.store.senderLast[key]and now-P.store.senderLast[key]<CALL_COOLDOWN)then return end
     if count(P.store.received)>=40 then return end
     local r=cleanLocation(s);r.locationRev=s.rev;r.detailRev=0;r.key,r.id,r.rev,r.at,r.expires,r.unread,r.note,r.detail,r.response=key,s.id,s.rev,s.at,s.expires,true,"",false,"";P.store.received[token]=r;P.store.seen[token]=s.expires+CALL_COOLDOWN;P.store.senderLast[key]=now
     rememberDeathPlace(token,s);local known=P.store.history[token]
     if known then r.response=known.response or"";if known.detail then r.note,r.enemy,r.detail=known.note,cleanEnemy(known.enemy),true;r.killLog,r.killRev=known.killLog,known.killRev end end
+    if not listen then refresh();return end -- listed silently; details are requested when the call is opened
     if not noAck then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end
     -- Enrolled helpers fetch the details right away for the banner; once per call, and it stays unread.
     if not r.detail then enqueue(key,{kind="H1D",id=s.id},100,"H1D:"..key..":"..s.id)end

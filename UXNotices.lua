@@ -119,6 +119,7 @@ function U.UpdateBadges()
         U.pvpTab:SetText(tr('PvP Help') .. (pvp > 0 and (' (' .. pvp .. ')') or ''))
         badge(U.pvpTab, pvp)
     end
+    badge(U.pvpHeaderButton, pu) -- unread active help calls, independent of the receive setting
     badge(U.minimapButton, U.unreadTotal, true)
     if U.RefreshNotificationInbox then
         U.RefreshNotificationInbox()
