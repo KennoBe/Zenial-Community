@@ -270,10 +270,18 @@ function S.createTradePage(f)
         end
         U.SetTradeView('mine')
     end, 'primary')
+    local function clearInactiveOfferEditor(id)
+        if U.offerEditID ~= id then return end
+        U.offerEditID = nil
+        U.tradeEditorTitle:SetText(tr('Create offer'))
+        U.offerSave:SetText(tr('Publish offer'))
+        U.CaptureOfferDraft()
+    end
     U.tradeManagePause = button(U.tradeManageFrame, tr('Pausieren'), 495, -220, 125, function()
         local e = U.tradeManageSelected
         if e then
             local ok, err = Z.TradeManager.Pause(e.id)
+            if ok then clearInactiveOfferEditor(e.id) end
             U.Message(ok and 'Angebot pausiert.' or err)
             U.tradeManageID = nil
             refreshTradeManage()
@@ -282,6 +290,7 @@ function S.createTradePage(f)
     U.tradeManageDone = button(U.tradeManageFrame, tr('Erledigt'), 630, -220, 125, function()
         local e = U.tradeManageSelected
         if e and Z.TradeManager.Complete(e.id) then
+            clearInactiveOfferEditor(e.id)
             U.tradeManageID = nil
             refreshTradeManage()
         end
