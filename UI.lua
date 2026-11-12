@@ -45,6 +45,7 @@ function U.ShowDiscord()
     if not U.discord then
         local frame = CreateFrame("Frame", "ZenialCommunityDiscord", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
         U.discord = frame; frame:SetSize(470, 165); frame:SetPoint("CENTER"); frame:SetFrameStrata("FULLSCREEN_DIALOG")
+        if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityDiscord"end
         if T then T.Shell(frame) end
         label(frame, "WoW Forever Discord", 24, -24, 350, "GameFontNormalLarge")
         local close = U.CloseButton(frame, -5, -5, function() frame:Hide() end)
