@@ -182,6 +182,7 @@ function Z.RequestRecipeCatalog(key,profession)
 end
 local function compactPeerProfile(peer)
     local data=peer and peer.data;if not data then return end;local presence=peer.presence or{};local professions={};for _,id in ipairs(presence.professionIDs or{})do local name=L.ProfessionNameByID(id);if name then professions[#professions+1]={id=id,name=name,rank=0,max=1}end end
+    peer.guildRank=nil
     peer.data={kind="S3",rev=data.rev or 0,generation=peer.session or"",community="",faction=peer.faction or Z.me.faction,class=presence.classFile or"",classFile=presence.classFile or"",level=presence.level or 0,guild="",guid="",roles=presence.role or"",note="",professionNote="",professions=professions,group=data.group,quest=data.quest,market=data.market or{},linkMain=data.linkMain or"",linkVersion=data.linkVersion or 0,linkAlts={},recipeRev=presence.recipeRev or 0,recipeCount=0,recipeScan=0,publicOnly=true};peer.profileAt=nil
 end
 local function pruneProfileCache(protect)
@@ -241,6 +242,7 @@ local function attach(db)
         reachable=function(key)local c=db.contacts[key];return c and Z.BattleNetTransport and Z.BattleNetTransport.IsReachable(c.target)end,
         pendingUntil=function(target)return Z.BattleNetTransport and Z.BattleNetTransport.PendingUntil(target)end,
         snapshot=function() return L.Snapshot(db,Z.me,Z.PublicLinks()) end,
+        guildRank=function() return Z.Social and Z.Social.OwnGuildRank() or "" end,
         recipeSearch=function(q) return Z.SearchOwnRecipes(q) end,
         recipeCatalog=function(profession,offset) return Z.RecipeCatalogPage(profession,offset) end,
         catalogRevision=function(key)local peer=db.peers[key];return peer and peer.presence and peer.presence.recipeRev end,

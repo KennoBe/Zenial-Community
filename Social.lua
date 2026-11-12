@@ -82,7 +82,11 @@ function S.RefreshGuildRoster()
         changed=clearGuild();guild.name=name;changed=true
     end
     if guild.name==""and not name and inGuild==nil then return changed end
-    if name and guild.ownRank~=ownRank then guild.ownRank=ownRank;changed=true end
+    if name and guild.ownRank~=ownRank then
+        guild.ownRank=ownRank;changed=true
+        -- Contacts hold the old rank: send the profile (and its rank) again.
+        if Z.engine and Z.engine.Publish then Z.engine:Publish() end
+    end
     local total=A.Call(GetNumGuildMembers)
     if type(total)~="number"or total<=0 then return changed end
     local names,ranks,count={},{},0
@@ -172,15 +176,24 @@ function S.IsGuildMember(key)
     return data~=nil and type(data.guild)=="string"and data.guild~=""and data.guild==own
 end
 -- Guild rank for display only (never shared, never used for filtering). The
--- roster only knows the own guild, so other guilds never get a rank.
+-- roster rank is preferred for the own guild; other guilds use the direct-profile rank.
+function S.OwnGuildRank()return not guild.left and guild.ownRank or""end
+-- Rank of a remote member from their direct profile: only for the matching profile
+-- generation/revision and only while their guild name is shared.
+local function remoteRank(key)
+    local peer=Z.db and Z.db.peers[key];local r=peer and peer.guildRank;local data=peer and peer.data
+    if not(r and data and data.kind=="S3"and data.guild~=""and data.guild~=nil and r.generation==data.generation and r.rev==data.rev)then return nil end
+    return L.Text(r.rank,32)and r.rank or nil
+end
 function S.GuildRank(key)
-    if not S.IsGuildMember(key)then return nil end
+    if not S.IsGuildMember(key)then return remoteRank(key)end
     local rank
     if key==Z.me.key then rank=guild.ownRank end
     if(not rank or rank=="")and guild.loaded and guild.name==S.GuildName()then
         local id=rosterName(key);rank=id and guild.ranks[id]
     end
-    return type(rank)=="string"and rank~=""and rank or nil
+    if type(rank)=="string"and rank~=""then return rank end
+    return remoteRank(key)
 end
 function S.ToggleFavorite(key)
     if not L.ValidIdentityKey(key)then return nil,"Ungültiger Spieler."end

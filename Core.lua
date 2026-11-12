@@ -143,6 +143,10 @@ local function loadMemberPeer(p)
             if type(p.data)=="table"and p.data.publicOnly==true then s.publicOnly=true end
         end
     end
+    local gr=p.guildRank
+    if peer.data and type(gr)=="table"and L.Text(gr.generation,32,true)and L.Int(gr.rev,1,2147483646)and L.Text(gr.rank,32)then
+        peer.guildRank={generation=gr.generation,rev=gr.rev,rank=gr.rank}
+    end
     -- A presence announcement is enough to remember a member; opening their
     -- full profile must not be required for them to survive /reload.
     local presence=p.presence;local own=ZenialCommunity.me
@@ -329,6 +333,7 @@ function L.Encode(s)
         local materials=L.RecipeMaterialsRequested(s.id)
         for _,r in ipairs(s.results)do put(r.id,r.itemID or 0,r.name,r.itemName or"");if materials then put(r.materials or"")end end
     elseif s.kind=="L1" then put(s.at,s.faction,s.mapID or 0,s.area or "",s.subzone or "")
+    elseif s.kind=="G1" then put(s.generation,s.rev,s.rank or "")
     elseif s.kind=="H1R" then put(s.enabled and 1 or 0,s.scope or "all",s.mapID or 0)
     elseif s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" then put(s.id)
     elseif s.kind=="H1J" then put(s.id,s.state)
@@ -383,6 +388,10 @@ function L.Decode(wire,now,historical)
     elseif s.kind=="H1I" then
         s.id,s.rev,s.note=str(32),num(1,2147483646),str(96,true);local hasEnemy=num(0,1);s.enemyName,s.enemyClass=str(113,true),str(24,true);s.enemyLevel,s.enemyFaction=num(0,100),str(16,true)
         if not (s.id and s.rev and s.note and hasEnemy~=nil and s.enemyName and s.enemyClass and s.enemyLevel and s.enemyFaction) then return nil end;s.hasEnemy=hasEnemy==1
+    elseif s.kind=="G1" then
+        -- Guild rank of the direct profile (S3 generation/rev); unknown to old clients, which ignore it.
+        s.generation,s.rev,s.rank=str(32,true),num(1,2147483646),str(32,true)
+        if not (s.generation and s.rev and s.rank) then return nil end
     elseif s.kind=="H2I" then
         -- Versioned PvP kill log: up to 8 deaths with up to 5 attackers each; level 0 on the wire is "unknown".
         s.id,s.rev,s.note=str(32),num(1,2147483646),str(96,true);local truncated,n=num(0,1),num(0,8)
@@ -469,7 +478,10 @@ function L.Accept(d,key,s,now,wire)
     elseif old and old.data and(old.data.generation or"legacy")==generation and old.data.rev>s.rev then return false end
     local location=old and old.location;local samePublic=old and(not old.cap4 or old.session==generation);local preservePublic=samePublic and s.kind=="S3"and s.rev<math.max(old.publicAppliedRev or-1,old.publicDeltaRev or-1);local group,quest,market=old and old.data and old.data.group,old and old.data and old.data.quest,old and old.data and old.data.market
     if preservePublic then s.group,s.quest,s.market=group,quest,market elseif samePublic and s.kind=="S3"then L.ApplyRetractions(s,old.retractions)end
-    local peer=old or{};peer.data,peer.wire,peer.received,peer.lastContact=s,wire,now,now;peer.profileGeneration,peer.profileRevision=generation,s.rev;peer.state="reached";peer.cap3=s.kind=="S3";peer.faction=peer.faction or s.faction;peer.location=location;d.peers[key]=peer;return true
+    local peer=old or{};peer.data,peer.wire,peer.received,peer.lastContact=s,wire,now,now;peer.profileGeneration,peer.profileRevision=generation,s.rev;peer.state="reached";peer.cap3=s.kind=="S3";peer.faction=peer.faction or s.faction;peer.location=location
+    -- A rank belongs to one profile generation and only exists while the guild is shared.
+    if peer.guildRank and(s.guild==""or peer.guildRank.generation~=(s.generation or""))then peer.guildRank=nil end
+    d.peers[key]=peer;return true
 end
 function L.ApplicationCounts(d,kind,id)
     local bucket=kind=="group" and d.interests or d.questInterests;local alerts=d.applicationAlerts[kind] or {};local open,unread=0,0
@@ -504,7 +516,21 @@ function L.Engine(d,me,io)
     function e:Request(key) local now=io.now();if self.lastRequest[key] and now-self.lastRequest[key]<10 then return nil,"Bereits angefragt." end;self.lastRequest[key]=now;self:Queue(key,{kind="Q3",rev=d.peers[key] and d.peers[key].data and d.peers[key].data.rev or 0},true,40,"Q3:"..key);return self:Queue(key,{kind="Q",rev=0},true,20,"Q:"..key) end
     local function reachable(key)return io.reachable and io.reachable(key)or not io.reachable and L.PeerOnline(d,key,io.now())end
     function e:Publish() for key,p in pairs(d.peers) do if p.received and d.contacts[key] and not d.blocked[key]and reachable(key)and(not p.cap4 or p.profileRequested)then self.dirty[key]=true end end end
-    function e:QueueSnapshot(key,legacy,background) return self:Queue(key,legacy and L.LegacySnapshot(d,me) or io.snapshot(),true,30,(legacy and"SNAP1:"or"SNAP3:")..key,{reason="profile",background=background==true}) end
+    function e:QueueSnapshot(key,legacy,background)
+        local s=legacy and L.LegacySnapshot(d,me) or io.snapshot()
+        local id,err=self:Queue(key,s,true,30,(legacy and"SNAP1:"or"SNAP3:")..key,{reason="profile",background=background==true})
+        -- Guild rank follows the S3 profile on the same direct path (same gate as the guild name).
+        -- Unreliable on purpose: old clients cannot ack it. An empty rank clears an earlier one once.
+        if id and not legacy and s.kind=="S3" and io.guildRank then
+            local rank=s.guild~=""and io.guildRank()or"";local peer=d.peers[key]
+            if not L.Text(rank,32,true)then rank=""end
+            if rank~=""or peer and peer.guildRankSent then
+                self:Queue(key,{kind="G1",generation=s.generation,rev=s.rev,rank=rank},false,29,"G1:"..key)
+                if peer then peer.guildRankSent=rank~=""or nil end
+            end
+        end
+        return id,err
+    end
     local function partCount(key) return e.partCounts[key] or 0 end
     local function choose(clock) local best,index;local pendingCount=count(e.pending);for i,item in ipairs(e.out) do if clock>=(e.waitingTargets[item.key]or 0)and(not item.reliable or e.pending[item.id] or pendingCount<8) and (not best or item.priority>best.priority or (item.priority==best.priority and item.serial<best.serial)) then best,index=item,i end end;return best,index end
     function e:Tick()
@@ -548,6 +574,9 @@ function L.Engine(d,me,io)
         local peer=d.peers[key] or {};d.peers[key]=peer;peer.lastContact=now;peer.state="reached"
         if s.kind=="A" then local sent=self.pending[s.id];if sent and sent.key==key then self.pending[s.id]=nil;if io.delivery then io.delivery(key,sent.dedupe,true)end end
         elseif s.kind=="L1" then if s.faction==me.faction and(not peer.location or s.at>=peer.location.at)then peer.location={at=s.at,mapID=s.mapID,area=s.area,subzone=s.subzone};ui()end
+        elseif s.kind=="G1" then
+            local cur=peer.guildRank
+            if not(cur and cur.generation==s.generation and cur.rev>s.rev)then peer.guildRank=s.rank~=""and{generation=s.generation,rev=s.rev,rank=s.rank}or nil;ui()end
         elseif s.kind=="Q3" then peer.profileRequested=true;self:QueueSnapshot(key,false)
         elseif s.kind=="Q" then peer.profileRequested=true;self:QueueSnapshot(key,true)
         elseif s.kind=="S3" or s.kind=="S" then if s.faction==me.faction then

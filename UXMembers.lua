@@ -528,7 +528,7 @@ local function refreshMemberDetail()
         lines[#lines + 1] = fact(tr('Preferred role') .. ':', roleName(s.roles))
     end
     if s.guild and s.guild ~= '' then
-        local rank = s.guild == Z.Social.GuildName() and Z.Social.GuildRank(m.key) or nil
+        local rank = Z.Social.GuildRank(m.key)
         lines[#lines + 1] = fact(tr('Guild') .. ':', rank and (s.guild .. ' (' .. rank .. ')') or s.guild)
     end
     local prof = profText(s)
