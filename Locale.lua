@@ -980,8 +980,17 @@ DE["%s is offline; no current snapshot."]="%s ist offline – es liegt kein aktu
 DE["Offer is no longer in the latest snapshot of %s."]="Das Angebot ist nicht mehr im letzten Snapshot von %s enthalten."
 DE["This offer has expired."]="Dieses Angebot ist abgelaufen."
 DE["Returning to crafting"]="Zurück zur Herstellung"
-for english,deutsch in pairs(DE)do reverse[deutsch]=english end
-for english,deutsch in pairs(ACTIVITY_DE)do reverse[deutsch]=english end
+local function addReverseTranslations(translations)
+    local englishKeys={}
+    for english in pairs(translations)do englishKeys[#englishKeys+1]=english end
+    table.sort(englishKeys)
+    for _,english in ipairs(englishKeys)do
+        local deutsch=translations[english]
+        if reverse[deutsch]==nil then reverse[deutsch]=english end
+    end
+end
+addReverseTranslations(DE)
+addReverseTranslations(ACTIVITY_DE)
 
 DE["Quest Helper"]="Questhelfer"
 DE["Shared Quests"]="Gemeinsame Quests"
