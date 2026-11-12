@@ -7,7 +7,7 @@ local function scope()
 end
 local ROSTER_ECHO_GAP,ROSTER_SERVER_GAP=5,60
 local ROSTER_REQUEST_GAP,ROSTER_REFRESH_GAP=10,2
-local guild={left=false,name="",names={},complete=false,loaded=false,pending=false,wantRequest=false,wantServer=false,serverAt=-math.huge,ids={},requestAt=-math.huge,refreshAt=-math.huge}
+local guild={left=false,name="",names={},ranks={},ownRank="",complete=false,loaded=false,pending=false,wantRequest=false,wantServer=false,serverAt=-math.huge,ids={},requestAt=-math.huge,refreshAt=-math.huge}
 S.guildCache=guild
 local function size(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local function snapshot(source)
@@ -38,8 +38,9 @@ function S.IsFavorite(key)return S.store and S.store.favorites[key]==true end
 -- public snapshots never carry the guild name (Network3 bundleWire clears it).
 -- Rendering only reads this cache; roster requests come from events/ticks.
 local function clearGuild()
-    local changed=guild.name~=""or guild.loaded or next(guild.names)~=nil
+    local changed=guild.name~=""or guild.loaded or next(guild.names)~=nil or guild.ownRank~=""
     guild.name,guild.names,guild.complete,guild.loaded,guild.ids="",{},false,false,{}
+    guild.ranks,guild.ownRank={},""
     return changed
 end
 -- Name of the own guild: the cache first, the identity snapshot as fallback.
@@ -69,8 +70,9 @@ function S.RefreshGuildRoster()
         if not inGuild then return clearGuild()or was~=guild.left end
         if was then guild.left=false end
     end
-    local name=A.Call(GetGuildInfo,"player")
+    local name,ownRank=A.Call(GetGuildInfo,"player")
     name=L.Text(name,64)and name or nil
+    ownRank=name and L.Text(ownRank,32)and ownRank or ""
     local changed=false
     -- Login timing: in a guild, but the guild name is not available yet.
     if not name and inGuild then guild.pending=true;return false end
@@ -80,17 +82,19 @@ function S.RefreshGuildRoster()
         changed=clearGuild();guild.name=name;changed=true
     end
     if guild.name==""and not name and inGuild==nil then return changed end
+    if name and guild.ownRank~=ownRank then guild.ownRank=ownRank;changed=true end
     local total=A.Call(GetNumGuildMembers)
     if type(total)~="number"or total<=0 then return changed end
-    local names,count={},0
+    local names,ranks,count={},{},0
     for index=1,total do
-        local id=S.RosterIdentity(A.Call(GetGuildRosterInfo,index))
-        if id then names[id]=true;count=count+1 end
+        local member,rank=A.Call(GetGuildRosterInfo,index)
+        local id=S.RosterIdentity(member)
+        if id then names[id]=true;count=count+1;if L.Text(rank,32)then ranks[id]=rank end end
     end
     if count==0 then
         -- No entry maps to a valid identity of this scope (unexpected format):
         -- treat the roster as not loaded so the profile fallback stays active.
-        if guild.loaded then guild.names,guild.complete,guild.loaded={},false,false;changed=true end
+        if guild.loaded then guild.names,guild.ranks,guild.complete,guild.loaded={},{},false,false;changed=true end
         return changed
     end
     -- Complete only if every index delivered a name (hidden offline members do not).
@@ -98,7 +102,9 @@ function S.RefreshGuildRoster()
     local same=guild.loaded and guild.complete==complete
     if same then for id in pairs(names)do if not guild.names[id]then same=false;break end end end
     if same then for id in pairs(guild.names)do if not names[id]then same=false;break end end end
-    if not same then guild.names,guild.complete,guild.loaded=names,complete,true;changed=true end
+    if same then for id,rank in pairs(ranks)do if guild.ranks[id]~=rank then same=false;break end end end
+    if same then for id in pairs(guild.ranks)do if not ranks[id]then same=false;break end end end
+    if not same then guild.names,guild.ranks,guild.complete,guild.loaded=names,ranks,complete,true;changed=true end
     return changed
 end
 -- Never at render time; WoW itself limits roster requests, so keep a gap.
@@ -164,6 +170,17 @@ function S.IsGuildMember(key)
     end
     local peer=Z.db and Z.db.peers[key];local data=peer and peer.data
     return data~=nil and type(data.guild)=="string"and data.guild~=""and data.guild==own
+end
+-- Guild rank for display only (never shared, never used for filtering). The
+-- roster only knows the own guild, so other guilds never get a rank.
+function S.GuildRank(key)
+    if not S.IsGuildMember(key)then return nil end
+    local rank
+    if key==Z.me.key then rank=guild.ownRank end
+    if(not rank or rank=="")and guild.loaded and guild.name==S.GuildName()then
+        local id=rosterName(key);rank=id and guild.ranks[id]
+    end
+    return type(rank)=="string"and rank~=""and rank or nil
 end
 function S.ToggleFavorite(key)
     if not L.ValidIdentityKey(key)then return nil,"Ungültiger Spieler."end
