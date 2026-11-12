@@ -5,6 +5,20 @@ local H
 local function tr(v)return Z.T(v)end
 local function selected()return S.Get(U.scheduledOwner,U.scheduledID)end
 local function message(ok,reason)U.Message(ok and tr('Scheduled change saved.')or tr(reason));U.RefreshScheduledGroups()end
+function U.CanForgetScheduled(e)
+    if not e or e.ownerKey==Z.me.key then return false end
+    local following=S.Follow(e.ownerKey,e.id)
+    return following and not following.pending and(following.state=='NONE'or following.state=='WITHDRAWN'or following.state=='DECLINED'or e.status~='OPEN'or e.endsAt<=A.Now())or false
+end
+function U.ForgetScheduledActivity(key)
+    local r=key and Z.ActivityBoard.Get(key)
+    if not r or r.kind~='EVENT'or r.own then U.Message(tr('This activity is no longer available.'));U.RefreshActivityBoard();return end
+    local e=S.Get(r.owner,r.id)
+    if not e or e.ownerKey~=r.owner or e.ownerKey==Z.me.key or not U.CanForgetScheduled(e)then U.Message(tr('This activity is no longer available.'));U.RefreshActivityBoard();return end
+    local ok,why=S.Forget(e.ownerKey,e.id)
+    if not ok then U.Message(tr(why))end
+    U.RefreshActivityBoard();U.Refresh()
+end
 function U.OpenScheduledEditor(e)
     U.scheduledEditingID=e and e.id;U.scheduledEditingRevision=e and e.revision
     U.scheduledActivity:SetText(e and e.activity or'Blackrock Depths')
@@ -83,10 +97,15 @@ function U.RefreshScheduledGroups()
     H.rows(U.scheduledList,items,82);U.scheduledCount:SetText(Z.T('%d events · page %d/%d',#data,U.scheduledPage,maxPage)..(S.Loading()and' · '..tr('Loading')or''))
     U.scheduledPrev:SetEnabled(U.scheduledPage>1);U.scheduledNext:SetEnabled(U.scheduledPage<maxPage)
     U.scheduledStoreState:SetText(tr(not S.store and'Saved scheduled groups are unavailable. Data was preserved.'or S.loadError and'Invalid scheduled data was rejected.'or''))
-    U.scheduledReminderHint:Hide()
     local e=selected();local own=e and e.ownerKey==Z.me.key
+    local storeUnavailable=U.scheduledStoreState:GetText()~=''
+    U.scheduledReminderHint:SetShown(e~=nil and not own and not storeUnavailable)
+    U.scheduledConfirmHint:SetShown(not storeUnavailable and own==true)
+    U.scheduledRecreate:SetShown(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
+    U.scheduledRecreate:SetEnabled(own==true and(e.status=='CANCELLED'or e.status=='FINISHED'))
+    U.scheduledRepeat:SetText(tr('Repeat weekly'))
     U.scheduledDelete:SetText(tr('Remove from my list'));U.scheduledDelete:SetShown(e~=nil and not own)
-    for _,button in ipairs({U.scheduledApply,U.scheduledWithdraw,U.scheduledEdit,U.scheduledPublish,U.scheduledCancel,U.scheduledRepeat,U.scheduledConfirm,U.scheduledWaitlist,U.scheduledDecline,U.scheduledDelete})do button:SetEnabled(false)end
+    for _,button in ipairs({U.scheduledApply,U.scheduledWithdraw,U.scheduledEdit,U.scheduledPublish,U.scheduledCancel,U.scheduledRepeat,U.scheduledConfirm,U.scheduledWaitlist,U.scheduledDecline,U.scheduledDelete,U.scheduledRecreate})do button:SetEnabled(false)end
     H.showControl(U.scheduledRole,e~=nil and not own);U.scheduledApply:SetShown(e~=nil and not own);U.scheduledWithdraw:SetShown(e~=nil and not own)
     for _,button in ipairs({U.scheduledConfirm,U.scheduledWaitlist,U.scheduledDecline})do button:SetShown(own==true)end
     for _,button in ipairs({U.scheduledEdit,U.scheduledPublish,U.scheduledCancel,U.scheduledRepeat})do button:SetShown(own==true)end
@@ -94,6 +113,7 @@ function U.RefreshScheduledGroups()
     local following=S.Follow(e.ownerKey,e.id);local used=e.participants and S.Counts(e)or e.used
     local details={{text=U.ActivityName(e.activity)..' · '..S.StateLabel(e.status),height=40},{text=T.Format(e.startsAt)..' – '..T.Format(e.endsAt),height=56},
         {text=tr(S.Reach(e.ownerKey))..'\n'..S.Participation(e.ownerKey,e.id),height=48}}
+    if not own and not storeUnavailable then details[#details+1]={text=tr('Local reminders run only while WoW and the addon are running.'),height=36}end
 
     local free={};for _,role in ipairs({'TANK','HEALER','DAMAGER'})do free[#free+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
     details[#details+1]={text=tr('Free roles: ')..table.concat(free,' · '),height=40}
@@ -112,8 +132,9 @@ function U.RefreshScheduledGroups()
         U.scheduledDecline:SetEnabled(S.CanDecide(e.id,U.scheduledParticipant,'DECLINED',U.scheduledParticipantRevision)==true)
         U.scheduledEdit:SetEnabled(e.status=='OPEN'and e.startsAt>A.Now());U.scheduledPublish:Hide()
         U.scheduledCancel:SetEnabled(e.status=='OPEN');U.scheduledRepeat:SetEnabled(true)
+        U.scheduledRecreate:SetEnabled(e.status=='CANCELLED'or e.status=='FINISHED')
     else
-        U.scheduledDelete:SetEnabled(following and not following.pending and(following.state=='NONE'or following.state=='WITHDRAWN'or following.state=='DECLINED'or e.status~='OPEN'or e.endsAt<=A.Now())or false)
+        U.scheduledDelete:SetEnabled(U.CanForgetScheduled(e))
         if following then people={{text=Z.Locale.Role(following.role)..' · '..S.Participation(e.ownerKey,e.id),height=56}}end
         U.scheduledApply:SetEnabled(S.CanApply(e.ownerKey,e.id)==true);U.scheduledWithdraw:SetEnabled(S.CanWithdraw(e.ownerKey,e.id)==true)
     end
@@ -129,7 +150,7 @@ function U.CreateScheduledGroups(parent,helpers)
     U.scheduledPrev=button(f,tr('Previous'),0,-304,118,function()U.scheduledPage=(U.scheduledPage or 1)-1;U.scheduledOwner,U.scheduledID,U.scheduledParticipant,U.scheduledParticipantRevision=nil,nil,nil,nil;U.RefreshScheduledGroups()end)
     U.scheduledNext=button(f,tr('Next'),132,-304,118,function()U.scheduledPage=(U.scheduledPage or 1)+1;U.scheduledOwner,U.scheduledID,U.scheduledParticipant,U.scheduledParticipantRevision=nil,nil,nil,nil;U.RefreshScheduledGroups()end)
     U.scheduledArchive=H.checkbox(f,'Show archived events',0,-335,260,function()U.scheduledPage=1;U.RefreshScheduledGroups()end)
-    U.scheduledNew=button(f,tr('New event'),0,-374,118,function()U.OpenActivityCreator();U.creatorWhen:SetText('PLANNED')end)
+    U.scheduledNew=button(f,tr('New event'),0,-374,118,function()U.OpenActivityCreator();U.creatorWhen:SetText('PLANNED');U.ConfigureActivityCreator()end)
     U.scheduledDelete=button(f,tr('Remove from my list'),132,-374,118,function()local e=selected();if e and e.ownerKey~=Z.me.key then message(S.Forget(e.ownerKey,e.id))end end,'danger')
     U.scheduledStoreState=label(f,'',284,-335,548);U.scheduledStoreState:SetHeight(30)
     U.scheduledDetails=list(f,284,-4,548,134);U.scheduledParticipants=list(f,284,-148,548,124)
@@ -145,11 +166,13 @@ function U.CreateScheduledGroups(parent,helpers)
     U.scheduledConfirm=button(f,tr('Confirm participant'),284,-295,174,function()decision('CONFIRMED')end,'primary')
     U.scheduledWaitlist=button(f,tr('Waitlist'),468,-295,174,function()decision('WAITLIST')end)
     U.scheduledDecline=button(f,tr('Decline'),652,-295,180,function()decision('DECLINED')end,'danger')
-    local hint=label(f,tr('Local reminders run only while WoW and the addon are running.'),284,-335,548);hint:SetHeight(30);U.scheduledReminderHint=hint
+    local hint=label(f,tr('Local reminders run only while WoW and the addon are running.'),284,-335,548);hint:SetHeight(30);U.scheduledReminderHint=hint;hint:Hide()
     U.scheduledEdit=button(f,tr('Edit'),284,-374,124,function()U.OpenScheduledEditor(selected())end)
     U.scheduledPublish=button(f,tr('Publish'),418,-374,124,function()local e=selected();if e then message(S.Publish(e.id))end end,'primary')
     U.scheduledCancel=button(f,tr('Cancel event'),552,-374,136,function()local e=selected();if e then message(S.Cancel(e.id,e.revision))end end,'danger')
-    U.scheduledRepeat=button(f,tr('Weekly template'),698,-374,134,function()U.OpenScheduledRecurrence(selected())end)
+    U.scheduledRepeat=button(f,tr('Repeat weekly'),698,-374,134,function()U.OpenScheduledRecurrence(selected())end)
+    U.scheduledRecreate=button(f,tr('Create again'),418,-374,124,function()local e=selected();if e then U.RecreateActivity('EVENT:'..e.ownerKey..':'..e.id)end end,'primary')
+    U.scheduledConfirmHint=label(f,tr('Confirming records attendance only. It does not invite anyone to your group.'),284,-335,548,'GameFontHighlightSmall');U.scheduledConfirmHint:SetHeight(30);U.scheduledConfirmHint:SetWordWrap(true);U.scheduledConfirmHint:Hide()
     U.scheduledEditor=H.panel(U.frame);local form=U.scheduledEditor;form:ClearAllPoints();form:SetPoint('CENTER',U.frame,'CENTER',0,0);form:SetSize(650,510)
     U.scheduledFormTitle=label(form,tr('Scheduled event'),16,-16,618,'GameFontNormalLarge')
     U.scheduledActivity=edit(form,'Activity',16,-58,618,64)

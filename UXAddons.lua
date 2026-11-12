@@ -2,7 +2,7 @@ local Z = ZenialCommunity
 local U = Z.UI
 local S = U.Shared
 local tr = S.tr
-local ADDON_PAGE, ADDON_CATALOG, selectNav, updateNavPath = S.ADDON_PAGE, S.ADDON_CATALOG, S.selectNav, S.updateNavPath
+local ADDON_PAGE, ADDON_CATALOG, updateNavPath = S.ADDON_PAGE, S.ADDON_CATALOG, S.updateNavPath
 
 local function addonCall(method, ...)
     local fn = C_AddOns and C_AddOns[method]
@@ -48,51 +48,26 @@ local function addonState(entry)
     end
     return { kind = 'legacy', text = tr('Installiert · Update für Einbettung erforderlich'), version = version }
 end
+U.GetAddonState = addonState
 function U.HideAddonPanels()
     for _, cached in pairs(U.addonPanels or {}) do
         cached.frame:Hide()
     end
 end
 function U.RefreshAddonAvailability()
-    if not U.addonTabs or not U.tabs then
+    if not U.addonSelector or not U.tabs then
         return 0
     end
-    local count, first, selectedExists = 0, nil, false
+    local count, first = 0, nil
+    local selectedExists = ADDON_CATALOG[U.addonIndex or 0] ~= nil
     for i, entry in ipairs(ADDON_CATALOG) do
         local exists = addonExists(entry)
-        local tab = U.addonTabs[i]
         if exists then
             count = count + 1
             first = first or i
-            selectedExists = selectedExists or U.addonIndex == i
-            local version = addonState(entry).version
-            tab:SetText(version and version ~= '' and entry.label .. ' (' .. version .. ')' or entry.label)
-            tab:ClearAllPoints()
-            tab:SetPoint('TOPLEFT', (count - 1) * 180, 0)
-            tab:Show()
-        else
-            tab:Hide()
-        end
-    end
-    -- Manager pages use an 856-pixel logical canvas at every window scale.
-    -- All installed providers must fit without pushing the last tab off the right edge.
-    local tabWidth = math.min(170, (856 - math.max(0, count - 1) * 8) / math.max(1, count))
-    local slot = 0
-    for _, tab in ipairs(U.addonTabs) do
-        if tab:IsShown() then
-            tab:ClearAllPoints()
-            tab:SetPoint('TOPLEFT', slot * (tabWidth + 8), 0)
-            tab:SetWidth(tabWidth)
-            slot = slot + 1
         end
     end
     U.addonAvailableCount = count
-    if U.settingsAddon then
-        U.settingsAddon:SetEnabled(count > 0)
-    end
-    if U.LayoutMainTabs then
-        U.LayoutMainTabs()
-    end
     if count == 0 then
         U.HideAddonPanels()
         U.addonIndex = nil
@@ -100,8 +75,16 @@ function U.RefreshAddonAvailability()
         U.HideAddonPanels()
         U.addonIndex = first
     end
-    for i, tab in ipairs(U.addonTabs) do
-        selectNav(tab, tab:IsShown() and i == U.addonIndex)
+    if U.addonSelector then
+        local options = {}
+        for _, entry in ipairs(ADDON_CATALOG) do options[#options + 1] = entry.addon end
+        U.addonSelector:SetOptions(options, ADDON_CATALOG[U.addonIndex or first or 1] and ADDON_CATALOG[U.addonIndex or first or 1].addon)
+    end
+    if U.settingsAddon then
+        U.settingsAddon:SetEnabled(count > 0)
+    end
+    if U.LayoutMainTabs then
+        U.LayoutMainTabs()
     end
     updateNavPath()
     return count
@@ -126,9 +109,8 @@ function U.RefreshAddonManager()
             .. '|r'
             .. (state.version and state.version ~= '' and ' · ' .. tr('Version') .. ' ' .. state.version or '')
     )
-    -- A working addon needs no status text; its page gets the room. Anything else explains itself here.
     U.addonDescription:SetShown(state.kind ~= 'ready')
-    U.addonStatus:SetShown(state.kind ~= 'ready')
+    U.addonStatus:Show()
     U.addonAction:Hide()
     U.addonAction:SetEnabled(true)
     if state.kind == 'ready' then
@@ -154,11 +136,16 @@ function U.RefreshAddonManager()
             cached.frame:SetFrameStrata(U.frame:GetFrameStrata())
             cached.frame:SetFrameLevel(U.addonHost:GetFrameLevel() + 1)
             cached.frame:Show()
-            pcall(cached.refresh)
+            local refreshed = pcall(cached.refresh)
+            if not refreshed then
+                U.addonStatus:SetText('|cffff5555' .. tr('Embedded interface could not be created.') .. '|r')
+                U.addonStatus:Show()
+            end
         end
     else
         U.HideAddonPanels()
     end
+    if U.addonSelector then U.addonSelector:SetText(entry.addon) end
     if state.kind == 'legacy' and type(SlashCmdList[entry.slash]) == 'function' then
         U.addonAction:SetText(tr('Open addon window'))
         U.addonAction:SetScript('OnClick', function()
@@ -180,9 +167,6 @@ function U.SetAddonView(index)
         U.HideAddonPanels()
     end
     U.addonIndex = index
-    for i, tab in ipairs(U.addonTabs or {}) do
-        selectNav(tab, i == index)
-    end
     updateNavPath()
     U.RefreshAddonManager()
 end

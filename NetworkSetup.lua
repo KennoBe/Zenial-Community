@@ -113,7 +113,7 @@ function S.RefreshOverview()
 end
 function S.CreateOverview()
     if S.overviewFrame then return end
-    local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
+    local f=CreateFrame("Frame","ZenialCommunityConnectionOverview",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
     f:SetSize(560,315);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
     if Z.Theme then Z.Theme.Panel(f,"stone")end
     label(f,"Community connection",24,-24,500,32)
@@ -131,6 +131,7 @@ function S.CreateOverview()
     S.overviewAdvanced=button(f,"Technical details",382,-245,154,function()S.ShowAdvanced()end)
     button(f,"Close",406,-282,130,function()f:Hide()end)
     f:SetScript("OnHide",function()S.overviewMessageKey=nil;if S.linkFrame then S.linkFrame:Hide()end end)
+    if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityConnectionOverview"end
     local elapsed=0;f:SetScript("OnUpdate",function(_,dt)elapsed=elapsed+dt;if elapsed>=1 then elapsed=0;S.RefreshOverview()end end)
     f:Hide()
 end
@@ -142,17 +143,19 @@ function S.ShowOverview()
 end
 function S.ShowCatalog()
     if not S.catalogFrame then
-        local f=CreateFrame("Frame",nil,S.frame,BackdropTemplateMixin and"BackdropTemplate"or nil);S.catalogFrame=f;f:SetSize(760,300);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true)
+        local f=CreateFrame("Frame","ZenialCommunityCatalogImport",S.frame,BackdropTemplateMixin and"BackdropTemplate"or nil);S.catalogFrame=f;f:SetSize(760,300);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true)
         if Z.Theme then Z.Theme.Panel(f,"stone")end
         label(f,"Group catalog: copy this text or paste the operator's catalog.",15,-15,720,35)
         local scroll=CreateFrame("ScrollFrame",nil,f,"UIPanelScrollFrameTemplate");scroll:SetPoint("TOPLEFT",15,-55);scroll:SetSize(705,170)
         if Z.Theme then Z.Theme.StyleScroll(scroll);Z.Theme.AttachScrollWheel(scroll,42)end
         S.catalogEdit=edit(scroll,0,0,680,20000,true);scroll:SetScrollChild(S.catalogEdit)
+        S.catalogEdit:SetScript("OnEscapePressed",function()f:Hide()end)
         S.catalogEdit:SetScript("OnTextChanged",function(self)self:SetHeight(math.max(170,(select(2,(self:GetText()or""):gsub("\n",""))+1)*14))end)
         button(f,"Select all",15,-250,130,function()S.SelectText(S.catalogEdit)end)
         S.catalogApply=button(f,"Import catalog",155,-250,150,function()local ok,error=D.ImportCatalog(S.catalogEdit:GetText());S.Message(ok and"Group catalog saved."or error);if ok then f:Hide();S.Refresh()end end)
         button(f,"Close",625,-250,110,function()f:Hide()end)
         f:SetScript("OnHide",function()S.catalogEdit:ClearFocus()end)
+        if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityCatalogImport"end
     end
     S.catalogEdit:SetText(D.ExportCatalog());S.catalogFrame:Show();S.SelectText(S.catalogEdit)
 end
@@ -164,17 +167,19 @@ function S.RefreshInvite()
 end
 function S.ShowInvite()
     if not S.linkFrame then
-        local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
+        local f=CreateFrame("Frame","ZenialCommunityInvite",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
         label(f,"Click the text field, then press Ctrl+A and Ctrl+C.",15,-15,720,35)
         S.linkName=label(f,"",15,-52,620,24)
         S.linkPrevious=button(f,"<",655,-49,32,function()S.linkGroupIndex=(S.linkGroupIndex-2)%#S.invitationRows+1;S.RefreshInvite()end)
         S.linkNext=button(f,">",695,-49,32,function()S.linkGroupIndex=S.linkGroupIndex%#S.invitationRows+1;S.RefreshInvite()end)
         S.linkEdit=edit(f,15,-86,720,180,false)
+        S.linkEdit:SetScript("OnEscapePressed",function()f:Hide()end)
         S.linkEdit:SetScript("OnEditFocusGained",function(self)self:HighlightText()end)
         S.linkEdit:SetScript("OnMouseUp",function(self)self:HighlightText()end)
         S.linkEdit:SetScript("OnTextChanged",function(self)if S.invitationLink and self:GetText()~=S.invitationLink then self:SetText(S.invitationLink)end end)
         button(f,"Select all",15,-153,130,function()S.SelectText(S.linkEdit)end)
         button(f,"Close",625,-153,110,function()f:Hide()end);f:SetScript("OnHide",function()S.linkEdit:ClearFocus()end)
+        if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityInvite"end
     end
     local links={};for _,id in ipairs(D.config.assignment)do for _,row in ipairs(D.config.groups)do if row.id==id then links[#links+1]=row end end end
     if#links==0 then links[1]={name=D.DISPLAY_NAME,invite=D.BOOTSTRAP_INVITE}end
@@ -184,7 +189,7 @@ function S.ShowInvite()
 end
 function S.Create()
     if S.frame then return end
-    local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.frame=f;f:SetSize(810,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag("LeftButton");f:SetScript("OnDragStart",f.StartMoving);f:SetScript("OnDragStop",f.StopMovingOrSizing)
+    local f=CreateFrame("Frame","ZenialCommunityNetworkSetup",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.frame=f;f:SetSize(810,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag("LeftButton");f:SetScript("OnDragStart",f.StartMoving);f:SetScript("OnDragStop",f.StopMovingOrSizing)
     if Z.Theme then Z.Theme.Panel(f,"stone")end
     label(f,"Battle.net network · 4.0",15,-15,740,24)
     label(f,"Set up ZENIAL Community to find members and offers. Public entries are shared; private requests go directly to their owner.",15,-44,775,48)
@@ -195,6 +200,7 @@ function S.Create()
     S.groupName=label(f,"",55,-205,475,30)
     S.next=button(f,">",535,-201,32,function()S.groupIndex=(S.groupIndex or 1)%math.max(1,#S.available)+1;S.Refresh()end)
     S.invite=edit(f,15,-235,550,180,false)
+    S.invite:SetScript("OnEscapePressed",function()f:Hide()end)
     S.add=button(f,"Add/update group",590,-235,190,function()local row=S.available[S.groupIndex or 1];if row then local ok,error=D.AddGroup(row.id,S.invite:GetText());S.Message(ok and"Group catalog saved."or error);S.Refresh()end end)
     button(f,"Copy/import catalog",590,-201,190,S.ShowCatalog)
     S.mode=label(f,"",15,-275,560,24)
@@ -205,11 +211,13 @@ function S.Create()
     button(f,"Copy diagnostics",590,-377,190,function()Z.UI.ShowDiagnostics()end)
     label(f,"Addon whisper test: full character name (first and last name)",15,-414,760,22)
     S.target=edit(f,15,-441,550,49,false)
+    S.target:SetScript("OnEscapePressed",function()f:Hide()end)
     S.whisper=button(f,"Test addon whisper",590,-441,190,function()local ok,error=B.Test(S.target:GetText());S.Message(ok and"Connection test started."or error);S.Refresh()end)
     S.confirmed=label(f,"",15,-480,555,65);S.message=label(f,"",590,-480,190,55)
     button(f,"Close",650,-542,130,function()f:Hide()end)
     f:SetScript("OnHide",function()S.invite:ClearFocus();S.target:ClearFocus();if S.catalogFrame then S.catalogFrame:Hide()end;if S.linkFrame then S.linkFrame:Hide()end end)
     local elapsed=0;f:SetScript("OnUpdate",function(_,dt)elapsed=elapsed+dt;if elapsed>=1 then elapsed=0;S.Refresh()end end);f:Hide()
+    if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityNetworkSetup"end
 end
 function S.MissingGroup()
     if not D.config then return nil,false end

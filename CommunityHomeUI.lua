@@ -43,7 +43,8 @@ local function applicationStatus(r)
 end
 local function activitySummary(r)
     local when=r.kind=='EVENT'and Z.ScheduleTime.Format(r.startsAt)or r.startsAt>A.Now()+120 and Z.ScheduleTime.Format(r.startsAt)or tr('Now')
-    local meta=activityType(r)..' · '..when
+    local source=tr(r.kind=='EVENT'and'Scheduled'or r.kind=='QUEST'and'Quest assistance'or r.kind=='PVP'and'PvP Help'or'Group')
+    local meta=source..' · '..activityType(r)..' · '..when
     if r.data and r.data.min then meta=meta..' · '..tr('Level')..' '..r.data.min..'–'..r.data.max end
     local status,hex,accent=applicationStatus(r)
     local heading=title(r)..(r.kind=='EVENT'and r.data and r.data.status=='DRAFT'and' · '..Z.ScheduledGroups.StateLabel('DRAFT')or'')
@@ -54,21 +55,6 @@ local function measuredHeight(text,width,minimum)
     local measured=A.Call(U.activityMeasure.GetStringHeight,U.activityMeasure)
     return math.max(minimum,math.ceil(type(measured)=='number'and measured or minimum-12)+12)
 end
-function U.OpenActivity(key)
-    local r=B.Get(key);if not r then U.Message(tr('This activity is no longer available.'));U.RefreshCommunityHome();return end
-    if r.kind=='EVENT'then
-        U.Navigate('groups','scheduled');U.scheduledOwner,U.scheduledID=r.owner,r.id
-        if not r.own then Z.ScheduledGroups.Query(r.owner,r.id)end;U.RefreshScheduledGroups()
-    elseif r.kind=='QUEST'then
-        U.Navigate('quests',r.own and'mine'or r.saved and'outgoing'or'browse')
-        if not r.own and not r.saved then U.SelectQuest(r.owner,r.id)end
-    elseif r.kind=='PVP'then
-        U.Navigate('groups','pvp');U.SetPvpView(r.own and'mine'or'calls');if not r.own then U.SelectPvpCall(r.owner,r.id)end
-    else
-        U.Navigate('groups',r.own and'mine'or r.saved and'outgoing'or'browse')
-        if not r.own and not r.saved then U.SelectGroup(r.owner,r.id)end
-    end
-end
 function U.RefreshActivityBoard()
     if not U.activityList then return end
     local source=B.List({when=U.activityWhen:GetText(),category=U.activityKind:GetText(),mine=U.activityMine:GetText(),query=U.activitySearch:GetText()})
@@ -77,15 +63,43 @@ function U.RefreshActivityBoard()
     for _,r in ipairs(source)do if r.key==U.activityKey then selected=r end end
     local first=(U.activityPage-1)*25+1
     for i=first,math.min(first+24,#source)do local r=source[i];local text,accent=activitySummary(r)
-        items[#items+1]={text=text,accent=accent,selected=r.key==U.activityKey,height=measuredHeight(text,U.activityList.width-20,72),click=function()U.activityKey=r.key;U.RefreshActivityBoard()end}
+        items[#items+1]={text=text,accent=accent,selected=r.key==U.activityKey,height=measuredHeight(text,U.activityList.width-20,72),click=function()
+            if U.activityKey~=r.key then
+                U.activityKey=r.key
+                if not r.own and r.kind=='EVENT'then Z.ScheduledGroups.Query(r.owner,r.id)
+                elseif not r.own and r.kind=='PVP'then Z.PvPHelp.RequestDetails(r.owner,r.id)end
+            end
+            U.RefreshActivityBoard()
+        end}
     end
     H.rows(U.activityList,items,72);U.activityCount:SetText(Z.T('%d activities · page %d/%d',#source,U.activityPage,pages))
     U.activityPrev:SetEnabled(U.activityPage>1);U.activityNext:SetEnabled(U.activityPage<pages);U.activityOpen:SetEnabled(selected~=nil)
+    local actions=selected and U.ActivityActionState(selected)or{}
+    local foreign=selected and not selected.own
+    local ownEvent=selected and selected.own and selected.kind=='EVENT'
+    for _,button in ipairs({U.activityInlineJoin,U.activityInlineWithdraw,U.activityInlineWhisper,U.activityInlineDiary,U.activityInlineEdit,U.activityManageApplicants})do button:SetShown(selected~=nil and (foreign and button~=U.activityInlineEdit and button~=U.activityManageApplicants or selected.own and(button==U.activityInlineEdit or button==U.activityManageApplicants) and (button~=U.activityInlineEdit or selected.kind~='PVP') and (button~=U.activityManageApplicants or selected.kind~='PVP')))end
+    U.activityInlineArchive:SetShown(selected~=nil and selected.own and selected.kind~='PVP')
+    U.activityInlineArchive:SetText(tr(selected and selected.kind=='EVENT'and'Cancel event'or'Archive activity'))
+    U.activityInlineRepeat:SetShown(ownEvent)
+    U.activityInlineRepeat:SetText(tr('Repeat weekly'))
+    U.activityInlineForget:SetShown(selected~=nil and foreign and selected.kind=='EVENT')
+    U.activityInlineJoin:SetEnabled(actions.join==true);U.activityInlineWithdraw:SetEnabled(actions.withdraw==true)
+    U.activityInlineWhisper:SetEnabled(actions.whisper==true);U.activityInlineDiary:SetEnabled(actions.diary==true);U.activityInlineEdit:SetEnabled(actions.edit==true)
+    U.activityManageApplicants:SetEnabled(actions.manage==true)
+    U.activityInlineArchive:SetEnabled(actions.archive==true)
+    U.activityInlineRepeat:SetEnabled(actions.repeatSeries==true)
+    U.activityInlineForget:SetEnabled(selected~=nil and foreign and selected.kind=='EVENT' and U.CanForgetScheduled(Z.ScheduledGroups.Get(selected.owner,selected.id))==true)
     local detail={};if selected then
         local summary,accent=activitySummary(selected)
         detail[#detail+1]={text=summary,accent=accent,height=measuredHeight(summary,U.activityDetail.width-20,72)}
         local e=selected.data
         if e then
+            if selected.kind=='EVENT'and not selected.own then
+                detail[#detail+1]={text=tr(Z.ScheduledGroups.Reach(selected.owner)),height=32}
+                local following=Z.ScheduledGroups.Follow(selected.owner,selected.id)
+                if following then detail[#detail+1]={text=tr('Delivery: ')..Z.ScheduledGroups.DeliveryLabel(following.delivery),height=32}end
+            end
+            if e.min then detail[#detail+1]={text=tr('Level')..' '..e.min..' – '..e.max,height=32}end
             if selected.kind=='LIVE'then
                 local roles=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER')
                 local party=Z.ActivityParty.Info(selected)
@@ -96,12 +110,16 @@ function U.RefreshActivityBoard()
                 for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
                 detail[#detail+1]={text=tr('Free roles: ')..table.concat(roles,' · ')..'\n'..Z.T('Duration: %d min',math.floor((e.endsAt-e.startsAt)/60)),height=52}
             end
+            if selected.kind=='PVP'then detail[#detail+1]={text=tr(e.response=='coming'and'Coming to help'or'No application'),height=32}end
+        end
+        if not selected.own and(selected.kind=='LIVE'or selected.kind=='EVENT')then
+            detail[#detail+1]={text=tr('My role')..': '..Z.Locale.Role(Z.Logic.Role(Z.db.roles)or'DAMAGER'),height=30}
         end
         local reason,outside=B.Reason(selected);if reason then detail[#detail+1]={text=reason,height=48};if outside then detail[#detail+1]={text=tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'),height=44}end end
         if selected.saved then detail[#detail+1]={text=tr('Saved state; verification pending'),height=44}end
         if selected.data and selected.data.note and selected.data.note~=''then local note=tr('Comment')..'\n'..selected.data.note;detail[#detail+1]={text=note,height=measuredHeight(note,U.activityDetail.width-20,48)}end
 
-    else detail={{text=tr('Select an activity. Open its details to apply or manage it.'),height=72}}end
+    else detail={{text=tr('Select an activity to see its details and actions.'),height=72}}end
     H.rows(U.activityDetail,detail,48)
 end
 -- Wishes remain local criteria. Cards only expose the saved, active values;
@@ -147,20 +165,45 @@ function U.RefreshCommunityHome()
     local P=Z.SessionPlans;local state=P.State();refreshWishSummary(P,state)
     local home=B.Home();local items={}
     local function heading(text)items[#items+1]={text='|cffffd36b'..tr(text)..'|r',height=32}end
-    local function section(label,entries)
+    local function section(label,entries,emptyText)
         heading(tr(label)..' ('..#entries..')')
-        if#entries==0 then items[#items+1]={text=tr('No matching activities received.'),height=34}end
+        if#entries==0 then items[#items+1]={text=tr(emptyText),height=34}end
         for i,entry in ipairs(entries)do if i>20 then break end
             local r=entry.activity or entry;items[#items+1]={text=line(r)..(entry.reason and('\n'..Z.T('Matches wish %d',entry.priority))or'')..(entry.outside and('\n'..tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'))or''),height=entry.outside and 118 or 98,click=function()U.OpenActivity(r.key)end}
         end
         if#entries>20 then items[#items+1]={text=tr('More matches are available under Activities.'),height=40,click=function()U.Navigate('activities')end}end
     end
-    section('Now for you',home.now);section('Planned today',home.later);section('Your activities today',home.mine)
-    heading('Matching fellow players')
-    if#home.people==0 then items[#items+1]={text=tr('No verified matches in the considered candidates.'),height=42}end
-    for _,m in ipairs(home.people)do local member=m;items[#items+1]={text=m.target..' · '..tr(m.status)..'\n'..table.concat(m.reasons,'\n'),height=math.max(84,24*(1+#m.reasons)+12),click=function()
+    local relevant,appointments={},{}
+    for _,entry in ipairs(home.now)do relevant[#relevant+1]=entry end
+    for _,entry in ipairs(home.later)do
+        local r=entry.activity or entry
+        if r.kind=='EVENT' then appointments[#appointments+1]=entry else relevant[#relevant+1]=entry end
+    end
+    local appointmentKeys={}
+    for _,entry in ipairs(appointments)do local r=entry.activity or entry;appointmentKeys[r.key]=true end
+    local tasks={}
+    for _,r in ipairs(home.mine)do
+        if r.kind=='EVENT' and r.startsAt>A.Now()+120 then
+            if not appointmentKeys[r.key] then
+                local noAction=false
+                if r.own then
+                    noAction=r.data and r.data.status=='OPEN'
+                    if noAction then for _,participant in pairs(r.data.participants or{})do if participant.state=='REQUESTED'then noAction=false;break end end end
+                else
+                    local following=Z.ScheduledGroups.Follow(r.owner,r.id)
+                    noAction=following and(following.state=='CONFIRMED'or following.state=='WAITLIST')and not following.pending
+                end
+                if noAction then appointments[#appointments+1]=r;appointmentKeys[r.key]=true else tasks[#tasks+1]=r end
+            end
+        else tasks[#tasks+1]=r end
+    end
+    table.sort(appointments,function(a,b)local x=a.activity or a;local y=b.activity or b;if x.startsAt~=y.startsAt then return x.startsAt<y.startsAt end;return x.key<y.key end)
+    section('Open own tasks',tasks,'No open tasks today.')
+    section('Now relevant',relevant,'No matching activities received.')
+    for i,m in ipairs(home.people)do if i>3 then break end;local member=m;items[#items+1]={text=tr('Matching player')..': '..m.target..' · '..tr(m.status),height=36,click=function()
         if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
     end}end
+    section('Next appointments',appointments,'No upcoming appointments today.')
     H.rows(U.homeList,items,48)
     U.homeWishState:SetText(state=='active'and(P.store.mode=='DAY'and Z.T('%d private wishes for today',#P.store.wishes)or Z.T('%d private wishes · %d min remaining',#P.store.wishes,math.ceil((P.store.expiresAt-A.Now())/60)))
         or tr(state=='expired'and'Session expired. Save explicitly to start again.'or state=='unsupported'and'Saved session wishes use an unsupported version. Data was preserved.'or state=='unknown'and'Server time is unavailable.'or'Your wishes for today · private'))
@@ -173,9 +216,25 @@ end
 function U.ConfigureActivityCreator()
     local kind=U.creatorKind:GetText();local values=Z.GroupFinder.Activities[kind]or(kind=='QUEST'and{'Questing','Level together'}or{})
     U.creatorGoal:SetOptions(values,U.creatorGoal:GetText());H.showControl(U.creatorGoal,kind~='CUSTOM');H.showControl(U.creatorText,kind=='CUSTOM')
+    local names={};for name in pairs(Z.db.groupTemplates or{})do names[#names+1]=name end;table.sort(names)
+    if U.creatorTemplate then
+        local options={'Choose template'};for _,name in ipairs(names)do options[#options+1]=name end
+        U.creatorTemplate:SetOptions(options,U.creatorTemplate:GetText())
+        H.showControl(U.creatorTemplate,U.creatorWhen:GetText()=='NOW'and kind~='QUEST')
+    end
+    if U.creatorHint then
+        U.creatorHint:SetText(tr(U.creatorWhen:GetText()=='NOW'and'Creates a live request that you review before it is published.'or'Creates a scheduled event that others can apply to after you publish it.'))
+        U.creatorHint:SetShown(U.activityStep==1 or U.activityStepBody==nil)
+    end
 end
 function U.ContinueActivityCreator()
     local kind,when=U.creatorKind:GetText(),U.creatorWhen:GetText();local goal=kind=='CUSTOM'and U.creatorText:GetText()or U.creatorGoal:GetText()
+    local template=U.creatorTemplate and U.creatorTemplate:GetText()
+    if when=='NOW'and kind~='QUEST'and template and template~=''and template~='Choose template'then
+        local g=Z.GroupFinder.FromTemplate(template)
+        if not g then U.Message(tr('Choose a template first.'));return end
+        U.creatorFlow=true;U.OpenGroupEditor(g);return
+    end
     if not L.Text(goal,64)or not goal:find('%S')then U.Message(tr('Enter an activity.'));return end
     U.creatorFlow=true
     if when=='PLANNED'then U.OpenScheduledEditor(nil);U.scheduledActivity:SetText(goal);U.ConfigureScheduledActivity(kind,goal)
@@ -277,9 +336,18 @@ function U.CreateCommunityHome(helpers)
     U.activityMine=selector(board,'Show',390,0,210,{'ALL','ORGANIZED','APPLICATIONS'},reset,function(v)return tr(mineLabels[v])end)
     U.activitySearch=edit(board,'Search',610,0,240,64);U.activitySearch:SetScript('OnTextChanged',reset)
     U.activityCount=label(board,'',0,-52,600)
-    U.activityList=list(board,0,-80,350,310);U.activityDetail=list(board,370,-80,480,276)
+    U.activityList=list(board,0,-80,350,310);U.activityDetail=list(board,370,-80,480,212)
     U.activityMeasure=label(board,'',0,0,310);U.activityMeasure:SetWordWrap(true);U.activityMeasure:Hide()
-    U.activityOpen=button(board,tr('Open activity'),370,-366,480,function()if U.activityKey then U.OpenActivity(U.activityKey)end end,'primary')
+    U.activityInlineJoin=button(board,tr('Apply'),370,-302,112,function()if U.activityKey then U.JoinActivity(U.activityKey)end end,'primary')
+    U.activityInlineWithdraw=button(board,tr('Withdraw'),488,-302,112,function()if U.activityKey then U.WithdrawActivity(U.activityKey)end end)
+    U.activityInlineWhisper=button(board,tr('Whisper'),606,-302,112,function()if U.activityKey then U.ActivityWhisper(U.activityKey)end end)
+    U.activityInlineDiary=button(board,tr('Social diary'),724,-302,126,function()if U.activityKey then U.ActivityDiary(U.activityKey)end end)
+    U.activityInlineEdit=button(board,tr('Edit'),370,-342,140,function()if U.activityKey then U.EditActivity(U.activityKey)end end)
+    U.activityManageApplicants=button(board,tr('Manage applicants'),518,-342,190,function()if U.activityKey then U.OpenActivity(U.activityKey)end end)
+    U.activityOpen=button(board,tr('All details'),716,-342,134,function()if U.activityKey then U.OpenActivity(U.activityKey)end end)
+    U.activityInlineArchive=button(board,tr('Archive activity'),370,-302,140,function()if U.activityKey then U.ArchiveActivity(U.activityKey)end end,'danger')
+    U.activityInlineRepeat=button(board,tr('Repeat weekly'),518,-302,190,function()if U.activityKey then U.RepeatActivity(U.activityKey)end end)
+    U.activityInlineForget=button(board,tr('Remove from my list'),370,-342,190,function()if U.activityKey then U.ForgetScheduledActivity(U.activityKey)end end,'danger')
     U.activityPrev=button(board,tr('Previous'),0,-408,88,function()U.activityPage=(U.activityPage or 1)-1;U.RefreshActivityBoard()end)
     U.activityNext=button(board,tr('Next'),96,-408,88,function()U.activityPage=(U.activityPage or 1)+1;U.RefreshActivityBoard()end)
     button(board,tr('Follow activities'),192,-408,164,function()U.Navigate('groups','follow')end)
@@ -288,11 +356,12 @@ function U.CreateCommunityHome(helpers)
     button(board,tr('Create activity'),630,-408,220,U.OpenActivityCreator,'primary')
     U.activityCreator=H.panel(U.frame);local f=U.activityCreator;f:ClearAllPoints();f:SetPoint('CENTER');f:SetSize(650,330)
     U.creatorTitle=label(f,tr('Create activity'),16,-18,618,'GameFontNormalLarge')
-    U.creatorWhen=selector(f,'When',16,-66,300,{'NOW','PLANNED'},nil,function(v)return tr(v=='NOW'and'Now'or'Planned')end)
+    U.creatorWhen=selector(f,'When',16,-66,300,{'NOW','PLANNED'},U.ConfigureActivityCreator,function(v)return tr(v=='NOW'and'Now'or'Planned')end)
     U.creatorKind=selector(f,'Activity',334,-66,284,{'DUNGEON','RAID','PVP','QUEST','CUSTOM'},U.ConfigureActivityCreator,function(v)return tr(kindLabels[v])end)
     U.creatorGoal=selector(f,'Goal',16,-124,602,{})
     U.creatorText=edit(f,'Activity',16,-124,602,64)
-    U.creatorHint=label(f,'',16,-190,602);U.creatorHint:Hide()
+    U.creatorTemplate=selector(f,'Use template',16,-178,602,{'Choose template'},nil,function(v)return v=='Choose template'and tr(v)or v end)
+    U.creatorHint=label(f,'',16,-272,602);U.creatorHint:SetHeight(42);U.creatorHint:SetWordWrap(true);U.creatorHint:Hide()
     U.creatorContinue=button(f,tr('Continue'),16,-272,294,U.ContinueActivityCreator,'primary');U.creatorCancel=button(f,tr('Cancel'),324,-272,294,function()f:Hide()end)
     H.makeModal(f);f:Hide()
     U.CreateSettings(helpers)
@@ -303,20 +372,21 @@ function U.CreateCommunityHome(helpers)
     U.memberProfileScroll=CreateFrame('ScrollFrame',nil,U.pages[1],'UIPanelScrollFrameTemplate');U.memberProfileChild=CreateFrame('Frame',nil,U.memberProfileScroll);U.memberProfileScroll:SetScrollChild(U.memberProfileChild);U.memberDetail:SetParent(U.memberProfileChild)
     if Z.Theme then Z.Theme.StyleScroll(U.memberProfileScroll);Z.Theme.AttachScrollWheel(U.memberProfileScroll,32)end
     U.memberCategories:Hide();button(U.pages[1],tr('Contact history'),140,-407,180,function()if U.memberKey then U.OpenHistory(U.memberKey)end end)
-    U.memberDiary=button(U.pages[1],tr('Social diary'),330,-407,180,function()local m=U.memberKey and U.Shared.memberFor(U.memberKey);U.OpenSocialDiary(U.memberKey,m and m.target)end)
+    U.memberContactDiary=button(U.pages[1],tr('Social diary'),330,-407,180,function()local m=U.memberKey and U.Shared.memberFor(U.memberKey);U.OpenSocialDiary(U.memberKey,m and m.target)end)
     U.OpenPrivateCategories=function()
         U.CloseDialogs();U.Navigate('members');U.Refresh();U.OpenCompactArea('members')
     end
     -- Existing details retain their actions, with one route back to the shared board.
     for _,tab in ipairs({U.groupBrowseTab,U.groupMineTab,U.groupOutgoingTab,U.groupFollowTab,U.sessionPlanTab,U.scheduledTab,U.pvpTab})do tab:Hide()end
-    button(U.pages[3],tr('Back to activities'),0,0,220,function()U.Navigate('activities')end)
     button(U.pages[3],tr('Create activity'),630,0,220,U.OpenActivityCreator)
-    for _,tab in ipairs({U.questBrowseTab,U.questMineTab,U.questOutgoingTab})do tab:Hide()end
-    button(U.pages[4],tr('Back to today'),630,0,220,function()U.Navigate('today')end)
+    button(U.pages[4],tr('Back to today'),630,-444,220,function()U.Navigate('today')end)
     button(U.pages[7],tr('Settings'),690,-444,160,function()U.Navigate('settings')end)
-    U.craftMaterialsTab:Hide()
-    button(U.craftOrdersFrame,tr('All shopping lists'),495,-354,325,function()U.SetCraftView('materials')end)
-    U.materialBackOrders=button(U.pages[2],tr('Back to orders'),560,0,290,function()U.SetCraftView('orders')end);U.materialBackOrders:Hide()
+    button(U.craftOrderFilterBar,tr('All shopping lists'),650,0,200,function()U.SetCraftView('materials')end)
+    U.materialBackOrders=button(U.pages[2],tr('Back to orders'),630,-444,220,function()
+        local plan=Z.MaterialPlanner.Get(U.materialPlanID);local order=plan and Z.MaterialPlanner.Order(plan)
+        if order and order.key then U.craftOrderID=order.key;U.craftOrderFilter='all' end
+        U.SetCraftView('orders')
+    end);U.materialBackOrders:Hide()
     U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

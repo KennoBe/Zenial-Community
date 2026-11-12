@@ -39,8 +39,11 @@ function U.CreateSettings(helpers)
     U.settingsPrivacyFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsPrivacyFrame:SetSize(856, 414)
     U.profileNetworkFrame = U.settingsPrivacyFrame
-    label(U.profileNetworkFrame, '|cffffd36b' .. Z.T('Community connection') .. '|r', 0, 0, 650, 'GameFontNormalLarge')
-    U.profileNetworkText = label(U.profileNetworkFrame, '', 0, -42, 535, 'GameFontHighlight')
+    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Connection') .. '|r', 0, 0, 650, 'GameFontNormalLarge')
+    U.networkSetupButton = button(U.profileNetworkFrame, 'Community connection', 335, 0, 210, function()
+        Z.NetworkSetup.Show()
+    end)
+    U.profileNetworkText = label(U.profileNetworkFrame, '', 0, -30, 535, 'GameFontHighlight')
     U.profileNetworkText:SetFontObject('GameFontHighlightSmall')
     U.profileNetworkText:SetHeight(240)
     U.preferences = {}
@@ -56,23 +59,30 @@ function U.CreateSettings(helpers)
     U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 570, -132, 270, 'GameFontHighlightSmall')
     U.settingsVisibleNote:SetHeight(190)
     U.settingsVisibleNote:SetWordWrap(true)
-    button(U.profileNetworkFrame, tr('Aktualisieren'), 0, -290, 140, function()
+    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Privacy') .. '|r', 570, 0, 270, 'GameFontNormal')
+    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Diagnostics and backups') .. '|r', 0, -285, 380, 'GameFontNormal')
+    button(U.profileNetworkFrame, tr('Aktualisieren'), 0, -312, 140, function()
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end)
-    U.profileDiagnosticButton = button(U.profileNetworkFrame, 'Technical details', 150, -290, 175, U.ShowDiagnostics)
-    U.networkSetupButton = button(U.profileNetworkFrame, 'Community connection', 335, -290, 210, function()
-        Z.NetworkSetup.Show()
-    end)
+    U.profileDiagnosticButton = button(U.profileNetworkFrame, 'Technical details', 150, -312, 175, U.ShowDiagnostics)
 
     U.settingsToolsFrame = CreateFrame('Frame', nil, p)
     U.settingsToolsFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsToolsFrame:SetSize(856, 414)
-    U.settingsAddon = button(U.settingsToolsFrame, tr('Addon Manager'), 0, 0, 240, function() U.Navigate('addons') end)
+    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Integrations') .. '|r', 0, 0, 400, 'GameFontNormalLarge')
+    label(U.settingsToolsFrame, tr('Addon Manager'), 0, -28, 260, 'GameFontNormal')
+    U.settingsAddon = button(U.settingsToolsFrame, tr('Open Addon Manager'), 0, -52, 240, function() U.Navigate('addons') end)
     U.settingsAddon:SetEnabled((U.addonAvailableCount or 0) > 0)
-    button(U.settingsToolsFrame, tr('Companion'), 0, -52, 240, function() Z.Companion.Show() end)
+    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Companion') .. '|r', 270, -28, 350, 'GameFontNormal')
+    button(U.settingsToolsFrame, tr('Open Companion'), 270, -52, 240, function() Z.Companion.Show() end)
+    U.settingsCompanionSummary = label(U.settingsToolsFrame, '', 270, -82, 580, 'GameFontHighlightSmall')
+    U.settingsToolsFrame:HookScript('OnShow', U.RefreshSettingsCompanionSummary)
     U.homeAddonNavigationOption = checkbox(U.settingsToolsFrame, tr('Show Addon Manager in the left navigation'), 0, -112, 520, function(self)
         U.SetAddonManagerNavigation(self:GetChecked() == true)
     end)
+    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Notifications') .. '|r', 0, -160, 300, 'GameFontNormal')
+    label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 0, -184, 760, 'GameFontHighlightSmall')
+    label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 0, -220, 760, 'GameFontHighlightSmall')
 
     U.settingsDataFrame = CreateFrame('Frame', nil, p)
     U.settingsDataFrame:SetPoint('TOPLEFT', 0, -42)
@@ -81,6 +91,16 @@ function U.CreateSettings(helpers)
     U.profileDisplayFrame:SetParent(p)
     U.profileNetworkFrame:SetParent(p)
     U.SetSettingsView('display', true)
+end
+
+function U.RefreshSettingsCompanionSummary()
+    if not U.settingsCompanionSummary or not Z.Companion or not Z.Companion.Status then return end
+    local status = Z.Companion.Status()
+    local states = { disabled = 'Disabled', blocked = 'Export stopped',
+        ['logging-required'] = 'Chat logging required', probing = 'Connection probe',
+        unverified = 'Export active' }
+    U.settingsCompanionSummary:SetText(tr('Status: ') .. tr(states[status.state] or status.state or '') .. ' · '
+        .. tr('Account-wide export for all characters, including chat and private notes.'))
 end
 
 function U.SetSettingsView(v, skipRoute)
@@ -96,6 +116,7 @@ function U.SetSettingsView(v, skipRoute)
     if U.settingsView == 'privacy' and U.profileNetworkText then
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end
+    U.RefreshSettingsCompanionSummary()
     if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
     end

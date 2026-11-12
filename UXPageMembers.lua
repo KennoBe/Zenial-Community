@@ -67,15 +67,27 @@ end
 
 function S.createMembersPage(f)
     local p = U.pages[1]
+    local C = Z.SocialCategories
     createMemberCard(p)
-    U.memberSearch = edit(p, 'Search', 0, 0, 175, 64)
-    U.memberStatus = selector(p, tr('Status'), 185, 0, 100, { 'ALL', 'ONLINE' }, refreshMembers)
+    U.memberSearch = edit(p, 'Search', 0, 0, 205, 64)
+    U.memberStatus = selector(p, tr('Status'), 215, 0, 100, { 'ALL', 'ONLINE' }, refreshMembers)
     U.memberStatus:SetText(Z.uiCharacter and Z.uiCharacter.memberStatus == 'ONLINE' and 'ONLINE' or 'ALL')
-    U.memberClass = selector(p, 'Class', 295, 0, 105, CLASSES, refreshMembers)
-    U.memberProfession = selector(p, 'Profession', 410, 0, 130, { 'ALL_PROFESSIONS' }, refreshMembers)
-    U.memberFavoriteFilter = selector(p, tr('Favoriten'), 550, 0, 115, { 'ALL', 'FAVORITES' }, refreshMembers)
-    U.memberSort = selector(p, 'Sort', 675, 0, 175, { 'ONLINE_FIRST', 'LAST_SEEN', 'NAME', 'LEVEL_ASC', 'LEVEL_DESC' }, refreshMembers)
+    U.memberFavoriteFilter = selector(p, tr('Quick filter'), 325, 0, 145, { 'ALL', 'FAVORITES', 'MY_GUILD' }, refreshMembers, function(id)
+        return id == 'ALL' and tr('All') or id == 'FAVORITES' and tr('Favorites') or id == 'MY_GUILD' and tr('My guild') or C.Label(id)
+    end)
+    U.memberFavoriteFilter:SetPopupWidth(270)
+    U.memberAdvanced = button(p, tr('Advanced'), 480, 0, 120, function()
+        U.memberAdvancedOpen = not U.memberAdvancedOpen
+        U.RefreshMembersPageLayout()
+    end)
+    U.memberClass = selector(p, 'Class', 0, -54, 105, CLASSES, refreshMembers)
+    U.memberProfession = selector(p, 'Profession', 115, -54, 130, { 'ALL_PROFESSIONS' }, refreshMembers)
+    U.memberSort = selector(p, 'Sort', 255, -54, 175, { 'ONLINE_FIRST', 'LAST_SEEN', 'NAME', 'LEVEL_ASC', 'LEVEL_DESC' }, refreshMembers)
+    U.memberCategoryFilter = selector(p, tr('Private category'), 440, -54, 330, { 'ALL', 'RECONTACT' }, refreshMembers, function(id)
+        return id == 'ALL' and tr('All private categories') or id == 'RECONTACT' and tr('Recontact suggestions') or C.Label(id)
+    end)
     U.memberSearch:SetScript('OnTextChanged', refreshMembers)
+    U.memberDiary = button(p, tr('Social diary'), 615, 0, 180, function() U.OpenSocialDiary(nil, nil) end)
     U.memberCount = label(p, '', 0, -52, 300)
     -- Local view preference only; it changes neither contacts nor published data.
     U.memberGrouping = checkbox(p, tr('Group by main character'), 310, -47, 235, function(self)
@@ -143,7 +155,6 @@ function S.createMembersPage(f)
     end)
     U.memberBack:Hide()
 
-    local C = Z.SocialCategories
     U.memberPrivateNote:SetScript('OnTextChanged', function(self)
         if U.memberNoteOwner and not U.memberNoteBinding then
             U.noteDrafts = U.noteDrafts or {}
@@ -151,12 +162,30 @@ function S.createMembersPage(f)
         end
     end)
     local categoryOptions = { 'ALL', 'RECONTACT' }
-    for _, id in ipairs(C.ORDER) do
-        categoryOptions[#categoryOptions + 1] = id
+    for _, id in ipairs(C.ORDER) do categoryOptions[#categoryOptions + 1] = id end
+    U.memberCategoryFilter:SetOptions(categoryOptions, 'ALL')
+    function U.RefreshMembersPageLayout()
+        local advanced = U.memberAdvancedOpen == true
+        if U.compactArea ~= 'members' then
+            for _, control in ipairs({ U.memberClass, U.memberClass.caption, U.memberProfession, U.memberProfession.caption, U.memberSort, U.memberSort.caption }) do
+                control:SetShown(advanced)
+            end
+        end
+        -- Category choices remain in the quick filter; the legacy category control is intentionally unreachable.
+        U.memberCategoryFilter:SetShown(false)
+        U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 0, advanced and -100 or -52)
+        U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 310, advanced and -95 or -47)
+        U.memberList:ClearAllPoints(); U.memberList:SetPoint('TOPLEFT', 0, advanced and -128 or -80)
+        local offset = advanced and 48 or 0
+        local previousOffset = U.memberLayoutOffset or 0
+        local height = U.memberList:GetHeight() - (offset - previousOffset)
+        U.memberList.height = height
+        U.memberList:SetHeight(height)
+        U.memberList.child:SetHeight(U.memberList.height)
+        U.memberLayoutOffset = offset
     end
-    U.memberCategoryFilter = selector(p, tr('Private category'), 215, -43, 330, categoryOptions, refreshMembers, function(id)
-        return id == 'ALL' and tr('All private categories') or id == 'RECONTACT' and tr('Recontact suggestions') or C.Label(id)
-    end)
+    U.memberAdvancedOpen = false
+    U.RefreshMembersPageLayout()
     U.memberCategories = button(p, tr('Private categories'), 140, -407, 180, function()
         U.OpenPrivateCategories(false)
     end)

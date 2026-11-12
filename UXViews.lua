@@ -11,7 +11,14 @@ local refreshCharacters = S.refreshCharacters
 
 function U.SetCraftView(v)
     local allowed = { search = true, mine = true, orders = true, materials = true }
-    U.craftView = allowed[v] and v or 'search'
+    v = allowed[v] and v or 'search'
+    if v ~= U.craftView and U.craftOrderForm and U.craftOrderForm:IsShown()
+        and U.Navigation and U.Navigation.UnsavedInput() == 'craftOrderForm'
+    then
+        U.Message(U.Navigation.TEXT['unsaved-input'])
+        return false
+    end
+    U.craftView = v
     U.craftSearchFrame:SetShown(U.craftView == 'search')
     U.craftMineFrame:SetShown(U.craftView == 'mine')
     if U.craftOrdersFrame then
@@ -20,6 +27,13 @@ function U.SetCraftView(v)
     if U.materialPlanFrame then
         U.materialPlanFrame:SetShown(U.craftView == 'materials')
         selectNav(U.craftMaterialsTab, U.craftView == 'materials')
+    end
+    if U.craftOrderFilterBar then
+        U.craftOrderFilterBar:SetShown(U.craftView == 'orders' or U.craftView == 'materials')
+        selectNav(U.craftFilterAll, U.craftView == 'orders' and U.craftOrderFilter == 'all')
+        selectNav(U.craftFilterIncoming, U.craftView == 'orders' and U.craftOrderFilter == 'incoming')
+        selectNav(U.craftFilterOutgoing, U.craftView == 'orders' and U.craftOrderFilter == 'outgoing')
+        selectNav(U.craftFilterLists, U.craftView == 'materials')
     end
     selectNav(U.craftSearchTab, U.craftView == 'search')
     selectNav(U.craftMineTab, U.craftView == 'mine')
@@ -40,6 +54,23 @@ function U.SetCraftView(v)
     end
     U.UpdateBadges()
 end
+function U.SetCraftOrderFilter(value)
+    if value == 'lists' then
+        U.SetCraftView('materials')
+        return
+    end
+    if value ~= 'all' and value ~= 'incoming' and value ~= 'outgoing' then value = 'all' end
+    if value ~= 'all' and U.craftOrderID and Z.CraftOrders then
+        for _, order in ipairs(Z.CraftOrders.List()) do
+            if order.key == U.craftOrderID and order.direction ~= value then
+                U.craftOrderID = nil
+                break
+            end
+        end
+    end
+    U.craftOrderFilter = value
+    U.SetCraftView('orders')
+end
 function U.SetTradeView(v)
     local allowed = { browse = true, mine = true, rules = true, manage = true }
     U.tradeView = allowed[v] and v or 'browse'
@@ -52,15 +83,16 @@ function U.SetTradeView(v)
         U.tradeManageFrame:SetShown(U.tradeView == 'manage')
     end
     selectNav(U.tradeBrowseTab, U.tradeView == 'browse')
-    selectNav(U.tradeMineTab, U.tradeView == 'mine')
     selectNav(U.tradeRulesTab, U.tradeView == 'rules')
-    selectNav(U.tradeManageTab, U.tradeView == 'manage')
+    selectNav(U.tradeManageTab, U.tradeView == 'manage' or U.tradeView == 'mine')
     if Z.UIState then
         Z.UIState.Route('trade', U.tradeView)
     end
     refreshOffers()
     refreshTradeRules()
     refreshTradeManage()
+    if U.RefreshTradeAdvanced then U.RefreshTradeAdvanced() end
+    if U.RefreshTradeContext then U.RefreshTradeContext() end
 end
 function U.OnItemData()
     if U.craftOrderForm and U.craftOrderForm:IsShown() then
@@ -140,6 +172,8 @@ function U.OpenCompactArea(area)
     end
     U.compactArea = area
     if area == 'members' then
+        showControl(U.memberAdvanced, false)
+        showControl(U.memberDiary, false)
         showControl(U.memberSearch, false)
         showControl(U.memberStatus, false)
         showControl(U.memberClass, false)
@@ -211,12 +245,19 @@ function U.OpenCompactArea(area)
         showControl(U.tradeMinPrice, false)
         showControl(U.tradeMaxPrice, false)
         showControl(U.tradeSort, false)
+        U.tradeSaveSearch:Hide()
+        U.tradeAdvancedToggle:Hide()
+        U.tradeFilterSummary:Hide()
         U.tradeResetButton:Hide()
         U.offerCount:Hide()
         U.offerList:Hide()
         place(U.offerDetail, 0, -46, 820, 280)
-        place(U.offerWhisper, 0, -342)
+        place(U.offerWhisper, 0, -350)
+        place(U.tradeContextText, 0, -382, 275, 32)
+        place(U.tradeContextBack, 285, -388, 190)
+        place(U.offerManageOwn, 485, -388, 220)
         U.tradeBack:Show()
+        if U.RefreshTradeContext then U.RefreshTradeContext() end
     end
     if area == 'members' and U.RefreshMemberCategories then
         U.RefreshMemberCategories()
@@ -226,12 +267,18 @@ function U.CloseCompactArea(area)
     area = area or U.compactArea
     U.compactArea = nil
     if area == 'members' then
+        showControl(U.memberAdvanced, true)
+        showControl(U.memberDiary, true)
         showControl(U.memberSearch, true)
         showControl(U.memberStatus, true)
-        showControl(U.memberClass, true)
-        showControl(U.memberProfession, true)
         showControl(U.memberFavoriteFilter, true)
-        showControl(U.memberSort, true)
+        if U.RefreshMembersPageLayout then
+            U.RefreshMembersPageLayout()
+        else
+            showControl(U.memberClass, U.memberAdvancedOpen == true)
+            showControl(U.memberProfession, U.memberAdvancedOpen == true)
+            showControl(U.memberSort, U.memberAdvancedOpen == true)
+        end
         showControl(U.memberCategoryFilter, false)
         showControl(U.memberGrouping, true)
         showControl(U.memberPrivateNote, true)
@@ -293,16 +340,24 @@ function U.CloseCompactArea(area)
     elseif area == 'trade' then
         showControl(U.offerSearch, true)
         showControl(U.tradeKindFilter, true)
-        showControl(U.tradeCategoryFilter, true)
-        showControl(U.tradeMinPrice, true)
-        showControl(U.tradeMaxPrice, true)
-        showControl(U.tradeSort, true)
+        showControl(U.tradeCategoryFilter, U.tradeAdvancedOpen == true)
+        showControl(U.tradeMinPrice, U.tradeAdvancedOpen == true)
+        showControl(U.tradeMaxPrice, U.tradeAdvancedOpen == true)
+        showControl(U.tradeSort, U.tradeAdvancedOpen == true)
+        U.tradeSaveSearch:Show()
+        U.tradeAdvancedToggle:Show()
+        U.tradeFilterSummary:SetShown(not U.tradeAdvancedOpen)
         U.tradeResetButton:Show()
         U.offerCount:Show()
         U.offerList:Show()
-        place(U.offerDetail, 480, -112, 360, 240)
-        place(U.offerWhisper, 480, -365)
+        place(U.offerDetail, 480, -112, 360, 230)
+        place(U.offerWhisper, 480, -350)
+        place(U.tradeContextText, 0, -382, 275, 32)
+        place(U.tradeContextBack, 285, -388, 190)
+        place(U.offerManageOwn, 485, -388, 220)
         U.tradeBack:Hide()
+        if U.RefreshTradeAdvanced then U.RefreshTradeAdvanced() end
+        if U.RefreshTradeContext then U.RefreshTradeContext() end
     end
     U.Refresh()
     if U.ApplyResponsiveLayout then

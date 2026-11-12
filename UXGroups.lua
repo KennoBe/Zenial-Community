@@ -290,6 +290,9 @@ function U.SetGroupView(v)
         U.scheduledFrame:SetShown(v == 'scheduled')
         selectNav(U.scheduledTab, v == 'scheduled')
     end
+    selectNav(U.activityScopeOrganized, v == 'mine')
+    selectNav(U.activityScopeApplications, v == 'outgoing')
+    selectNav(U.activityScopePlanned, v == 'scheduled')
     selectNav(U.sessionPlanTab, v == 'today')
     selectNav(U.groupBrowseTab, v == 'browse')
     selectNav(U.groupMineTab, v == 'mine')
@@ -730,6 +733,12 @@ S.refreshGroupMine = function()
         U.groupTemplate:SetOptions(names, U.groupTemplate:GetText())
         if U.groupTemplateDelete then
             U.groupTemplateDelete:SetEnabled(Z.db.groupTemplates[U.groupTemplate:GetText()] ~= nil)
+        end
+        if U.groupActiveTemplate then
+            U.groupActiveTemplate:SetOptions(names, U.groupActiveTemplate:GetText())
+            if U.groupActiveTemplateDelete then
+                U.groupActiveTemplateDelete:SetEnabled(Z.db.groupTemplates[U.groupActiveTemplate:GetText()] ~= nil)
+            end
         end
     end
     if U.groupEditing then

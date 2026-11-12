@@ -147,7 +147,11 @@ function U.EditOffer(o)
             U.offerStoredState, U.offerStoredID = state, draft.storedID
         end
     end
-    U.offerEditID = o and o.id or draft and draft.editID and draft.editID ~= '' and draft.editID or nil
+    local storedOffer = draft and draft.storedState and draft.storedState ~= ''
+    U.offerEditID = o and o.id or not storedOffer and draft and draft.editID and draft.editID ~= '' and draft.editID or nil
+    if U.tradeEditorTitle then
+        U.tradeEditorTitle:SetText(tr(U.offerEditID and 'Edit offer' or 'Create offer'))
+    end
     U.offerSave:SetText(tr(U.offerEditID and 'Save changes' or 'Publish offer'))
     U.offerKind:SetText(o and o.kind or draft and draft.kind or 'SELL')
     local price = o and o.price or 0
@@ -223,6 +227,10 @@ local function showOffer(key, target, offer)
             .. ((offer.note or '') ~= '' and '\n\n' .. offer.note or '')
     )
     U.offerWhisper:SetEnabled(key ~= Z.me.key)
+    if U.offerManageOwn then
+        U.offerManageOwn:SetShown(key == Z.me.key)
+        U.offerManageOwn:SetEnabled(key == Z.me.key)
+    end
 end
 local function refreshOffers()
     if not U.offerSearch then
@@ -278,6 +286,23 @@ local function refreshOffers()
         end
         return ao.id < bo.id
     end)
+    if U.tradeFilterSummary then
+        local parts = {}
+        if kindFilter ~= 'ALL' then parts[#parts + 1] = displayValue(kindFilter) end
+        if categoryFilter ~= 'ALL_ITEM_CATEGORIES' then parts[#parts + 1] = displayValue(categoryFilter) end
+        if minPrice then parts[#parts + 1] = tr('From') .. ' ' .. A.MoneyText(minPrice) end
+        if maxPrice then parts[#parts + 1] = tr('To') .. ' ' .. A.MoneyText(maxPrice) end
+        if sort ~= 'TRADE_NAME' then parts[#parts + 1] = displayValue(sort) end
+        U.tradeFilterSummary:SetText(#parts > 0 and table.concat(parts, ' · ') or tr('No additional filters'))
+    end
+    if U.tradeAdvancedToggle then
+        local count = 0
+        if categoryFilter ~= 'ALL_ITEM_CATEGORIES' then count = count + 1 end
+        if minPrice then count = count + 1 end
+        if maxPrice then count = count + 1 end
+        if sort ~= 'TRADE_NAME' then count = count + 1 end
+        U.tradeAdvancedToggle:SetText(tr('Advanced') .. (count > 0 and (' (' .. count .. ')') or ''))
+    end
     local items = {}
     local valid = false
     for _, x in ipairs(filtered) do
@@ -334,9 +359,84 @@ local function refreshOffers()
     if not U.offerKey then
         U.offerDetail:SetText(tr(#items == 0 and (q == '' and 'No active offers.' or 'No offers match the filter.') or 'Select an offer.'))
         U.offerWhisper:SetEnabled(false)
+        if U.offerManageOwn then U.offerManageOwn:Hide() end
     end
+    if U.RefreshTradeContext then U.RefreshTradeContext() end
 end
 S.refreshOffers = refreshOffers
+function U.RefreshTradeAdvanced()
+    if U.compactArea == 'trade' then
+        U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
+        U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
+        U.tradeMaxPrice:Hide(); U.tradeMaxPrice.caption:Hide()
+        U.tradeSort.button:Hide(); U.tradeSort.caption:Hide()
+        U.tradeFilterSummary:Hide()
+        U.tradeAdvancedToggle:Hide()
+        U.tradeSaveSearch:Hide()
+        refreshOffers()
+        return
+    end
+    U.tradeAdvancedToggle:Show()
+    U.tradeSaveSearch:Show()
+    if not U.tradeAdvancedOpen then
+        U.tradeCategoryFilter.button:Hide(); U.tradeCategoryFilter.caption:Hide()
+        U.tradeMinPrice:Hide(); U.tradeMinPrice.caption:Hide()
+        U.tradeMaxPrice:Hide(); U.tradeMaxPrice.caption:Hide()
+        U.tradeSort.button:Hide(); U.tradeSort.caption:Hide()
+        U.tradeFilterSummary:Show()
+    else
+        U.tradeCategoryFilter.button:Show(); U.tradeCategoryFilter.caption:Show()
+        U.tradeMinPrice:Show(); U.tradeMinPrice.caption:Show()
+        U.tradeMaxPrice:Show(); U.tradeMaxPrice.caption:Show()
+        U.tradeSort.button:Show(); U.tradeSort.caption:Show()
+        U.tradeFilterSummary:Hide()
+    end
+    refreshOffers()
+end
+function U.RefreshTradeContext()
+    if not U.tradeContextText then return end
+    local token, planID = U.Navigation.ActiveContext('craft')
+    local plan = token and Z.MaterialPlanner.Get(planID)
+    local item = plan and (Z.Items and Z.Items.Get(U.materialItemID) and Z.Items.Get(U.materialItemID).name or tostring(U.materialItemID))
+    U.tradeContextText:SetText(token and tr('Returning to crafting') .. (item and (': ' .. item) or '') or '')
+    U.tradeContextText:SetShown(token ~= nil)
+    U.tradeContextBack:SetShown(token ~= nil)
+end
+function U.OpenTradeAlert(entry)
+    if type(entry) ~= 'table' then return false, 'missing' end
+    local contact = Z.db.contacts[entry.peer]
+    if entry.code == 'TRADE_CLOSED' then
+        U.tradeAlertStatus:SetText(tr('This offer is closed or withdrawn.'))
+        return false, 'closed'
+    end
+    if not contact or not peerOnline(entry.peer) then
+        U.tradeAlertStatus:SetText(Z.T('%s is offline; no current snapshot.', contact and contact.target or entry.peer))
+        return false, 'offline'
+    end
+    local snapshot = Z.db.peers[entry.peer]
+    local found
+    for _, offer in ipairs(snapshot and snapshot.data and snapshot.data.market or {}) do
+        if offer.id == entry.id then found = offer; break end
+    end
+    if not found then
+        U.tradeAlertStatus:SetText(Z.T('Offer is no longer in the latest snapshot of %s.', contact.target))
+        return false, 'missing'
+    end
+    if found.expires <= A.Now() then
+        U.tradeAlertStatus:SetText(tr('This offer has expired.'))
+        return false, 'expired'
+    end
+    U.tradeAlertStatus:SetText('')
+    U.offerSearch:SetText(found.itemID > 0 and tostring(found.itemID) or found.name)
+    U.offerSearchItemID = found.itemID > 0 and found.itemID or nil
+    U.tradeKindFilter:SetText('ALL'); U.tradeCategoryFilter:SetText('ALL_ITEM_CATEGORIES')
+    U.tradeMinPrice:SetText(''); U.tradeMaxPrice:SetText('')
+    U.tradeAdvancedOpen = false
+    U.offerKey, U.offerID = entry.peer, entry.id
+    if not U.Navigate('trade', 'browse') then return false, 'navigation' end
+    U.RefreshTradeAdvanced(); U.OpenCompactArea('trade')
+    return true
+end
 function U.OpenMaterialOffer(key, id, itemID)
     local P = Z.MaterialPlanner
     local plan = P.Get(U.materialPlanID)
@@ -398,6 +498,7 @@ local function refreshTradeRules()
             text = (row.unread and '|cffff5555!|r ' or '') .. Z.Notifications.Describe(row) .. '\n' .. date('%d.%m. %H:%M', row.at),
             click = function()
                 Z.Notifications.Read(row.token)
+                U.OpenTradeAlert(row)
                 refreshTradeRules()
             end,
         }
@@ -424,6 +525,7 @@ local function refreshTradeRules()
                 .. displayValue(rule.category),
             click = function()
                 U.tradeRuleID = token
+                U.tradeAlertStatus:SetText('')
                 refreshTradeRules()
             end,
         }
@@ -434,6 +536,10 @@ local function refreshTradeRules()
     U.SetEmptyHint(U.tradeRuleList, 'No saved searches. Filter offers under Find Offers and press Save search.')
     rows(U.tradeRuleList, items, 58)
     U.tradeRuleCount:SetText(#items .. tr(' gespeicherte Suchen'))
+    if U.tradeRuleLimitInfo then
+        local count = #items
+        U.tradeRuleLimitInfo:SetText(count .. tr(' of 20 search alerts') .. (count >= 20 and tr('. Delete an alert before saving another.') or ''))
+    end
     U.tradeRuleDelete:SetEnabled(selected ~= nil)
     U.tradeRuleApply:SetEnabled(selected ~= nil)
     U.tradeRuleDetail:SetText(
@@ -479,6 +585,7 @@ local TRADE_DELETE = {
     expired = 'Delete archived entry',
     template = 'Delete template',
 }
+local tradeFilterChangeInProgress = false
 local function refreshTradeManage()
     if not U.tradeManageList then
         return
@@ -502,6 +609,26 @@ local function refreshTradeManage()
     table.sort(entries, function(a, b)
         return (a.row.name or '') < (b.row.name or '')
     end)
+    local counts = { all = #entries, active = 0, draft = 0, paused = 0, expired = 0, completed = 0, template = 0 }
+    for _, entry in ipairs(entries) do counts[entry.state] = (counts[entry.state] or 0) + 1 end
+    if not U.tradeOfferFilter then U.tradeOfferFilter = 'all' end
+    local matching = false
+    for _, entry in ipairs(entries) do
+        if U.tradeManageID == entry.state .. '\0' .. entry.id and U.tradeOfferFilter ~= 'all' and U.tradeOfferFilter ~= entry.state then matching = true end
+    end
+    if matching and not tradeFilterChangeInProgress then U.tradeOfferFilter = 'all' end
+    for key, control in pairs(U.tradeFilterButtons or {}) do
+        control:SetText(tr(({all='All',active='Active',draft='Draft',paused='Paused',expired='Expired',completed='Completed',template='Templates'})[key]) .. ' (' .. (counts[key] or 0) .. ')')
+        control:SetEnabled(key ~= U.tradeOfferFilter)
+    end
+    if U.tradeLimitInfo then
+        local n = counts.active
+        U.tradeLimitInfo:SetText(Z.T('Active offers: %d of 3.', n) .. (n >= 3 and tr(' Only three entries can be active; pause, complete, or save one as a draft.') or ''))
+    end
+    if U.tradeEditorLimitInfo then
+        local n = counts.active
+        U.tradeEditorLimitInfo:SetText(Z.T('Active offers: %d of 3.', n) .. (n >= 3 and tr(' Only three entries can be active; pause, complete, or save one as a draft.') or ''))
+    end
     local items = {}
     local selected
     for _, entry in ipairs(entries) do
@@ -509,7 +636,7 @@ local function refreshTradeManage()
         if token == U.tradeManageID then
             selected = entry
         end
-        items[#items + 1] = {
+        if U.tradeOfferFilter == 'all' or U.tradeOfferFilter == entry.state then items[#items + 1] = {
             selected = token == U.tradeManageID,
             icon = itemIcon(entry.row.itemID) or NAV_ICONS.trade,
             text = '|cffffd36b' .. entry.row.name .. '|r · ' .. tr(TRADE_STATES[entry.state] or entry.state) .. '\n' .. displayValue(
@@ -519,9 +646,10 @@ local function refreshTradeManage()
                 U.tradeManageID = token
                 refreshTradeManage()
             end,
-        }
+        } end
     end
-    U.SetEmptyHint(U.tradeManageList, 'Nothing stored locally. Drafts, templates and finished offers appear after you create an offer.')
+    local empty = U.tradeOfferFilter == 'all' and 'Nothing stored locally. Drafts, templates and finished offers appear after you create an offer.' or ({active='No active offers.',draft='No drafts.',paused='No paused offers.',expired='No expired offers.',completed='No completed offers.',template='No templates.'})[U.tradeOfferFilter]
+    U.SetEmptyHint(U.tradeManageList, empty)
     rows(U.tradeManageList, items, 58)
     U.tradeManageCount:SetText(#items .. tr(' lokale Einträge'))
     U.tradeManageSelected = selected
@@ -539,7 +667,7 @@ local function refreshTradeManage()
         U.tradeManageTemplate:SetEnabled(selected ~= nil)
         U.tradeManageTemplate:SetShown(selected ~= nil)
         U.tradeManageTemplate:ClearAllPoints()
-        U.tradeManageTemplate:SetPoint('TOPLEFT', 495, active and -270 or -200)
+        U.tradeManageTemplate:SetPoint('TOPLEFT', 495, active and -290 or -220)
     end
     U.tradeManageDetail:SetText(
         selected
@@ -552,6 +680,17 @@ local function refreshTradeManage()
     )
 end
 S.refreshTradeManage = refreshTradeManage
+function U.SetTradeOfferFilter(key)
+    local valid = { all=true, active=true, draft=true, paused=true, expired=true, completed=true, template=true }
+    U.tradeOfferFilter = valid[key] and key or 'all'
+    local selected = U.tradeManageSelected
+    if selected and U.tradeOfferFilter ~= 'all' and U.tradeOfferFilter ~= selected.state then
+        U.tradeManageID = nil
+    end
+    tradeFilterChangeInProgress = true
+    refreshTradeManage()
+    tradeFilterChangeInProgress = false
+end
 -- "My characters" lives in AccountOverviewUI.lua; kept as the shared refresh hook.
 local function refreshCharacters()
     if U.RefreshMyCharacters then

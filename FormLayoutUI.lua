@@ -29,8 +29,7 @@ local function center(f,height)
     f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,height)
 end
 local function showSelection(shown)
-    for _,f in ipairs({U.creatorTitle,U.creatorWhen,U.creatorKind,U.creatorGoal,U.creatorText,U.creatorContinue,U.creatorCancel})do H.showControl(f,shown)end
-    U.creatorHint:Hide()
+    for _,f in ipairs({U.creatorTitle,U.creatorWhen,U.creatorKind,U.creatorGoal,U.creatorText,U.creatorTemplate,U.creatorHint,U.creatorContinue,U.creatorCancel})do H.showControl(f,shown)end
 end
 function U.CaptureScheduledDraft()
     if not U.scheduledDate or U.activityStepBody~=U.scheduledEditor then return end
@@ -41,10 +40,10 @@ end
 function U.ShowActivityStep(step,body)
     if U.activityChanging then return end;U.activityChanging=true;if U.calendarPicker then U.calendarPicker:Hide()end;U.CloseDropdowns();clearInputs(activityInputs())
     if step==1 then U.CaptureScheduledDraft();U.groupEditing,U.questEditing=false,false end
-    U.activityStepBody=body
+    U.activityStepBody=body;U.activityStep=step
     for _,f in ipairs({U.groupForm,U.questForm,U.scheduledEditor})do f:SetShown(step==2 and f==body)end
     showSelection(step==1)
-    center(U.activityCreator,step==1 and 300 or 440)
+    center(U.activityCreator,step==1 and 380 or 440)
     if step==1 then U.creatorTitle:SetText(tr('Create activity')..' · '..tr('1/2 · Activity'));U.ConfigureActivityCreator()
     else body.formTitle:SetText(tr(body.formName)..' · '..tr(body.editorContext or(U.creatorFlow and '2/2 · Details'or'Details')))end
     U.activityCreator:Show();if U.Navigation then U.Navigation.Pristine('activityCreator') end;U.activityChanging=false
@@ -64,10 +63,12 @@ end
 function U.ApplyFormLayouts(helpers)
     H=helpers
     -- Activity selection and all three detail editors share one dialog host.
-    center(U.activityCreator,300)
+    center(U.activityCreator,380)
     field(U.creatorWhen,16,-66,300);field(U.creatorKind,334,-66,300)
     field(U.creatorGoal,16,-140,618);field(U.creatorText,16,-140,618)
-    place(U.creatorContinue,16,-252,294);place(U.creatorCancel,324,-252,310)
+    field(U.creatorTemplate,16,-206,618)
+    U.creatorHint:SetWidth(618);U.creatorHint:SetHeight(42);U.creatorHint:SetWordWrap(true)
+    place(U.creatorContinue,16,-324,294);place(U.creatorCancel,324,-324,310)
     U.creatorTitle:SetHeight(30)
     for _,f in ipairs({U.groupForm,U.questForm,U.scheduledEditor})do
         f:SetParent(U.activityCreator);f:SetFrameLevel(U.activityCreator:GetFrameLevel()+1)
@@ -185,16 +186,17 @@ function U.ApplyFormLayouts(helpers)
     place(U.sessionSave,0,-302,294);place(U.sessionEnd,308,-302,310);place(U.sessionEditStatus,0,-338,618,28)
     place(U.homeWishClose,16,-392,618)
     -- Crafting and material forms keep the same field baselines and footer.
-    center(U.craftOrderForm,580);place(U.craftOrderContextText,16,-48,618,40)
-    field(U.craftOrderQuantity,16,-94,196);field(U.craftOrderTip,224,-94,196)
-    place(U.craftOrderMaterials,438,-126);place(U.craftOrderMaterials.text,465,-130,169,36)
-    field(U.craftMaterialCount,16,-168,196)
+    U.LayoutCraftOrderForm()
+    place(U.craftOrderTitle,16,0,824,24);place(U.craftOrderContextText,16,-28,824,24)
+    field(U.craftOrderQuantity,16,-56,190);field(U.craftOrderTip,220,-56,190)
+    place(U.craftOrderMaterials,432,-72);place(U.craftOrderMaterials.text,459,-76,270,36)
+    field(U.craftMaterialCount,16,-116,190)
     U.craftYieldNote:SetText(tr('Craft count is the number of crafting operations.'))
-    place(U.craftYieldNote,224,-172,410,54);place(U.craftIngredientTitle,16,-232,618,24)
-    place(U.craftIngredientList,16,-256,594,100);U.craftIngredientList.height=100
-    place(U.craftShoppingSave,16,-368,294);place(U.craftShoppingOpen,324,-368,310)
-    field(U.craftOrderNote,16,-412,618,true)
-    place(U.craftOrderSend,16,-534,294);place(U.craftOrderCancel,324,-534,310)
+    place(U.craftYieldNote,220,-114,560,38);place(U.craftIngredientTitle,16,-174,824,20)
+    place(U.craftIngredientList,16,-194,792,44);U.craftIngredientList.height=44
+    place(U.craftShoppingSave,16,-244,220);place(U.craftShoppingOpen,250,-244,220)
+    field(U.craftOrderNote,490,-246,330,true);U.craftOrderNote:SetHeight(44)
+    place(U.craftOrderSend,16,-326,220);place(U.craftOrderCancel,250,-326,220)
     center(U.materialOrderForm,330);place(U.materialOrderText,16,-50,618,80)
     field(U.materialOrderCount,16,-152,300);place(U.materialOrderSave,16,-278,294);place(U.materialOrderCancel,324,-278,310)
     -- Compact application forms follow the same label/input/action baselines.
@@ -205,17 +207,18 @@ function U.ApplyFormLayouts(helpers)
     place(U.questApplicationSend,0,-78,196);place(U.questApplicationCancel,212,-78,198)
     U.pvpCallNote.caption:SetText(tr('Wer greift dich an? Anzahl und Level (optional, z. B. 3× Level 60)'));field(U.pvpCallNote,0,-116,520,true)
     -- Inline trade/profile forms follow the same spacing within their page.
-    field(U.offerKind,0,0,195);field(U.offerFields.name,210,0,420)
-    field(U.offerFields.quantity,0,-68,110);field(U.offerFields.gold,124,-68,130)
-    field(U.offerFields.silver,268,-68,100);field(U.offerFields.copper,382,-68,100)
-    U.offerDuration.caption:SetText(tr('Offer expires (minutes)'));field(U.offerDuration,496,-68,134)
-    field(U.offerFields.note,0,-140,630,true)
-    place(U.offerSave,0,-248,196);place(U.offerDiscard,212,-248,196);place(U.offerSaveDraft,424,-248,206)
+    field(U.offerKind,0,-38,195);field(U.offerFields.name,210,-38,420)
+    field(U.offerFields.quantity,0,-106,110);field(U.offerFields.gold,124,-106,130)
+    field(U.offerFields.silver,268,-106,100);field(U.offerFields.copper,382,-106,100)
+    U.offerDuration.caption:SetText(tr('Offer expires (minutes)'));field(U.offerDuration,496,-106,134)
+    field(U.offerFields.note,0,-178,630,true)
+    place(U.offerSave,0,-286,196);place(U.offerDiscard,212,-286,196);place(U.offerSaveDraft,424,-286,206)
     U.tradeMinPrice.caption:SetText(tr('Min. unit price (gold)'));U.tradeMaxPrice.caption:SetText(tr('Max. unit price (gold)'))
-    field(U.tradeMinPrice,0,-48,120);field(U.tradeMaxPrice,132,-48,120);field(U.tradeSort,264,-48,205)
+    field(U.tradeCategoryFilter,0,-48,190)
+    field(U.tradeMinPrice,200,-48,120);field(U.tradeMaxPrice,330,-48,120);field(U.tradeSort,460,-48,205)
     -- Keep the price-filter footer clear of the results table.
-    place(U.offerCount,480,-80,360,20);place(U.offerList,0,-112,455,260);U.offerList.height=260
-    place(U.offerDetail,480,-112,360,240)
+    place(U.offerCount,675,-80,165,20);place(U.offerList,0,-112,455,260);U.offerList.height=260
+    place(U.offerDetail,480,-112,360,230)
     field(U.profileFields.community,0,-66,260);field(U.profileRole,280,-66,190)
     field(U.profileFields.note,0,-140,470,true)
     place(U.profileSave,0,-248,196);place(U.profileShow,212,-248,258)

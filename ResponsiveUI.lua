@@ -96,10 +96,27 @@ function U.ApplyResponsiveLayout(activePage)
         end
     end end
     if U.compactArea=='craft'and(not activePage or activePage==U.pages[2])then
-        local parent=U.craftSearchFrame;U.professionRecipeList:SetHeight(math.max(195,parent:GetHeight()-140-62));U.professionRecipeList.height=U.professionRecipeList:GetHeight()
-        for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-parent:GetHeight()+38)end
+        if U.LayoutCraftOrderForm then U.LayoutCraftOrderForm()end
+        local parent=U.craftSearchFrame;local h=parent:GetHeight()
+        local recipeHeight=math.max(70,math.min(80,h-290));U.professionRecipeList:SetHeight(recipeHeight);U.professionRecipeList.height=recipeHeight
+        local titleY=145+recipeHeight;U.craftDetailMaterialsTitle:ClearAllPoints();U.craftDetailMaterialsTitle:SetPoint('TOPLEFT',495,-titleY)
+        U.craftDetailMaterials:ClearAllPoints();U.craftDetailMaterials:SetPoint('TOPLEFT',495,-(titleY+22));U.craftDetailMaterials:SetHeight(65);U.craftDetailMaterials.height=65
+        U.craftDetailMaterialState:ClearAllPoints();U.craftDetailMaterialState:SetPoint('TOPLEFT',0,-(titleY+91))
+        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',0,-(h-84-17));U.craftDetailCrafts.caption:SetSize(345,16)
+        U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',0,-(h-84))
+        U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',100,-(h-84))
+        U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',236,-(h-84))
+        for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-(h-38))end
+    elseif not activePage or activePage==U.pages[2]then
+        U.professionRecipeList:SetHeight(70);U.professionRecipeList.height=70
     end
     if U.RefreshMemberCategories and(not activePage or activePage==U.pages[1])then U.RefreshMemberCategories()end
+    if U.RefreshMembersPageLayout and(not activePage or activePage==U.pages[1])then
+        -- Responsive layout restores the list's base anchor and height; reapply
+        -- the advanced-filter offset without restoring hidden compact controls.
+        U.memberLayoutOffset = 0
+        U.RefreshMembersPageLayout()
+    end
     if U.LayoutHomeWishes and(not activePage or activePage==U.pages[9])then U.LayoutHomeWishes()end
     if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
     if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end

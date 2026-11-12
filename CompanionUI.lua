@@ -11,9 +11,11 @@ local function button(parent,value,x,y,w,fn)
     local b=CreateFrame('Button',nil,parent,'UIPanelButtonTemplate');b:SetPoint('TOPLEFT',x,y);b:SetSize(w,28);b:SetText(value);b:SetScript('OnClick',fn);if Z.Theme then Z.Theme.StyleButton(b)end;return b
 end
 function C.RefreshUI()
+    if Z.UI and Z.UI.RefreshSettingsCompanionSummary then Z.UI.RefreshSettingsCompanionSummary()end
     local join=Z.NetworkSetup and Z.NetworkSetup.joinFrame;if join and join.companionEnable then join.companionEnable:SetChecked(C.settings and C.settings.enabled==true)end
     local f=C.ui;if not f or not f:IsShown()then return end
     local s=C.Status();local state=states[s.state]or{s.state,s.state}
+    f.statusSummary:SetText(tr(state[1],state[2]))
     local reason=reasons[s.reason];reason=reason and tr(reason[1],reason[2])or s.reason
     if s.transport=='pixel'then
         f.status:SetText(tr(state[1],state[2])..'\n'..string.format(tr('Pixelpakete: %d · Datenzeilen: %d · davon zeitgesteuert: %d','Pixel packets: %d · data lines: %d · timer-origin: %d'),s.pixelPackets,s.sent,s.automatic)..'\n'..reason..(C.settings.questAreasEnabled and'\n'..tr('Questflächen: ','Quest areas: ')..(C.QuestAreas.state or'waiting')..' · '..tostring(C.QuestAreas.completed or 0)..'/'..tostring(#(C.QuestAreas.ids or{}))..' · '..string.format('%.2f ms',C.QuestAreas.maxStepMs or 0)..(C.QuestAreas.reason and' · '..C.QuestAreas.reason or'')or''))
@@ -28,27 +30,33 @@ function C.Show(introduction)
     if not C.settings then if Z.Initialize then Z.Initialize()end;if not C.settings then return end end
     if not C.ui then
         local f=CreateFrame('Frame','ZenialCompanionSettings',UIParent,BackdropTemplateMixin and'BackdropTemplate'or nil);C.ui=f
-        local statusY=-240;local footerY=-515
+        local footerY=-515
         f:SetSize(750,-footerY+52);f:SetPoint('CENTER');f:SetFrameStrata('FULLSCREEN_DIALOG');f:SetFrameLevel(300);f:SetToplevel(true);f:EnableMouse(true);f:SetMovable(true);f:SetClampedToScreen(true);f:RegisterForDrag('LeftButton')
         local height=A and A.Call and A.Call(UIParent.GetHeight,UIParent)or UIParent:GetHeight();if type(height)=='number'and height<-footerY+70 then f:SetScale(math.max(.65,height/(-footerY+85)))end
         f:SetScript('OnDragStart',function(self)self:StartMoving()end);f:SetScript('OnDragStop',function(self)self:StopMovingOrSizing()end)
         if Z.Theme then Z.Theme.Shell(f)end
         label(f,'ZENIAL Companion · 5.0',24,-22,630,28)
         f.subtitle=label(f,tr('Einmal einrichten. Deine Daten erscheinen im Browser oder auf einem externen Gerät.','Set up once. Your data appears in your browser or on an external device.'),24,-60,630,35)
-        label(f,tr('Der Companion liest den kleinen Pixelstreifen links oben im WoW-Fenster. Er überträgt alle verfügbaren Daten, einschließlich eingehendem Chat und privaten Notizen. WoW sichtbar und nicht minimiert lassen und den Streifen frei halten.','The companion reads the small pixel strip at the top left of the WoW window. It carries all available data, including incoming chat and private notes. Keep WoW visible and not minimized and the strip unobstructed.'),24,-105,630,58)
-        local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.enable=check;check:SetPoint('TOPLEFT',24,-170);check:SetSize(26,26)
-        label(f,tr('Companion-Export aktivieren · alle Daten','Enable companion export · all data'),58,-174,630,24);check:SetScript('OnClick',function(self)C.SetExportEnabled(self:GetChecked()==true);C.RefreshUI()end)
-        label(f,tr('Karte, Quests, Taschen, Ausrüstung, Community, Gruppen, Chat, Meldungen und private Planungen – nur für deine gekoppelten Browser.','Map, quests, bags, equipment, community, groups, chat, notifications and private plans – for your paired browsers only.'),24,-205,700,32)
-        local areas=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.questAreaEnable=areas;areas:SetPoint('TOPLEFT',24,-242);areas:SetSize(26,26)
-        label(f,tr('Quest-Zielflächen anzeigen · im Kampf pausiert','Show quest objective areas · paused in combat'),58,-246,650,24)
+        f.statusSummary=label(f,'',24,-100,700,22)
+        local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.enable=check;check:SetPoint('TOPLEFT',24,-132);check:SetSize(26,26)
+        label(f,tr('Companion-Export aktivieren · alle Daten','Enable companion export · all data'),58,-136,630,24);check:SetScript('OnClick',function(self)C.SetExportEnabled(self:GetChecked()==true);C.RefreshUI()end)
+        label(f,tr('Export gilt accountweit für alle Charaktere, einschließlich Chat und privater Notizen. Die Kategorien lassen sich nicht einzeln freigeben.','Export applies to your whole account and every character, including chat and private notes. Categories cannot be enabled separately.'),58,-162,650,42)
+        local areas=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.questAreaEnable=areas;areas:SetPoint('TOPLEFT',24,-210);areas:SetSize(26,26)
+        label(f,tr('Quest-Zielflächen anzeigen · im Kampf pausiert','Show quest objective areas · paused in combat'),58,-214,650,24)
         areas:SetScript('OnClick',function(self)C.SetQuestAreasEnabled(self:GetChecked()==true);C.RefreshUI()end)
         if Z.Theme then Z.Theme.StyleCheckbox(areas)end
-        f.status=label(f,'',24,statusY-38,700,95)
-        label(f,tr('Nur lesend: Browser und externe Geräte führen nichts im Spiel aus. Pixel müssen sichtbar gerendert werden. Bei Minimierung oder fehlendem Empfang zeigt der Companion die Daten als veraltet.','Read only: the browser and external devices execute nothing in the game. Pixels must be visibly rendered. The companion marks data as stale when minimized or reception stops.'),24,statusY-130,700,50)
-        label(f,tr('Companion herunterladen:','Download companion:'),24,-440,700,22)
-        local link=CreateFrame('EditBox',nil,f,'InputBoxTemplate');f.downloadLink=link;link:SetPoint('TOPLEFT',30,-464);link:SetSize(660,24);link:SetAutoFocus(false);link:SetText('https://discord.zenial.net/zenial-companion')
+        f.detailsToggle=button(f,tr('Technische Details','Technical details'),24,-250,190,function()
+            f.detailsExpanded=not f.detailsExpanded
+            f.status:SetShown(f.detailsExpanded)
+            f.detailsToggle:SetText(tr(f.detailsExpanded and 'Technische Details ausblenden' or 'Technische Details',f.detailsExpanded and 'Hide technical details' or 'Technical details'))
+        end)
+        f.detailsExpanded=false
+        f.status=label(f,'',24,-284,700,96);f.status:Hide()
+        label(f,tr('Nur lesend: Browser und externe Geräte führen nichts im Spiel aus. Pixel müssen sichtbar gerendert werden. Bei Minimierung oder fehlendem Empfang zeigt der Companion die Daten als veraltet.','Read only: the browser and external devices execute nothing in the game. Pixels must be visibly rendered. The companion marks data as stale when minimized or reception stops.'),24,-390,700,50)
+        label(f,tr('Companion herunterladen:','Download companion:'),24,-450,700,22)
+        local link=CreateFrame('EditBox',nil,f,'InputBoxTemplate');f.downloadLink=link;link:SetPoint('TOPLEFT',30,-474);link:SetSize(660,24);link:SetAutoFocus(false);link:SetText('https://discord.zenial.net/zenial-companion')
         link:SetScript('OnEditFocusGained',function(self)self:HighlightText()end);link:SetScript('OnEscapePressed',function(self)self:ClearFocus()end)
-        button(f,tr('Schließen','Close'),590,footerY,125,function()f:Hide()end)
+        button(f,tr('Schließen','Close'),590,footerY,125,function()if f.downloadLink then f.downloadLink:ClearFocus()end;f:Hide()end)
         if Z.Theme then Z.Theme.StyleCheckbox(check)end
         f:SetScript('OnShow',C.RefreshUI);UISpecialFrames=UISpecialFrames or{};UISpecialFrames[#UISpecialFrames+1]='ZenialCompanionSettings'
     end
@@ -81,7 +89,7 @@ function C.TickIntroduction()
 end
 function C.AddIntroductionToJoin(f,top)
     label(f,tr('ZENIAL Companion · optional','ZENIAL Companion · optional'),20,top,480,22)
-    label(f,tr('Karte, Quests, Ausrüstung und Community im Browser oder auf externen Geräten. Nur lesend; Export umfasst auch Chat und private Planungen.','Map, quests, gear and community in a browser or on external devices. Read only; export includes chat and private plans.'),20,top-26,480,38)
+    label(f,tr('Nur lesend. Der Export gilt accountweit und umfasst auch Chat und private Notizen.','Read only. Export applies to your whole account, including chat and private notes.'),20,top-26,480,38)
     local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.companionEnable=check;check:SetPoint('TOPLEFT',20,top-66);check:SetSize(26,26)
     label(f,tr('Companion-Export aktivieren','Enable companion export'),52,top-70,440,22)
     check:SetScript('OnClick',function(self)C.SetExportEnabled(self:GetChecked()==true);C.RefreshUI()end)

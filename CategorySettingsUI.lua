@@ -49,16 +49,6 @@ function U.RefreshCategorySettings()
 end
 function U.CreateCategorySettings(helpers)
     H=helpers;U.memberCategoryFilter:SetShown(false)
-    local filter=U.memberFavoriteFilter;filter.caption:SetText(tr('Member filter'))
-    filter:SetFormatter(function(id)return id=='ALL'and tr('All')or id=='FAVORITES'and tr('Favorites')or id=='MY_GUILD'and tr('My guild')or C.Label(id)end);filter:SetOptions({'ALL','FAVORITES','MY_GUILD'},'ALL');filter:SetPopupWidth(270)
-    filter.button:ClearAllPoints();filter.button:SetPoint('TOPLEFT',530,-17);filter:SetWidth(180)
-    filter.caption:ClearAllPoints();filter.caption:SetPoint('TOPLEFT',530,0)
-    -- Fit the combined filter in the original single header row.
-    local controls={{U.memberSearch,0,120},{U.memberStatus,130,105},{U.memberClass,245,120},{U.memberProfession,375,145},{U.memberSort,720,130}}
-    for _,spec in ipairs(controls)do local f,x,w=spec[1],spec[2],spec[3];local widget=f.button or f
-        f.caption:ClearAllPoints();f.caption:SetPoint('TOPLEFT',x,0);f.caption:SetWidth(w)
-        widget:ClearAllPoints();widget:SetPoint('TOPLEFT',x,-17);if f.button then f:SetWidth(w)else f:SetWidth(w)end
-    end
     U.memberCategoryScroll=H.list(U.memberCategoryFrame,0,-4,256,88)
     if Z.Theme then Z.Theme.AttachScrollWheel(U.memberCategoryScroll,32)end
     U.SyncCategoryControls()

@@ -79,6 +79,7 @@ function O.Initialize()
     Z.db.craftOrderOps=ops;O.ops=ops;O.syncedSessions={};O.nextPrune=A.Clock()+60;O.nextHistoryQuery=A.Clock()+1
 end
 function O.Create(peer,recipe,quantity,materialsProvided,tip,note)
+    if Z.db.blocked[peer]then return nil,"Der Handwerker ist blockiert."end
     if not Z.IsOnline(peer)then return nil,"Der Handwerker ist nicht erreichbar."end
     local p=Z.db.peers[peer];if not p or not p.cap30 then return nil,"Für Herstellungsaufträge ist ZenialCommunity 3.0 erforderlich."end
     if type(recipe)~="table"or not L.ValidRecipe(recipe)or not L.Int(quantity,1,100000)or not L.Int(tip or 0,0,2147483646)or not L.Text(note or"",192,true)then return nil,"Auftragsdaten sind ungültig."end
