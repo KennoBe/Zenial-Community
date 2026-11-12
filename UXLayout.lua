@@ -339,7 +339,7 @@ local function scheduleTimedRefresh()
             expiry(store.own, true)
             at(store.lastCallAt + 600)
             for _, death in ipairs(store.deaths) do
-                at(death + 3600)
+                at(death.at + 3600)
             end
             for _, call in pairs(store.received) do
                 expiry(call, true)

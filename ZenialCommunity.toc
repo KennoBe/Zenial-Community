@@ -24,6 +24,7 @@ CommunityMap.xml
 Items.lua
 Locale.lua
 PvPHelp.lua
+PvPDeathDetection.lua
 History.lua
 UIState.lua
 Notifications.lua

@@ -623,14 +623,24 @@ function U.OpenPvpPreview()
     P.UseTestLocation()
     local d = P.store.lastDeath
     U.pvpPreviewLocation:SetText('|cffffd36bVORSCHAU|r\n' .. P.FormatLocation(d) .. '\nZeitpunkt: ' .. date('%H:%M', d.at))
-    local enemy = d.enemy
-    U.pvpPreviewEnemy:SetText(
-        enemy
-                and (tr('Beim Tod anvisierter Gegner: ') .. enemy.name .. (enemy.class ~= '' and ' · ' .. enemy.class or '') .. (enemy.level > 0 and ' · Level ' .. enemy.level or ''))
-            or tr('Beim Tod war kein lesbarer gegnerischer Spieler anvisiert.')
-    )
-    U.pvpShareEnemy:SetChecked(enemy ~= nil)
-    U.pvpShareEnemy:SetEnabled(enemy ~= nil)
+    -- The detected PvP deaths (never the current target) that unlock the request; the helpers get them unless unchecked.
+    local log = P.KillLog() or {}
+    local lines = {}
+    for index, death in ipairs(log) do
+        if index > 3 then
+            lines[#lines + 1] = '...'
+            break
+        end
+        local killer = death.killer
+        local more = (death.minAttackers or 1) - (killer and 1 or 0)
+        lines[#lines + 1] = date('%H:%M', death.at)
+            .. ' · '
+            .. Z.T('Killer: %s', killer and P.FormatPerson(killer) or tr('Unknown'))
+            .. (more > 0 and ' · ' .. Z.T(killer and 'Further attackers (at least %d)' or 'Attackers (at least %d)', more) or '')
+    end
+    U.pvpPreviewEnemy:SetText(#lines > 0 and table.concat(lines, '\n') or tr('No confirmed PvP combat data detected.'))
+    U.pvpShareEnemy:SetChecked(true)
+    U.pvpShareEnemy:SetEnabled(#log > 0)
     U.pvpConfirm:SetChecked(false)
     U.pvpCallNote:SetText('')
     U.pvpPreviewOpen = true

@@ -499,7 +499,7 @@ function S.createGroupsPage(f)
         96,
         true
     )
-    U.pvpShareEnemy = checkbox(U.pvpPreviewContent, tr('Angaben zum anvisierten Gegner mitsenden'), 545, -128, 287)
+    U.pvpShareEnemy = checkbox(U.pvpPreviewContent, tr('Share detected PvP combat data'), 545, -128, 287)
     U.pvpConfirm = checkbox(U.pvpPreviewContent, tr('Ich werde von Spielern angegriffen'), 545, -184, 287)
     U.pvpSend = button(U.pvpPreviewContent, tr('Hilfe rufen'), 0, -248, 140, function()
         if not U.pvpConfirm:GetChecked() then

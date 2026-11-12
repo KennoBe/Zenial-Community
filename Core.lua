@@ -334,6 +334,12 @@ function L.Encode(s)
     elseif s.kind=="H1J" then put(s.id,s.state)
     elseif s.kind=="H1C" or s.kind=="H1U" then put(s.id,s.rev,s.at,s.expires,s.mapID or 0,s.area or "",s.subzone or "",s.hasPos and 1 or 0,s.x or 0,s.y or 0)
     elseif s.kind=="H1I" then put(s.id,s.rev,s.note or "",s.hasEnemy and 1 or 0,s.enemyName or "",s.enemyClass or "",s.enemyLevel or 0,s.enemyFaction or "")
+    elseif s.kind=="H2I" then
+        put(s.id,s.rev,s.note or "",s.truncated and 1 or 0,#s.deaths)
+        for _,d in ipairs(s.deaths) do
+            put(d.at,d.mapID or 0,d.area or "",d.subzone or "",d.minAttackers or 1,d.killerFirst and 1 or 0,#d.attackers)
+            for _,a in ipairs(d.attackers) do put(a.name,a.classFile or "",a.race or "",a.level or 0) end
+        end
     elseif s.kind=="S" then put(s.rev,s.community,s.faction,s.class,s.level,s.guild,s.guid,s.roles,s.note,s.professionNote,#s.professions);for _,p in ipairs(s.professions) do put(p.id,p.name,p.rank,p.max) end;put(#s.lfg);for _,g in ipairs(s.lfg) do put(g.id,g.mode,g.activity,g.min,g.max,g.have,g.want or "",g.start,g.expires,g.note) end
     elseif s.kind=="S3" then
         put(s.rev,s.generation,s.community,s.faction,s.class,s.classFile,s.level,s.guild,s.guid,s.roles,s.note,s.professionNote,#s.professions);for _,p in ipairs(s.professions) do put(p.id,p.name,p.rank,p.max) end
@@ -377,6 +383,22 @@ function L.Decode(wire,now,historical)
     elseif s.kind=="H1I" then
         s.id,s.rev,s.note=str(32),num(1,2147483646),str(96,true);local hasEnemy=num(0,1);s.enemyName,s.enemyClass=str(113,true),str(24,true);s.enemyLevel,s.enemyFaction=num(0,100),str(16,true)
         if not (s.id and s.rev and s.note and hasEnemy~=nil and s.enemyName and s.enemyClass and s.enemyLevel and s.enemyFaction) then return nil end;s.hasEnemy=hasEnemy==1
+    elseif s.kind=="H2I" then
+        -- Versioned PvP kill log: up to 8 deaths with up to 5 attackers each; level 0 on the wire is "unknown".
+        s.id,s.rev,s.note=str(32),num(1,2147483646),str(96,true);local truncated,n=num(0,1),num(0,8)
+        if not (s.id and s.rev and s.note and truncated~=nil and n) then return nil end;s.truncated=truncated==1;s.deaths={}
+        for i=1,n do
+            local d={at=num(1,4102444800),mapID=num(0,1000000),area=str(64,true),subzone=str(64,true),minAttackers=num(1,40)};local killerFirst,m=num(0,1),num(0,5)
+            if not (d.at and d.mapID and d.area and d.subzone and d.minAttackers and killerFirst~=nil and m) then return nil end
+            d.attackers={}
+            for j=1,m do
+                local a={name=str(80),classFile=str(16,true),race=str(24,true),level=num(0,100)}
+                if not (a.name and a.classFile and a.race and a.level) or (a.classFile~="" and not a.classFile:match("^[A-Z_]+$")) then return nil end
+                if a.level==0 then a.level=nil end;d.attackers[j]=a
+            end
+            if killerFirst==1 then if m<1 then return nil end;d.killer=d.attackers[1] end
+            d.minAttackers=math.max(d.minAttackers,m);d.id=d.at.."."..i;d.cause,d.confirmed,d.hasPos="player",true,false;s.deaths[i]=d
+        end
     elseif s.kind=="S" then
         s.rev,s.community,s.faction,s.class,s.level=num(1,2147483646),str(32,true),str(16),str(24,true),num(0,100);s.guild,s.guid,s.roles,s.note,s.professionNote=str(64,true),str(80,true),str(64,true),str(64,true),str(64,true);s.roles=L.Role(s.roles)or""
         local n=num(0,6);if not (s.rev and s.faction and n) then return nil end;s.professions={};local seenIDs,byName={},{};for i=1,n do local p={id=num(1,100000),name=str(64),rank=num(0,10000),max=num(1,10000)};if not L.ValidProfession(p) then return nil end;local key=string.lower(p.name);local old=byName[key];if not seenIDs[p.id]and not old then s.professions[#s.professions+1]=p;seenIDs[p.id]=true;byName[key]=p elseif old and(p.rank>old.rank or p.rank==old.rank and p.max>old.max)then old.id,old.rank,old.max=p.id,p.rank,p.max;seenIDs[p.id]=true end end
@@ -392,8 +414,29 @@ function L.Decode(wire,now,historical)
         for i=1,n do local v=str(113);if not v or not L.Identity(v) or seen[string.lower(v)] then return nil end;seen[string.lower(v)]=true;s.linkAlts[i]=v end
         s.recipeRev,s.recipeCount,s.recipeScan=num(0,2147483646),num(0,L.MAX_RECIPES),num(0,4102444800);if not (s.recipeRev and s.recipeCount and s.recipeScan) then return nil end
     else return nil end
-    if not s.id and (s.kind=="A" or s.kind=="GA" or s.kind=="GW" or s.kind=="GS" or s.kind=="QA" or s.kind=="QW" or s.kind=="QS" or s.kind=="RQ" or s.kind=="RS" or s.kind=="CQ" or s.kind=="CS" or s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H1J" or s.kind=="H1C" or s.kind=="H1U" or s.kind=="H1I") then return nil end
+    if not s.id and (s.kind=="A" or s.kind=="GA" or s.kind=="GW" or s.kind=="GS" or s.kind=="QA" or s.kind=="QW" or s.kind=="QS" or s.kind=="RQ" or s.kind=="RS" or s.kind=="CQ" or s.kind=="CS" or s.kind=="H1A" or s.kind=="H1D" or s.kind=="H1X" or s.kind=="H1J" or s.kind=="H1C" or s.kind=="H1U" or s.kind=="H1I" or s.kind=="H2I") then return nil end
     if s.id and not s.id:match("^[%d%.]+$") then return nil end;if at~=#f+1 then return nil end;return s
+end
+-- Fits a kill log into one H2I message: newest deaths first, killer kept first, at most 8 deaths and 5 attackers each.
+-- Whatever has to be cut to respect L.MAX_BYTES is marked with the truncated flag. Returns nil if even one death does not fit.
+function L.FitH2I(s)
+    local deaths,truncated={},false
+    for i,d in ipairs(s.deaths or {}) do
+        if i>8 then truncated=true;break end
+        local list={};local killer=d.killer
+        if killer then list[1]=killer end
+        for _,a in ipairs(d.attackers or {}) do if not (killer and a.name==killer.name) then list[#list+1]=a end end
+        if #list>5 then truncated=true;while #list>5 do table.remove(list) end end
+        deaths[#deaths+1]={at=d.at,mapID=d.mapID,area=d.area,subzone=d.subzone,minAttackers=d.minAttackers,killerFirst=killer~=nil,attackers=list}
+    end
+    local msg={kind="H2I",id=s.id,rev=s.rev,note=s.note,deaths=deaths,truncated=truncated}
+    while not L.Encode(msg) do
+        local cut=false
+        for i=#deaths,1,-1 do local d=deaths[i];if #d.attackers>(d.killerFirst and 1 or 0) then table.remove(d.attackers);cut=true;break end end
+        if not cut then if #deaths<=1 then return nil end;table.remove(deaths);cut=true end
+        msg.truncated=true
+    end
+    return msg
 end
 function L.LegacySnapshot(d,me)
     local old={};local g=d.lfg[1];if g then old[1]={id=g.id,mode=g.mode,activity=g.activity,min=g.min,max=g.max,have=g.have,want="",start=g.start,expires=g.expires,note=g.note} end
@@ -541,7 +584,7 @@ function L.Engine(d,me,io)
             end
         elseif s.kind=="QW" then if d.questInterests[s.id] and d.questInterests[s.id][key]then local row=d.questInterests[s.id][key];if row.state~="withdrawn"then row.state="withdrawn";row.at=now;if io.finder then io.finder("quest","withdrawal_received",key,s.id,d.quest)end end;local a=d.applicationAlerts.quest[s.id] and d.applicationAlerts.quest[s.id][key];if a then a.unread=false end end
         elseif s.kind=="QS" then local sent=d.sentQuestApplications[s.id] and d.sentQuestApplications[s.id][key];if sent and L.ApplicationCanAdvance(sent.state,s.state) then sent.state=s.state;sent.at=now;if io.finder then io.finder("quest",s.state=="invited"and"invited_received"or s.state=="rejected"and"rejected_received"or"joined",key,s.id,nil)end end
-        elseif s.kind:match("^H1") then if io.pvp then io.pvp(key,s) end
+        elseif s.kind:match("^H[12]") then if io.pvp then io.pvp(key,s) end
         elseif s.kind=="RQ" then if d.visible and d.shareProfessions then self:Queue(key,{kind="RS",id=s.id,results=io.recipeSearch(s.query)},true,25)end
         elseif s.kind=="RS" then d.recipeResults[s.id]=d.recipeResults[s.id] or {};d.recipeResults[s.id][key]={results=s.results,at=now}
         elseif s.kind=="CQ"then

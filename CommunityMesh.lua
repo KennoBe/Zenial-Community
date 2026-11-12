@@ -8,8 +8,8 @@ if scheduled then Z.ScheduledMesh=M elseif optional then Z.QuestMesh=M else Z.Co
 local function queueData(route,_,payload,private,dedupe,priority,...)
     return B.QueueData(route,protocol,payload,private,dedupe,optional and 5 or priority,...)
 end
-local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true}
-local TRANSIENT={MP=true,LY=true,L2=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
+local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true}
+local TRANSIENT={MP=true,LY=true,L2=true,PD=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
 local function enabled()return B.Enabled()and Z.db.autoDiscovery end
 local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record((scheduled and "scheduledmesh:"or optional and "questmesh:"or"mesh:")..event,...)end end
 local function hash(value)
@@ -27,12 +27,14 @@ end
 local function token(row)
     local suffix=""
     if row.kind=="RX"then local f=Z.Network3.Unpack(row.wire);suffix=f and(f[1]..":"..f[2])or"?"
-    elseif row.kind=="PC"or row.kind=="PU"or row.kind=="PX"then local f=Z.Network3.Unpack(row.wire);suffix=f and f[1]or"?"end
+    elseif row.kind=="PC"or row.kind=="PU"or row.kind=="PX"then local f=Z.Network3.Unpack(row.wire);suffix=f and f[1]or"?"
+    elseif row.kind=="PD"then local f=Z.Network3.Unpack(row.wire);suffix=f and f[3]or"?" end -- one record per death, not per sender
     if scheduled then local f=Z.Network3.Unpack(row.wire);suffix=f and f[5]or"?"end
     local family=(row.kind=="PC"or row.kind=="PU"or row.kind=="PX")and"PV"or row.kind
     return L.Identity(row.origin).."/"..family.."/"..suffix
 end
-local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;return(row.kind=="P"or TRANSIENT[row.kind])and 300 or 86400 end
+-- A PD marker lives 600 s from the time of death (row.at), not from reception.
+local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;if row.kind=="PD"then return 600 end;return(row.kind=="P"or TRANSIENT[row.kind])and 300 or 86400 end
 local function validSession(session,now)
     if not L.Text(session,32)or not session:match("^%d+%.%d+%.%d+$")then return false end
     local epoch=tonumber(session:match("^(%d+)%."))
@@ -79,6 +81,10 @@ local function validate(row,now)
         local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(row.wire)
         return layer and layer.session==row.session and layer.at==row.at or false
     end
+    if row.kind=="PD"then
+        local death=Z.Network3.DecodePvPDeath(row.wire)
+        return death and death.session==row.session and death.at==row.at or false
+    end
     if row.kind=="B"then
         local s=L.Decode(row.wire,A.Now());return s and s.kind=="S3"and s.generation==row.session and s.faction==Z.me.faction
             and s.community==""and s.class==""and s.classFile==""and s.level==0 and s.guild==""and s.guid==""and s.roles==""
@@ -101,7 +107,7 @@ end
 function M.Initialize()
     if optional and Z.QuestHelper and Z.QuestHelper.quests then Z.QuestHelper.publishedSignature=nil;Z.QuestHelper.nextRefresh=0 end
     M.records,M.durable,M.index,M.keys,M.pending,M.assemblies,M.byOrigin,M.sync,M.ignored={},{},{},{},{},{},{},{},{}
-    M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={}
+    M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={};M.replayed={}
     M.stats={published=0,received=0,forwarded=0,duplicates=0,rejected=0,dropped=0,reconciled=0}
     M.region=D.Region()
     M.scope=tostring(M.region or 0)..":"..tostring(D.Project()or 0)..":"..tostring(D.World(Z.me.realm))..":"..Z.me.faction
@@ -234,6 +240,10 @@ function M.Publish(kind,wire)
     if kind=="L2"then
         local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(wire);if not layer then return nil end
         row.at=layer.at
+    end
+    if kind=="PD"then
+        local death=Z.Network3.DecodePvPDeath(wire);if not death then return nil end
+        row.at=death.at -- The marker expires 600 s after the death itself.
     end
     if M.Accept(row,nil,true)then M.stats.published=M.stats.published+1;return"mesh."..row.seq end
 end
@@ -423,6 +433,19 @@ function M.Tick()
     local groups=pools()
     if clock>=M.nextBatch then
         M.nextBatch=clock+2
+        -- PD markers are never inventoried (older clients cannot read them). A neighbour that shows up in a pool for the
+        -- first time instead receives every still living marker once, in flush()'s separate optional frames; all other
+        -- routes are marked as served, so only the new neighbour is sent to.
+        if not optional and not scheduled then
+            M.replayed=M.replayed or{}
+            for _,list in pairs(groups)do for _,route in ipairs(list)do if not M.replayed[route.target]then
+                M.replayed[route.target]=true;local sent=0
+                for id,row in pairs(M.records)do if row.kind=="PD"and A.Now()-row.at<=lifetime(row)and sent<16 and enqueue(id,nil)then
+                    sent=sent+1;local p=M.pending[id]
+                    for _,other in pairs(groups)do for _,r in ipairs(other)do if r.target~=route.target then p.sent[r.target]=true end end end
+                end end
+            end end end
+        end
         for group,list in pairs(groups)do flush(group,list)end
         for id,p in pairs(M.pending)do
             local complete=true;local any=false

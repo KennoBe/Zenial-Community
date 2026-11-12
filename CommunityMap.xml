@@ -1,4 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
     <!-- Hover tooltips only: clicks and map dragging must reach the canvas. -->
     <Frame name="ZenialCommunityMemberPinTemplate" mixin="ZenialCommunityMemberPinMixin" enableMouse="false" enableMouseMotion="true" hidden="true" virtual="true"/>
+    <Frame name="ZenialCommunityPvPDeathPinTemplate" mixin="ZenialCommunityPvPDeathPinMixin" enableMouse="false" enableMouseMotion="true" hidden="true" virtual="true"/>
 </Ui>

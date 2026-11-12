@@ -1,7 +1,7 @@
 -- Coarse, short-lived public positions. These never establish peer identity or
 -- extend online presence; profiles and private transactions use their own routes.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local C={TTL=300,MAX_POSITIONS=5000,TEMPLATE="ZenialCommunityMemberPinTemplate"}
+local C={TTL=300,MAX_POSITIONS=5000,TEMPLATE="ZenialCommunityMemberPinTemplate",DEATH_TEMPLATE="ZenialCommunityPvPDeathPinTemplate",DEATH_TTL=600,MAX_DEATH_MARKERS=500,MAX_DEATHS_PER_PLAYER=8}
 Z.CommunityMap=C
 local function tr(text,...)return Z.Locale.Format(text,...)end
 local function enabled()return Z.db and Z.db.consent and Z.db.autoDiscovery and Z.identityReady and not Z.offlineOnly end
@@ -17,7 +17,14 @@ function C.SetGuildOnly(value)
     if value then Z.uiCharacter.mapMembers=true end
     C.Refresh()
 end
+-- Separate filter for the red PvP death skulls (on by default).
+function C.IsDeathShown()return not Z.uiCharacter or Z.uiCharacter.mapDeaths~=false end
+function C.SetDeathShown(value)
+    if not Z.uiCharacter then return end
+    Z.uiCharacter.mapDeaths=value==true;C.Refresh()
+end
 function C.Initialize()
+    C.deathMarkers={};C.publishedDeaths={};C.deathSent,C.deathReceived=0,0
     C.positions={};C.nextSample=0;C.nextRefresh=0;C.nextAttach=0;C.lastSent=nil;C.lastPosition=nil;C.lastMap=nil;C.mapShown=nil
     C.sent,C.received,C.sampleAvailable=0,0,false
     C.TryAttach();C.Refresh()
@@ -49,6 +56,44 @@ function C.Receive(sender,wire,context)
     -- Keep zero-position withdrawals until expiry, so delayed older samples
     -- cannot restore a hidden or instanced member's last dot.
     row.target=sender;C.positions[key]=row;C.received=C.received+1;C.nextRefresh=0;return true
+end
+-- PD marker from the mesh. The victim is the validated mesh origin, never a field of the wire. Markers are keyed by
+-- origin and deathId, expire 600 s after the time of death and do not depend on the victim's presence or online state.
+function C.ReceiveDeath(sender,wire,context)
+    if not enabled()then return false end
+    local row=Z.Network3.DecodePvPDeath(wire)
+    if not row or not context or context.session~=row.session or context.at~=row.at or L.Identity(context.origin)~=L.Identity(sender)then return false end
+    local key=Z.ResolvePeerKey(sender)
+    if not key or key==Z.me.key or Z.db.blocked[key]then return false end
+    local peer=Z.db.peers[key]
+    if peer and peer.retiredSessions and peer.retiredSessions[row.session]then return false end
+    local faction=peer and(peer.faction or peer.data and peer.data.faction)
+    if faction and faction~=Z.me.faction then return false end
+    local now=A.Now();row.expires=row.at+C.DEATH_TTL
+    if row.expires<=now or row.at>now+120 then return false end
+    C.deathMarkers=C.deathMarkers or{}
+    local token=key..":"..row.deathId
+    if C.deathMarkers[token]then return true,false end -- duplicate or replay
+    local own,oldest,oldestAt=0
+    for t,r in pairs(C.deathMarkers)do if r.victim==key then own=own+1;if not oldestAt or r.at<oldestAt then oldest,oldestAt=t,r.at end end end
+    if own>=C.MAX_DEATHS_PER_PLAYER then if row.at<=oldestAt then return false end;C.deathMarkers[oldest]=nil
+    elseif L.Count(C.deathMarkers)>=C.MAX_DEATH_MARKERS then return false end
+    row.key,row.victim,row.target,row.pvpDeath=token,key,sender,true
+    C.deathMarkers[token]=row;C.deathReceived=(C.deathReceived or 0)+1;C.nextRefresh=0;return true
+end
+-- Publishes one PD marker per confirmed PvP death, under the same gates as the member position (community network and
+-- shared location enabled). It does not depend on the help unlock rule. The position is rounded like member positions.
+function C.PublishDeath(d)
+    if not enabled()or not Z.db.visible or not Z.Network3 or type(d)~="table"or not d.hasPos or not L.Int(d.mapID,1,1000000)then return false end
+    C.publishedDeaths=C.publishedDeaths or{}
+    if C.publishedDeaths[d.id]then return false end
+    local copy={}
+    for k,v in pairs(d)do copy[k]=v end
+    copy.x,copy.y=math.min(10000,math.floor(d.x/10+.5)*10),math.min(10000,math.floor(d.y/10+.5)*10)
+    local wire=Z.Network3.PackPvPDeath(Z.session,copy)
+    if not Z.Network3.DecodePvPDeath(wire)then return false end
+    if Z.Network3.QueuePublic("PD",wire,5,"PVPDEATH:"..d.id)then C.publishedDeaths[d.id]=true;C.deathSent=(C.deathSent or 0)+1;return true end
+    return false
 end
 local function validPoint(x,y)
     return A.Safe(x,y)and type(x)=="number"and type(y)=="number"and x==x and y==y and x>=0 and x<=1 and y>=0 and y<=1
@@ -110,6 +155,20 @@ function C.DeathPoints(mapID)
     table.sort(points,function(a,b)return a.key<b.key end);return points
 end
 
+-- Static skulls of recent PvP deaths. Guild-only mode and the block list apply like for member pins.
+function C.PvPDeathPoints(mapID)
+    local points={}
+    if not enabled()or not C.IsDeathShown()or not L.Int(mapID,1,1000000)then return points end
+    local now=A.Now()
+    for token,row in pairs(C.deathMarkers or{})do
+        if now<row.expires and row.at<=now+120 and not Z.db.blocked[row.victim]and(not C.IsGuildOnly()or Z.Social.IsGuildMember(row.victim))then
+            local x,y=C.Project(row,mapID)
+            if x then points[#points+1]={key="pd:"..token,pvpDeath=true,x=x,y=y,at=row.at,expires=row.expires,target=row.target,victim=row.victim,
+                area=row.area,subzone=row.subzone,minAttackers=row.minAttackers,killerFirst=row.killerFirst,attackers=row.attackers,mapID=row.mapID}end
+        end
+    end
+    table.sort(points,function(a,b)return a.key<b.key end);return points
+end
 local function pinBounds(pin)
     if not pin or not pin:IsVisible()then return end
     local x,y=A.Call(pin.GetCenter,pin);local scale=A.Call(pin.GetEffectiveScale,pin)
@@ -142,6 +201,49 @@ function C.TooltipRows(pin)
         if a.target~=b.target then return a.target<b.target end;return a.key<b.key
     end)
     return rows
+end
+
+-- All death markers under the hovered skull (rendered rectangles overlap), newest last.
+function C.DeathTooltipRows(pin)
+    if not pin or not pin.row then return{}end
+    local provider=C.provider;local owner=provider and provider:GetMap()
+    if not owner then return{pin.row}end
+    local x,y,w,h=pinBounds(pin);local rows={}
+    for _,row in ipairs(C.PvPDeathPoints(owner:GetMapID()))do
+        local include=row.key==pin.row.key
+        if not include and x then
+            local ox,oy,ow,oh=pinBounds(provider.pins[row.key])
+            if ox then
+                local width=math.max(0,math.min(x+w/2,ox+ow/2)-math.max(x-w/2,ox-ow/2))
+                local height=math.max(0,math.min(y+h/2,oy+oh/2)-math.max(y-h/2,oy-oh/2))
+                include=width*height>=.8*math.min(w*h,ow*oh)
+            end
+        end
+        if include then rows[#rows+1]=row end
+    end
+    table.sort(rows,function(a,b)
+        if a.key==pin.row.key then return b.key~=pin.row.key elseif b.key==pin.row.key then return false end
+        if a.at~=b.at then return a.at>b.at end;return a.key<b.key
+    end)
+    return rows
+end
+local function addDeathTooltip(row)
+    local P=Z.PvPHelp
+    GameTooltip:AddLine(tr("%s – PvP death",row.target),1,.25,.25)
+    local age=math.max(0,A.Now()-row.at)
+    GameTooltip:AddLine(age<60 and tr("Died less than a minute ago")or tr("Died %d min ago",math.floor(age/60)),.75,.75,.75)
+    local place=(row.area or"")~=""and row.area or tr("Area unknown")
+    if(row.subzone or"")~=""and row.subzone~=row.area then place=place.." · "..row.subzone end
+    GameTooltip:AddLine(place,.85,.85,.85)
+    local attackers=row.attackers or{}
+    local killer=row.killerFirst and attackers[1]or nil
+    GameTooltip:AddLine(tr("Killer: %s",killer and P.FormatPerson(killer)or tr("Unknown")),1,1,1)
+    local others={};for i=(killer and 2 or 1),#attackers do others[#others+1]=attackers[i]end
+    local more=row.minAttackers-(killer and 1 or 0)
+    if more>0 then
+        GameTooltip:AddLine(tr(killer and"Further attackers (at least %d)"or"Attackers (at least %d)",more),1,.82,.3)
+        for _,person in ipairs(others)do GameTooltip:AddLine("  "..P.FormatPerson(person),.9,.9,.9)end
+    end
 end
 
 -- The virtual XML template may load before Blizzard_MapCanvas. Mix in the
@@ -198,11 +300,36 @@ function pinMethods:OnMouseEnter()
     GameTooltip:Show()
 end
 function pinMethods:OnMouseLeave()if GameTooltip then GameTooltip:Hide()end end
+-- Own pin type for PvP death skulls: red, static, with its own tooltip. Never shares state with member pins.
+ZenialCommunityPvPDeathPinMixin={}
+local deathMethods={}
+deathMethods.CheckMouseButtonPassthrough=pinMethods.CheckMouseButtonPassthrough
+function deathMethods:OnLoad()
+    self:SetScalingLimits(1,1,1);self:SetSize(20,20)
+    self.icon=self:CreateTexture(nil,"ARTWORK");self.icon:SetAllPoints()
+    self.icon:SetTexture(SKULL);self.icon:SetVertexColor(1,.15,.15)
+end
+function deathMethods:OnAcquired(row)
+    self.row=row;self:UseFrameLevelType("PIN_FRAME_LEVEL_GROUP_MEMBER");self:SetPosition(row.x,row.y)
+end
+deathMethods.OnReleased=pinMethods.OnReleased
+function deathMethods:OnMouseEnter()
+    if not self.row or not GameTooltip then return end
+    local rows=C.DeathTooltipRows(self);if#rows==0 then GameTooltip:Hide();return end
+    GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
+    for index,row in ipairs(rows)do
+        if index>1 then GameTooltip:AddLine(' ')end
+        addDeathTooltip(row)
+    end
+    GameTooltip:Show()
+end
+deathMethods.OnMouseLeave=pinMethods.OnMouseLeave
 function C.TryAttach()
     if not C.menuAttached and Menu and type(Menu.ModifyMenu)=="function"then
         Menu.ModifyMenu("MENU_WORLD_MAP_TRACKING",function(_,root)
             root:CreateCheckbox(tr("Community members"),C.IsShown,function()C.SetShown(not C.IsShown())end)
             root:CreateCheckbox(tr("My guild only"),C.IsGuildOnly,function()C.SetGuildOnly(not C.IsGuildOnly())end)
+            root:CreateCheckbox(tr("PvP deaths"),C.IsDeathShown,function()C.SetDeathShown(not C.IsDeathShown())end)
         end)
         C.menuAttached=true
     end
@@ -210,22 +337,26 @@ function C.TryAttach()
     if C.provider or not map or type(map.AddDataProvider)~="function"or not MapCanvasDataProviderMixin or not MapCanvasPinMixin then return end
     for k,v in pairs(MapCanvasPinMixin)do ZenialCommunityMemberPinMixin[k]=v end
     for k,v in pairs(pinMethods)do ZenialCommunityMemberPinMixin[k]=v end
+    for k,v in pairs(MapCanvasPinMixin)do ZenialCommunityPvPDeathPinMixin[k]=v end
+    for k,v in pairs(deathMethods)do ZenialCommunityPvPDeathPinMixin[k]=v end
     local provider={}
     for k,v in pairs(MapCanvasDataProviderMixin)do provider[k]=v end
     provider.pins={}
-    function provider:RemoveAllData()self:GetMap():RemoveAllPinsByTemplate(C.TEMPLATE);self.pins={}end
+    function provider:RemoveAllData()self:GetMap():RemoveAllPinsByTemplate(C.TEMPLATE);self:GetMap():RemoveAllPinsByTemplate(C.DEATH_TEMPLATE);self.pins={}end
     function provider:RefreshAllData()
         local owner=self:GetMap()
         if not owner:IsShown()then self:RemoveAllData();return end
         local keep={}
         local rows=C.Points(owner:GetMapID())
         for _,row in ipairs(C.DeathPoints(owner:GetMapID()))do rows[#rows+1]=row end
+        for _,row in ipairs(C.PvPDeathPoints(owner:GetMapID()))do rows[#rows+1]=row end
         for _,row in ipairs(rows)do
             local pin=self.pins[row.key]
             if pin and pin.row and pin.row.key==row.key then
                 local old=pin.row
-                if old.x~=row.x or old.y~=row.y or old.at~=row.at or old.classFile~=row.classFile or old.note~=row.note or old.closed~=row.closed then pin:OnAcquired(row)else pin.row=row end
-            else pin=owner:AcquirePin(C.TEMPLATE,row)end
+                if row.pvpDeath then pin.row=row;if old.x~=row.x or old.y~=row.y then pin:OnAcquired(row)end
+                elseif old.x~=row.x or old.y~=row.y or old.at~=row.at or old.classFile~=row.classFile or old.note~=row.note or old.closed~=row.closed then pin:OnAcquired(row)else pin.row=row end
+            else pin=owner:AcquirePin(row.pvpDeath and C.DEATH_TEMPLATE or C.TEMPLATE,row)end
             keep[row.key]=pin
         end
         for key,pin in pairs(self.pins)do if not keep[key]and pin.row and pin.row.key==key then owner:RemovePin(pin)end end
@@ -243,6 +374,7 @@ function C.Tick()
     if clock>=C.nextSample then
         C.nextSample=clock+5
         for key,row in pairs(C.positions)do if now-row.at>=C.TTL or Z.db.blocked[key]then C.positions[key]=nil end end
+        for token,row in pairs(C.deathMarkers or{})do if now>=row.expires or Z.db.blocked[row.victim]then C.deathMarkers[token]=nil end end
         if enabled()then
             local pos=Z.db.visible and A.MapPosition()or{mapID=0,x=0,y=0}
             C.sampleAvailable=pos.mapID>0
@@ -257,7 +389,7 @@ function C.Tick()
                 if Z.Network3.QueuePublic("MP",wire,5,"MAP_POSITION")then C.sent=C.sent+1;C.lastSent=clock;C.lastPosition=signature;C.lastMap=pos.mapID end
             end
         else
-            C.positions={};C.lastSent=nil;C.lastPosition=nil;C.lastMap=nil;C.sampleAvailable=false
+            C.positions={};C.deathMarkers={};C.lastSent=nil;C.lastPosition=nil;C.lastMap=nil;C.sampleAvailable=false
         end
     end
     local shown=WorldMapFrame and WorldMapFrame:IsShown()
@@ -268,6 +400,6 @@ function C.Tick()
 end
 function C.Status()
     return{enabled=enabled()==true,filter=C.IsShown(),guildOnly=C.IsGuildOnly(),menuAttached=C.menuAttached==true,providerAttached=C.provider~=nil,
-        positions=L.Count(C.positions),pins=C.provider and L.Count(C.provider.pins)or 0,sampleAvailable=C.sampleAvailable==true,
+        positions=L.Count(C.positions),deathMarkers=L.Count(C.deathMarkers),deathFilter=C.IsDeathShown(),pins=C.provider and L.Count(C.provider.pins)or 0,sampleAvailable=C.sampleAvailable==true,
         published=C.sent or 0,received=C.received or 0,lastPublishedAge=C.lastSent and math.floor(A.Clock()-C.lastSent)or-1}
 end

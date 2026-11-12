@@ -265,7 +265,11 @@ local function pvpNoticeText(key, r)
     if r and (r.note or '') ~= '' then
         lines[#lines + 1] = tr('Attackers') .. ': ' .. r.note
     end
-    if r and r.enemy then
+    if r and r.killLog then
+        for _, line in ipairs(Z.PvPHelp.KillLogLines(r.killLog, r.killTruncated)) do
+            lines[#lines + 1] = line
+        end
+    elseif r and r.enemy then
         lines[#lines + 1] = tr('Targeted enemy') .. ': ' .. r.enemy.name .. (r.enemy.level > 0 and ' · ' .. Z.T('Level %d', r.enemy.level) or '')
     end
     return table.concat(lines, '\n')

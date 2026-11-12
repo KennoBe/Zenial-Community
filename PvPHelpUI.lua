@@ -71,7 +71,8 @@ function U.RefreshPvPPage()
         local c=Z.db.contacts[r.key];local active=P.IsActive(r);local own=r.key==Z.me.key
         details={{text=(c and c.target or own and Z.me.target or r.key)..' · '..state(r),height=38},{text=P.FormatLocation(r),height=48},{text=Z.ScheduleTime.Format(r.at),height=40}}
         if (r.note or'')~=''then details[#details+1]={text=tr('Attackers')..': '..r.note,height=60}end
-        if r.enemy then details[#details+1]={text=tr('Targeted enemy')..': '..r.enemy.name..(r.enemy.class~=''and' · '..r.enemy.class or'')..(r.enemy.level>0 and' · '..tr('Level %d',r.enemy.level)or''),height=48}end
+        if r.killLog then for _,line in ipairs(P.KillLogLines(r.killLog,r.killTruncated))do details[#details+1]={text=line,height=24}end
+        elseif r.enemy then details[#details+1]={text=tr('Targeted enemy')..': '..r.enemy.name..(r.enemy.class~=''and' · '..r.enemy.class or'')..(r.enemy.level>0 and' · '..tr('Level %d',r.enemy.level)or''),height=48}end
         if r.response=='coming'then details[#details+1]={text=tr('Your commitment was sent.'),height=32}end
         U.pvpCome:SetText(tr(r.response=='coming'and'Withdraw commitment'or"I'm coming"));U.pvpCome:SetEnabled(active and not own)
         U.pvpMap:SetEnabled(r.mapID>0);U.pvpWaypoint:SetEnabled(active and not own and r.hasPos);U.pvpWhisper:SetEnabled(not own and c~=nil);U.pvpBlock:SetEnabled(not own)
