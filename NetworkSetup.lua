@@ -113,7 +113,7 @@ function S.RefreshOverview()
 end
 function S.CreateOverview()
     if S.overviewFrame then return end
-    local f=CreateFrame("Frame",nil,UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
+    local f=CreateFrame("Frame","ZenialCommunityConnectionOverview",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
     f:SetSize(560,315);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
     if Z.Theme then Z.Theme.Panel(f,"stone")end
     label(f,"Community connection",24,-24,500,32)
@@ -131,6 +131,7 @@ function S.CreateOverview()
     S.overviewAdvanced=button(f,"Technical details",382,-245,154,function()S.ShowAdvanced()end)
     button(f,"Close",406,-282,130,function()f:Hide()end)
     f:SetScript("OnHide",function()S.overviewMessageKey=nil;if S.linkFrame then S.linkFrame:Hide()end end)
+    if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityConnectionOverview"end
     local elapsed=0;f:SetScript("OnUpdate",function(_,dt)elapsed=elapsed+dt;if elapsed>=1 then elapsed=0;S.RefreshOverview()end end)
     f:Hide()
 end
@@ -199,6 +200,7 @@ function S.Create()
     S.groupName=label(f,"",55,-205,475,30)
     S.next=button(f,">",535,-201,32,function()S.groupIndex=(S.groupIndex or 1)%math.max(1,#S.available)+1;S.Refresh()end)
     S.invite=edit(f,15,-235,550,180,false)
+    S.invite:SetScript("OnEscapePressed",function()f:Hide()end)
     S.add=button(f,"Add/update group",590,-235,190,function()local row=S.available[S.groupIndex or 1];if row then local ok,error=D.AddGroup(row.id,S.invite:GetText());S.Message(ok and"Group catalog saved."or error);S.Refresh()end end)
     button(f,"Copy/import catalog",590,-201,190,S.ShowCatalog)
     S.mode=label(f,"",15,-275,560,24)
@@ -209,6 +211,7 @@ function S.Create()
     button(f,"Copy diagnostics",590,-377,190,function()Z.UI.ShowDiagnostics()end)
     label(f,"Addon whisper test: full character name (first and last name)",15,-414,760,22)
     S.target=edit(f,15,-441,550,49,false)
+    S.target:SetScript("OnEscapePressed",function()f:Hide()end)
     S.whisper=button(f,"Test addon whisper",590,-441,190,function()local ok,error=B.Test(S.target:GetText());S.Message(ok and"Connection test started."or error);S.Refresh()end)
     S.confirmed=label(f,"",15,-480,555,65);S.message=label(f,"",590,-480,190,55)
     button(f,"Close",650,-542,130,function()f:Hide()end)
