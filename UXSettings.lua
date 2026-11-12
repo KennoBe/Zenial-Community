@@ -76,6 +76,7 @@ function U.CreateSettings(helpers)
     label(U.settingsToolsFrame, '|cffffd36b' .. tr('Companion') .. '|r', 270, -28, 350, 'GameFontNormal')
     button(U.settingsToolsFrame, tr('Open Companion'), 270, -52, 240, function() Z.Companion.Show() end)
     U.settingsCompanionSummary = label(U.settingsToolsFrame, '', 270, -82, 580, 'GameFontHighlightSmall')
+    U.settingsToolsFrame:HookScript('OnShow', U.RefreshSettingsCompanionSummary)
     U.homeAddonNavigationOption = checkbox(U.settingsToolsFrame, tr('Show Addon Manager in the left navigation'), 0, -112, 520, function(self)
         U.SetAddonManagerNavigation(self:GetChecked() == true)
     end)
@@ -92,6 +93,16 @@ function U.CreateSettings(helpers)
     U.SetSettingsView('display', true)
 end
 
+function U.RefreshSettingsCompanionSummary()
+    if not U.settingsCompanionSummary or not Z.Companion or not Z.Companion.Status then return end
+    local status = Z.Companion.Status()
+    local states = { disabled = 'Disabled', blocked = 'Export stopped',
+        ['logging-required'] = 'Chat logging required', probing = 'Connection probe',
+        unverified = 'Export active' }
+    U.settingsCompanionSummary:SetText(tr('Status: ') .. tr(states[status.state] or status.state or '') .. ' · '
+        .. tr('Account-wide export for all characters, including chat and private notes.'))
+end
+
 function U.SetSettingsView(v, skipRoute)
     local allowed = { display = true, privacy = true, tools = true, data = true }
     U.settingsView = allowed[v] and v or 'display'
@@ -105,15 +116,7 @@ function U.SetSettingsView(v, skipRoute)
     if U.settingsView == 'privacy' and U.profileNetworkText then
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end
-    if U.settingsCompanionSummary and Z.Companion and Z.Companion.Status then
-        local status = Z.Companion.Status()
-        local states = { disabled = 'Disabled', blocked = 'Export stopped',
-            ['logging-required'] = 'Chat logging required', probing = 'Connection probe',
-            unverified = 'Export active' }
-        local current = states[status.state] or { status.state, status.state }
-        U.settingsCompanionSummary:SetText(tr('Status: ') .. tr(current[1] or current) .. ' · '
-            .. tr('Account-wide export for all characters, including chat and private notes.'))
-    end
+    U.RefreshSettingsCompanionSummary()
     if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
     end

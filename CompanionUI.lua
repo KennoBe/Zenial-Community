@@ -11,6 +11,7 @@ local function button(parent,value,x,y,w,fn)
     local b=CreateFrame('Button',nil,parent,'UIPanelButtonTemplate');b:SetPoint('TOPLEFT',x,y);b:SetSize(w,28);b:SetText(value);b:SetScript('OnClick',fn);if Z.Theme then Z.Theme.StyleButton(b)end;return b
 end
 function C.RefreshUI()
+    if Z.UI and Z.UI.RefreshSettingsCompanionSummary then Z.UI.RefreshSettingsCompanionSummary()end
     local join=Z.NetworkSetup and Z.NetworkSetup.joinFrame;if join and join.companionEnable then join.companionEnable:SetChecked(C.settings and C.settings.enabled==true)end
     local f=C.ui;if not f or not f:IsShown()then return end
     local s=C.Status();local state=states[s.state]or{s.state,s.state}
