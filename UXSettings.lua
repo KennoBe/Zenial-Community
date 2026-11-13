@@ -173,7 +173,7 @@ function U.CreateSettings(helpers)
     plate(U.settingsToolsFrame, 0, 0, 270, 112)
     plate(U.settingsToolsFrame, 282, 0, 568, 112)
     plate(U.settingsToolsFrame, 0, 124, 850, 44)
-    plate(U.settingsToolsFrame, 0, 180, 850, 96)
+    plate(U.settingsToolsFrame, 0, 180, 850, 126)
     heading(U.settingsToolsFrame, 'Addon Manager', 16, -14, 240)
     U.settingsAddon = button(U.settingsToolsFrame, tr('Open Addon Manager'), 16, -40, 238, function() U.Navigate('addons') end)
     U.settingsAddon:SetEnabled((U.addonAvailableCount or 0) > 0)
@@ -188,6 +188,12 @@ function U.CreateSettings(helpers)
     heading(U.settingsToolsFrame, 'Notifications', 16, -194, 300)
     label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 16, -216, 800, 'GameFontHighlightSmall')
     label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 16, -246, 800, 'GameFontHighlightSmall')
+    U.finderNoticeOption = checkbox(U.settingsToolsFrame, tr('Show a notice when a group opens for an activity I follow'), 12, -270, 700, function(self)
+        if Z.ui then
+            Z.ui.finderNotices = self:GetChecked() == true
+        end
+    end)
+    U.finderNoticeOption:SetChecked(not Z.ui or Z.ui.finderNotices ~= false)
 
     -- History and categories (the categories button is added by CategorySettingsUI.lua at 430, -52).
     U.settingsDataFrame = CreateFrame('Frame', nil, p)

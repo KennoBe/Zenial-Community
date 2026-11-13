@@ -1254,6 +1254,7 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["Show a notice when a group opens for an activity I follow"]="Hinweis anzeigen, wenn für eine beobachtete Aktivität eine Gruppe entsteht"
 DE["Happening now"]="Aktuell"
 DE["Questing and levelling"]="Questen"
 DE["Other"]="Sonstiges"

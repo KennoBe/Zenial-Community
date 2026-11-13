@@ -82,6 +82,13 @@ function P.Receive(sender,wire)
 end
 function P.SyncLive()
     local e=Z.db.lfg[1];if not e then P.liveBaseline=nil;return end
+    -- A search (mode LFG) is no group: its role flags are the roles the player offers and are never counted
+    -- down. It ends as soon as the player is in a group.
+    if e.mode=='LFG'then
+        P.liveBaseline=nil
+        if A.GroupState().total>1 and Z.CloseGroup(e.id)then Z.Publish()end
+        return
+    end
     local state=A.GroupState();local g={tank=0,healer=0,dd=0};local units={}
     if A.Call(IsInRaid)==true then for i=1,state.total do units[#units+1]='raid'..i end
     else units[1]='player';for i=1,state.total-1 do units[#units+1]='party'..i end end

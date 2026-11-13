@@ -25,6 +25,9 @@ local VIEW_CATEGORY = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP', quest
 local KIND_VIEW = { DUNGEON = 'dungeons', RAID = 'raids', PVP = 'pvp' }
 local ROLES = { 'TANK', 'HEALER', 'DAMAGER' }
 local ROLE_FIELD = { TANK = 'tank', HEALER = 'healer', DAMAGER = 'dd' }
+-- Role symbols: Media/Roles.tga, four cells of 64 px (_dev/tools/generate_community_role_icons.py).
+local ROLE_ATLAS = 'Interface\\AddOns\\ZenialCommunity\\Media\\Roles.tga'
+local ROLE_CELL = { TANK = 0, HEALER = 1, DAMAGER = 2, SEEKER = 3 }
 local GAP = 12
 local GUTTER = 18 -- room of the scroll bar inside a scroll area
 local CARD_HEIGHT = 104
@@ -48,6 +51,14 @@ local function oneLine(fs, width, height)
     fs:SetHeight(height or 14)
     call(fs, 'SetWordWrap', false)
     return fs
+end
+local function setRoleIcon(texture, role, colorKey)
+    local cell = ROLE_CELL[role] or 0
+    texture:SetTexture(ROLE_ATLAS)
+    if texture.SetTexCoord then
+        texture:SetTexCoord(cell / 4, (cell + 1) / 4, 0, 1)
+    end
+    T.Tint(texture, 'SetVertexColor', colorKey or T.roleColors[role] or 'textSoft')
 end
 local function activityName(id)
     return Z.Locale.Activity(id)
@@ -92,6 +103,17 @@ local function createPicture(owner, glyphSize)
     picture.base = owner:CreateTexture(nil, 'BACKGROUND')
     T.SetGradient(picture.base, 'VERTICAL', 'panelRaised', 'inset')
     picture.glyph = K.Icon(owner, 'activities', glyphSize or 40, 'highlight')
+    -- Corner brackets frame the neutral look, so it reads as a deliberate plate and not as a missing file.
+    picture.corners = {}
+    for _, corner in ipairs({ { 'TOPLEFT', 6, -6 }, { 'TOPRIGHT', -6, -6 }, { 'BOTTOMLEFT', 6, 6 }, { 'BOTTOMRIGHT', -6, 6 } }) do
+        for _, shape in ipairs({ { 12, 1 }, { 1, 12 } }) do
+            local line = owner:CreateTexture(nil, 'BORDER')
+            line:SetPoint(corner[1], picture.base, corner[1], corner[2], corner[3])
+            line:SetSize(shape[1], shape[2])
+            T.Tint(line, 'SetColorTexture', 'goldDim', 0.55)
+            picture.corners[#picture.corners + 1] = line
+        end
+    end
     picture.glyph:SetPoint('CENTER', picture.base, 'CENTER', 0, 0)
     picture.art = owner:CreateTexture(nil, 'ARTWORK')
     picture.art:SetAllPoints(picture.base)
@@ -107,6 +129,9 @@ local function createPicture(owner, glyphSize)
         self.has = has and true or false
         self.art:SetShown(self.has)
         self.glyph:SetShown(not self.has)
+        for _, line in ipairs(self.corners) do
+            line:SetShown(not self.has)
+        end
         if not self.has then
             T.SetIcon(self.glyph, glyph or (e and e.kind == 'PVP' and 'pvp') or 'activities', 'highlight')
         end
@@ -117,6 +142,9 @@ local function createPicture(owner, glyphSize)
         self.base:SetShown(shown)
         self.art:SetShown(shown and self.has == true)
         self.glyph:SetShown(shown and not self.has)
+        for _, line in ipairs(self.corners) do
+            line:SetShown(shown and not self.has)
+        end
     end
     return picture
 end
@@ -355,11 +383,10 @@ local function describe(r, context)
         d.title = hex and ('|cff' .. hex .. r.ownerName .. '|r') or r.ownerName
         local who = Z.T('Level %d', g.min) .. (classFile and ' · ' .. L.ClassName(class, classFile) or '')
         d.meta = context.named and Z.T('Looking for: %s', name) .. ' · ' .. who or who
-        local parts = {}
+        d.roleItems = {}
         for _, role in ipairs(C.SearchRoles(g)) do
-            parts[#parts + 1] = { role, Z.Locale.Role(role) }
+            d.roleItems[#d.roleItems + 1] = { role = role, text = Z.Locale.Role(role) }
         end
-        d.roles = paint('dim', tr('Roles') .. ': ') .. K.Roles(parts)
         d.note = g.note
         d.glyph = d.glyph or 'members'
         if r.own then
@@ -382,7 +409,16 @@ local function describe(r, context)
             .. Z.T('%d/%d players', partySize(r), g.size)
             .. ' · '
             .. (g.min == g.max and Z.T('Level %d', g.min) or Z.T('Level %d–%d', g.min, g.max))
-        d.roles = wantedRoles(g)
+        d.roleItems = {}
+        for _, role in ipairs(ROLES) do
+            local n = g[ROLE_FIELD[role]] or 0
+            if n > 0 then
+                d.roleItems[#d.roleItems + 1] = { role = role, text = n .. ' ' .. Z.Locale.Role(role) }
+            end
+        end
+        if #d.roleItems == 0 then
+            d.roleItems, d.roles = nil, paint('dim', tr('Group is full'))
+        end
         d.note = g.note
         d.click = function()
             U.OpenActivity(r.key)
@@ -423,13 +459,12 @@ local function describe(r, context)
         local slots = ev.roleSlots
         if type(slots) == 'table' then
             local used = ev.participants and Z.ScheduledGroups.Counts(ev) or ev.used or {}
-            local parts = {}
+            d.roleItems = {}
             for _, role in ipairs(ROLES) do
                 if (slots[role] or 0) > 0 then
-                    parts[#parts + 1] = { role, Z.Locale.Role(role) .. ' ' .. (used[role] or 0) .. '/' .. slots[role] }
+                    d.roleItems[#d.roleItems + 1] = { role = role, text = (used[role] or 0) .. '/' .. slots[role] .. ' ' .. Z.Locale.Role(role) }
                 end
             end
-            d.roles = K.Roles(parts)
         end
         d.note = ev.note
         d.click = function()
@@ -491,6 +526,12 @@ local function createCard(parent)
     card.meta = K.Text(card, '', 'caption', 'dim')
     card.roles = K.Text(card, '', 'caption', 'textSoft')
     card.note = K.Text(card, '', 'caption', 'textSoft')
+    card.roleSlots = {}
+    for index = 1, 3 do
+        local icon = card:CreateTexture(nil, 'ARTWORK')
+        icon:SetSize(14, 14)
+        card.roleSlots[index] = { icon = icon, text = K.Text(card, '', 'caption', 'textSoft') }
+    end
     card.badge = K.Badge(card, '', 'neutral')
     card.badge:SetPoint('TOPRIGHT', -8, -8)
     card.actions = {}
@@ -548,8 +589,27 @@ local function updateCard(card, item, width, context)
     oneLine(card.meta, textWidth, 13)
     card.roles:ClearAllPoints()
     card.roles:SetPoint('TOPLEFT', left, -44)
-    card.roles:SetText(applying and paint('dim', tr('Your role') .. ':') or d.roles or '')
+    local roleItems = not applying and d.roleItems or nil
+    card.roles:SetText(applying and paint('dim', tr('Your role') .. ':') or not roleItems and d.roles or '')
     oneLine(card.roles, applying and 70 or textWidth, 13)
+    -- Roles as symbol and word in the role colour: wanted places of a group, offered roles of a player.
+    local slotX, slotWidth = left, math.floor(math.min(96, textWidth / 3))
+    for index, slot in ipairs(card.roleSlots) do
+        local roleItem = roleItems and roleItems[index]
+        slot.icon:SetShown(roleItem ~= nil)
+        slot.text:SetShown(roleItem ~= nil)
+        if roleItem then
+            setRoleIcon(slot.icon, roleItem.role)
+            slot.icon:ClearAllPoints()
+            slot.icon:SetPoint('TOPLEFT', slotX, -43)
+            slot.text:ClearAllPoints()
+            slot.text:SetPoint('TOPLEFT', slotX + 18, -44)
+            slot.text:SetText(roleItem.text)
+            T.Tint(slot.text, 'SetTextColor', T.roleColors[roleItem.role] or 'textSoft')
+            oneLine(slot.text, slotWidth - 20, 13)
+            slotX = slotX + slotWidth
+        end
+    end
     -- Role choice of a join request: only the roles the group still looks for.
     local chipX = left + 74
     for _, chip in ipairs(card.chips) do
@@ -690,6 +750,21 @@ local function addSection(items, text, rows, emptyText, limit)
         end
         items[#items + 1] = { type = 'card', row = row }
     end
+end
+-- Copy of rows with the player's own entry first.
+local function ownFirst(rows)
+    local out = {}
+    for _, r in ipairs(rows) do
+        if r.own then
+            out[#out + 1] = r
+        end
+    end
+    for _, r in ipairs(rows) do
+        if not r.own then
+            out[#out + 1] = r
+        end
+    end
+    return out
 end
 local function ofCategory(rows, category)
     local out = {}
@@ -1040,11 +1115,11 @@ local function renderDetail(snap, top, width, height)
     local columnWidth = math.floor((width - GAP) / 2)
     local listHeight = math.max(60, height - y)
     local left, right = {}, {}
-    addSection(left, tr('Open groups'), stats.rows.groups, tr('No group is open for this instance. Create one, or look for a group and let others find you.'))
+    addSection(left, tr('Open groups'), ownFirst(stats.rows.groups), tr('No group is open for this instance. Create one, or look for a group and let others find you.'))
     if #stats.rows.planned > 0 then
         addSection(left, tr('Planned'), stats.rows.planned)
     end
-    addSection(right, tr('Players looking for a group'), stats.rows.seekers, tr('Nobody is looking for this instance right now.'))
+    addSection(right, tr('Players looking for a group'), ownFirst(stats.rows.seekers), tr('Nobody is looking for this instance right now.'))
     detail.left:ClearAllPoints()
     detail.left:SetPoint('TOPLEFT', 0, -y)
     renderStream(detail.left, columnWidth, listHeight, left, 1, { named = false, thumbs = false })

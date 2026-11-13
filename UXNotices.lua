@@ -225,6 +225,9 @@ local function ensureFollowToast()
             U.frame:Show()
             if Z.db.blocked[key] or not Z.FindForeignGroup(key, id) then
                 U.Navigation.Fail('target-unavailable')
+            elseif U.OpenFinderActivity and U.OpenFinderActivity(self.openActivity) then
+                -- Catalogue activity: its group overview in the finder shows the new group.
+                Z.Notifications.ReadVisible('groups', 'browse', 'follow:' .. key .. ':' .. id)
             elseif U.Navigate('groups', 'browse') then
                 U.SelectGroup(key, id)
             end
@@ -234,6 +237,10 @@ local function ensureFollowToast()
 end
 function U.NotifyGroupFollow(key, id, activity)
     Z.Notifications.Push('groups', 'browse', 'follow:' .. key .. ':' .. id, A.Now(), 'GROUP_FOLLOW', key, id, activity, nil, true)
+    -- Switched off in the settings: the entry stays in the bell, the pop-up notice and its sound are skipped.
+    if Z.ui and Z.ui.finderNotices == false then
+        return
+    end
     local f = ensureFollowToast()
     f.pending = (f.pending or 0) + 1
     if f.pending == 1 then

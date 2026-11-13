@@ -601,6 +601,15 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end
     elseif text=="debug"or text=="diagnose"or text=="diagnostics"or text=="logs"then if Z.UI then Z.UI.ShowDiagnostics()end
+    elseif text=="finderart"then
+        -- Which finder pictures the client resolves (GroupFinderArt.lua): one line per activity without a picture.
+        local function say(line)if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end
+        local client,journal,missing=0,0,0
+        for _,row in ipairs(Z.GroupFinderArt and Z.GroupFinderArt.Report()or{})do
+            if row.source=="client"then client=client+1 elseif row.source=="journal"then journal=journal+1
+            else missing=missing+1;say("ZENIAL finder art: "..row.id..(row.listed>0 and" - listed client texture not found"or" - no picture (neutral tile)"))end
+        end
+        say(("ZENIAL finder art: %d client, %d DungeonJournal, %d neutral. DungeonJournal %s."):format(client,journal,missing,Z.DungeonJournalLink and Z.DungeonJournalLink.Available()and"found"or"not loaded"))
     elseif text=="resetpos" then Z.db.position=nil; Z.db.scale=1; if Z.UI and Z.UI.frame then Z.UI.frame:SetScale(1); Z.UI.frame:ClearAllPoints(); Z.UI.frame:SetPoint("CENTER") end
     elseif text=="pvptest" then
         local on=Z.PvPHelp and Z.PvPHelp.ToggleTestMode();local line="ZENIAL: PvP test mode "..(on and"on until /reload."or"off.")
