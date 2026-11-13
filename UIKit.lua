@@ -21,6 +21,7 @@
 --   K.Fact(label, value[, valueKey])              dimmed label followed by a bright value
 --   K.Roles(parts)                                { { role, text }, ... } joined with dots, each in its role colour
 --   K.InfoBlock(list)                             a list that only shows facts: no sunken well, reads as plain text
+--   K.Lines(text[, firstKey, restKey])            multi-line row text: first line bright, the lines below receding
 local Z = ZenialCommunity
 local T = Z and Z.Theme
 if type(T) ~= "table" or type(T.Font) ~= "function" then return end
@@ -55,6 +56,17 @@ function K.Roles(parts)
     local shown = {}
     for index, part in ipairs(parts) do shown[index] = K.Paint(T.roleColors[part[1]] or "text", part[2]) end
     return table.concat(shown, K.Paint("dim", " · "))
+end
+-- Row weighting for a multi-line list text: the first line bright, every further line receding. Colour codes
+-- of the data text are dropped, the words stay; a colour never changes inside a line.
+function K.Lines(value, firstKey, restKey)
+    local plain = tostring(value or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    local out, index = {}, 0
+    for line in (plain .. "\n"):gmatch("(.-)\n") do
+        index = index + 1
+        out[index] = line == "" and "" or K.Paint(index == 1 and (firstKey or "text") or (restKey or "dim"), line)
+    end
+    return table.concat(out, "\n")
 end
 -- Facts nobody can click are not list cells: the rows are flat (item.flat) and the list loses its well.
 function K.InfoBlock(view)

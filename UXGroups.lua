@@ -13,6 +13,21 @@ local peerOnline, roleName, activityName, activityCategory = S.peerOnline, S.rol
 local groupCategory, stateName, groupHave, deliveryState = S.groupCategory, S.stateName, S.groupHave, S.deliveryState
 local peerLocationLine, wanted = S.peerLocationLine, S.wanted
 
+-- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays
+-- the data contract. With a symbol name the row gets the small atlas symbol the activity board uses.
+local function weigh(items, symbol)
+    local K = Z.Kit
+    if not K then
+        return
+    end
+    for _, item in ipairs(items) do
+        item.display = K.Lines(item.text)
+        if symbol and T and T.IconSpec then
+            item.icon, item.iconColor, item.iconSize, item.textInset = T.IconSpec(symbol), item.selected and 'gold' or 'dim', 18, 40
+        end
+    end
+end
+
 local function foreignGroups()
     local a = {}
     for key, p in pairs(Z.db.peers) do
@@ -138,6 +153,7 @@ S.refreshGroupBrowse = function()
         U.groupApplyOpen = false
     end
     U.SetEmptyHint(U.groupBrowseList, 'No open groups match. Change the filters or create your own group under My Group.')
+    weigh(items, 'activities')
     rows(U.groupBrowseList, items, 80)
     if U.groupBrowseCount then
         U.groupBrowseCount:SetText(
@@ -238,6 +254,7 @@ S.refreshGroupOutgoing = function()
         U.groupOutgoingToken = nil
     end
     U.SetEmptyHint(U.groupOutgoingList, 'You have not applied to a group yet. Open Group Search and press Apply.')
+    weigh(display, 'activities')
     rows(U.groupOutgoingList, display, 68)
     U.groupOutgoingCount:SetText(#display == 1 and tr('1 Bewerbung') or #display .. tr(' Bewerbungen'))
     local chosen
@@ -571,6 +588,7 @@ S.refreshGroupFollows = function()
         U.followSelected = nil
     end
     U.SetEmptyHint(U.followList, 'You follow no activities. Choose a category and activity above and press Follow.')
+    weigh(items, 'bell')
     rows(U.followList, items, 48)
     U.followCount:SetText(#followed .. tr(' Aktivitäten gefolgt'))
     U.followRemove:SetEnabled(U.followSelected ~= nil)
@@ -715,6 +733,7 @@ local function refreshGroupApplicants()
     end
     U.groupApplicantCount:SetText(tr('Incoming applicants') .. ' (' .. open .. ')')
     U.SetEmptyHint(U.groupApplicantList, 'No applicants yet. They appear here as soon as someone applies to your group.')
+    weigh(items)
     rows(U.groupApplicantList, items, 64)
     local r = U.groupApplicantKey and bucket[U.groupApplicantKey]
     if r and g then

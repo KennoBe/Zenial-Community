@@ -195,8 +195,9 @@ function S.createGroupsPage(f)
         end
     end, 'danger')
     U.groupActiveTemplateDelete:SetEnabled(false)
-    U.groupApplicantCount = label(U.groupMineSummary, tr('Eigene Bewerber (0)'), 0, -151, 350, 'GameFontNormal')
-    U.groupApplicantList = list(U.groupMineSummary, 0, -174, 545, 205)
+    -- Below the template row (its dropdown ends at 154): the heading no longer sits under the dropdown.
+    U.groupApplicantCount = label(U.groupMineSummary, tr('Eigene Bewerber (0)'), 0, -164, 350, 'GameFontNormal')
+    U.groupApplicantList = list(U.groupMineSummary, 0, -186, 545, 193)
     U.groupAccept = button(U.groupMineSummary, tr('Annehmen & einladen'), 565, -143, 200, function()
         decideGroup('eingeladen')
     end)

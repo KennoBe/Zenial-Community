@@ -108,8 +108,8 @@ function U.RefreshActivityBoard()
     U.activityInlineArchive:SetEnabled(actions.archive==true)
     U.activityInlineRepeat:SetEnabled(actions.repeatSeries==true)
     U.activityInlineForget:SetEnabled(selected~=nil and foreign and selected.kind=='EVENT' and U.CanForgetScheduled(Z.ScheduledGroups.Get(selected.owner,selected.id))==true)
-    -- Detail column: the selected activity as a section head, its facts as plain lines on the column (flat),
-    -- the comment set apart as a card. item.text stays the data contract; display only recolours it at the
+    -- Detail column: the selected activity as a section head, its facts and the comment as plain lines (flat);
+    -- nothing here can be clicked, so nothing is a cell. item.text stays the data contract; display only recolours it at the
     -- label/value boundary and at line breaks.
     local detail={};if selected then
         local width=U.activityDetail.width-20
@@ -159,7 +159,7 @@ function U.RefreshActivityBoard()
         if selected.saved then local text=tr('Saved state; verification pending');fact(text,paint('warning',text),measuredHeight(text,width,DETAIL_FACT_HEIGHT))end
         if selected.data and selected.data.note and selected.data.note~=''then
             local note=tr('Comment')..'\n'..selected.data.note
-            detail[#detail+1]={text=note,display=paint('goldDim',Z.Kit.Upper(tr('Comment')))..'\n'..paint('text',selected.data.note),height=measuredHeight(note,width,48)}
+            fact(note,paint('goldDim',Z.Kit.Upper(tr('Comment')))..'\n'..paint('text',selected.data.note),measuredHeight(note,width,48))
         end
     else
         local hint=tr('Select an activity to see its details and actions.')
@@ -505,7 +505,7 @@ function U.CreateCommunityHome(helpers)
     local searchIcon=K.Icon(U.activitySearch,'search',14,'muted');searchIcon:SetPoint('LEFT',8,0);U.activitySearchIcon=searchIcon
     if U.activitySearch.SetTextInsets then U.activitySearch:SetTextInsets(26,8,4,4)end
     U.activityCount=label(board,'',10,-62,600);T.Font(U.activityCount,'caption','dim')
-    U.activityList=list(board,0,-80,350,310);U.activityDetail=list(board,370,-80,480,212)
+    U.activityList=list(board,0,-80,350,310);U.activityDetail=K.InfoBlock(list(board,370,-80,480,212))
     U.activityMeasure=label(board,'',0,0,310);U.activityMeasure:SetWordWrap(true);U.activityMeasure:Hide()
     U.LayoutActivityBoard()
     -- One primary action per selection: Apply on a foreign activity, Manage applicants on an own one (never
