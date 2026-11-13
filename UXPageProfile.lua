@@ -103,10 +103,17 @@ function S.createHistoryPage(f)
     U.historySearch = edit(p, 'Player or content', 540, 0, 250, 96)
     U.historySearch:SetScript('OnTextChanged', U.RefreshHistory)
     U.historyCount = label(p, '0 events', 0, -50, 220, 'GameFontNormal')
+    if Z.Theme and Z.Theme.Font then
+        Z.Theme.Font(U.historyCount, 'caption', 'dim')
+    end
     U.historyList = list(p, 0, -68, 445, 330)
     U.historyDetail = label(p, 'Select an entry to view the request timeline.', 470, -68, 375, 'GameFontHighlight')
     U.historyDetail:SetHeight(58)
+    -- The timeline of a selected entry is information, nothing in it is clickable: an info block without a well.
     U.historyRelatedList = list(p, 470, -135, 375, 220)
+    if Z.Kit then
+        Z.Kit.InfoBlock(U.historyRelatedList)
+    end
     U.historyDeletePlayer = button(p, 'Delete player history', 470, -370, 180, function()
         U.ShowHistoryDeleteConfirm(true)
     end)

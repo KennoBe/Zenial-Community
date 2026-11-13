@@ -13,7 +13,15 @@ local function O()return Z.AccountOverview end
 local FACTION_VALUES={AO_ALLIANCE='Alliance',AO_HORDE='Horde',AO_NEUTRAL='Neutral'}
 local FACTION_OPTIONS={Alliance='AO_ALLIANCE',Horde='AO_HORDE',Neutral='AO_NEUTRAL'}
 local FACTION_NAMES={AO_ALL='All',AO_ALLIANCE='Alliance',AO_HORDE='Horde',AO_NEUTRAL='Neutral'}
-local GOLD,DIM,ALT,WARN='|cffffd36b','|cff9d9d9d','|cff9fc5e8','|cffe0a050'
+-- GOLD/DIM/ALT stay only for the colour codes inside item.text of list rows (data contract); everything that is
+-- merely displayed goes through the palette (paint).
+local GOLD,DIM,ALT='|cffffd36b','|cff9d9d9d','|cff9fc5e8'
+local function paint(key,text)
+    local K=Z.Kit
+    if K and T and T.PaletteHex then return K.Paint(key,text)end
+    return text
+end
+local function styled()return Z.Kit~=nil and T~=nil and T.PaletteHex~=nil end
 local ROW_HEIGHT=46
 local HIT_HEIGHT=30
 local HOLDER_HEIGHT=40
@@ -37,10 +45,11 @@ local function className(r)
 end
 local function trim(v)return type(v)=='string'and v:match('^%s*(.-)%s*$')or''end
 local function plain(text)return(text or''):gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|r','')end
-local function badge(r)
-    if r.utilityOnly then return DIM..tr('From ZENIAL Utility')..'|r'end
-    if r.role=='main'then return GOLD..tr('Main')..'|r'end
-    if r.role=='alt'then return ALT..tr('Alt')..'|r'end
+local function badge(r,display)
+    local function tone(key,legacy,text)return display and paint(key,text)or legacy..text..'|r'end
+    if r.utilityOnly then return tone('dim',DIM,tr('From ZENIAL Utility'))end
+    if r.role=='main'then return tone('goldBright',GOLD,tr('Main'))end
+    if r.role=='alt'then return tone('accentBlue',ALT,tr('Alt'))end
 end
 local function classIcon(r)
     local icon=T and T.ClassIcon(r.classFile,r.className)
@@ -155,15 +164,15 @@ local function summary(context)
     if oldest then second[#second+1]=tr('oldest value %s',S.age(oldest))end
     if professions>0 then second[#second+1]=tr('%d with professions',professions)end
     local note=''
-    if overview.readOnly then note=' · '..WARN..tr('The account overview uses a newer format.')..'|r'
-    elseif not overview.Enabled()then note=' · '..WARN..tr('Recording is off.')..'|r'end
+    if overview.readOnly then note=' · '..paint('warning',tr('The account overview uses a newer format.'))
+    elseif not overview.Enabled()then note=' · '..paint('warning',tr('Recording is off.'))end
     -- Taken-over Utility data is named with its age; unassignable rows are counted.
     local status=overview.ImportStatus()
     if status then
-        note=note..' · '..DIM..tr('ZENIAL Utility data taken over %s',S.age(status.at))..'|r'
-        if status.ambiguous>0 then note=note..' · '..WARN..tr('%d not assignable',status.ambiguous)..'|r'end
+        note=note..' · '..paint('dim',tr('ZENIAL Utility data taken over %s',S.age(status.at)))
+        if status.ambiguous>0 then note=note..' · '..paint('warning',tr('%d not assignable',status.ambiguous))end
     end
-    return first..'\n'..DIM..table.concat(second,' · ')..'|r'..note
+    return paint('text',first)..'\n'..paint('dim',table.concat(second,' · '))..note
 end
 
 local function openDetail()
@@ -181,8 +190,17 @@ local function listItem(r)
     sub[#sub+1]=tr('updated %s',updated>0 and S.age(updated)or tr('never'))
     if r.hidden then sub[#sub+1]=tr('hidden')end
     local subtitle=table.concat(sub,' · ')
-    return{icon=classIcon(r),text=title,subtitle=subtitle,noWrap=true,height=ROW_HEIGHT,selected=r.key==U.characterKey,
+    local item={icon=classIcon(r),text=title,subtitle=subtitle,noWrap=true,height=ROW_HEIGHT,selected=r.key==U.characterKey,
         tooltip=r.name..'\n'..subtitle,click=function()U.characterKey=r.key;U.CloseDropdowns();openDetail();U.RefreshMyCharacters()end}
+    -- Weighting only through display: the name bright (dim while hidden), role and logged-in marker in their own
+    -- tones, level, realm and meta dim. The words stay those of text/subtitle.
+    if styled()then
+        local role=badge(r,true)
+        item.display=paint(r.hidden and'dim'or'text',r.name)..(role and('  '..role)or'')
+            ..(r.current and('  '..paint('goldBright','· '..tr('Logged in')))or'')
+        item.subtitleDisplay=paint('dim',subtitle)
+    end
+    return item
 end
 
 local function restedText(r)
@@ -192,15 +210,15 @@ local function restedText(r)
     return tr('%d%% of a level',percent)..(r.resting and(' · '..tr('Resting'))or'')..' · '..tr('as of %s',when(r.restedAt))
 end
 local function header(r)
-    local b=badge(r)
-    local line=GOLD..r.name..'|r'..(b and('  '..b)or'')..(r.current and('  · '..tr('Logged in'))or'')
+    local b=badge(r,true)
+    local line=paint('goldBright',r.name)..(b and('  '..b)or'')..(r.current and('  '..paint('textSoft','· '..tr('Logged in')))or'')
     local info={}
     if className(r)~=''then info[#info+1]=className(r)end
     info[#info+1]=tr('Level')..' '..(r.level or tr('Unknown'))
     local ruleset=r.realm~=''and O().Ruleset(r.realm)
     if r.realm~=''then info[#info+1]=r.realm..(ruleset and(' ('..tr(ruleset)..')')or'')end
     if r.faction~=''then info[#info+1]=tr(r.faction)end
-    return line..'\n'..table.concat(info,' · ')
+    return line..'\n'..paint('textSoft',table.concat(info,' · '))
 end
 local function roleText(r)
     if r.utilityOnly then return nil end
@@ -213,18 +231,19 @@ end
 -- (heading and value). Missing data keeps its "unknown" wording, never zero.
 local function sheet(r)
     local out={}
-    local function note(text)out[#out+1]={full=true,text=text}end
-    local function section(head,text)out[#out+1]={head=tr(head),text=text}end
+    -- key/role: palette colour and type role of the block's text (see layoutSheet).
+    local function note(text,key)out[#out+1]={full=true,text=text,key=key or'textSoft'}end
+    local function section(head,text,role)out[#out+1]={head=tr(head),text=text,key='text',role=role or'body'}end
     local role=roleText(r);if role then note(role)end
     if r.hidden then note(tr('Hidden from this overview. Its data is kept; show hidden characters to see it again.'))end
-    section('GOLD',r.money and(A.MoneyText(r.money)..' · '..tr('as of %s',when(r.moneyAt)))or tr('Unknown'))
+    section('GOLD',r.money and(A.MoneyText(r.money)..' · '..tr('as of %s',when(r.moneyAt)))or tr('Unknown'),'heading')
     -- Values from the taken-over Utility copy are named, with the takeover time.
     local fields={}
     if r.moneyFromUtility then fields[#fields+1]=tr('Gold')end
     if r.levelFromUtility then fields[#fields+1]=tr('Level')end
     if r.classFromUtility then fields[#fields+1]=tr('Class')end
     if #fields>0 and r.importedAt then
-        note(DIM..tr('From ZENIAL Utility')..': '..table.concat(fields,', ')..' · '..tr('taken over %s',when(r.importedAt))..'|r')
+        note(tr('From ZENIAL Utility')..': '..table.concat(fields,', ')..' · '..tr('taken over %s',when(r.importedAt)),'dim')
     end
     if r.utilityOnly then
         note(tr('Only known from the data taken over from ZENIAL Utility. Log in with this character to record more.'))
@@ -240,7 +259,7 @@ local function sheet(r)
     -- Data line: where the values come from and how old they are.
     local data={tr('Last login')..': '..when(r.lastLogin)}
     if r.updatedAt then data[#data+1]=tr('Last updated')..': '..when(r.updatedAt)end
-    note(DIM..table.concat(data,' · ')..'|r')
+    note(table.concat(data,' · '),'dim')
     return out
 end
 local function sheetNode(index)
@@ -267,9 +286,13 @@ local function layoutSheet()
         node.body:ClearAllPoints();node.head:ClearAllPoints()
         local top=0
         if block.head then
-            node.head:SetPoint('TOPLEFT',x,-y);node.head:SetWidth(w);node.head:SetText(GOLD..block.head..'|r');node.head:SetHeight(14);node.head:Show();top=16
+            node.head:SetPoint('TOPLEFT',x,-y);node.head:SetWidth(w);node.head:SetHeight(14);node.head:Show();top=16
+            if T and T.Font then node.head:SetText(block.head);T.Font(node.head,'overline','goldDim')
+            else node.head:SetText(GOLD..block.head..'|r')end
         else node.head:Hide()end
         node.body:SetPoint('TOPLEFT',x,-(y+top));node.body:SetWidth(w);node.body:SetText(block.text)
+        -- Sheet text through type roles and palette: values bright, notes receding.
+        if T and T.Font then T.Font(node.body,block.role or'caption',block.key or'text')end
         local height=math.max(14,math.ceil(node.body:GetStringHeight()))
         node.body:SetHeight(height);node.body:Show()
         return top+height+10
@@ -306,7 +329,14 @@ local function holderItem(h,byKey)
     part('Bags',h.bags,r and r.bagsAt);part('Bank',h.bank,r and r.bankAt)
     local where=h.realm~=''and h.realm or''
     if r and r.faction~=''then where=where..(where~=''and' / 'or'')..tr(r.faction)end
-    return{text=h.name..(where~=''and(' · '..where)or''),subtitle=table.concat(place,' · '),noWrap=true,height=HOLDER_HEIGHT}
+    local item={text=h.name..(where~=''and(' · '..where)or''),subtitle=table.concat(place,' · '),noWrap=true,height=HOLDER_HEIGHT}
+    -- Holders are information, not a choice: flat row flush left (D-23).
+    if styled()then
+        item.flat,item.textInset=true,0
+        item.display=paint('text',h.name)..(where~=''and paint('dim',' · '..where)or'')
+        item.subtitleDisplay=paint('textSoft',item.subtitle)
+    end
+    return item
 end
 local function refreshItems(context)
     local overview=O()
@@ -324,22 +354,37 @@ local function refreshItems(context)
     if not selectedHit then U.itemsDetailOpen=false end
     local items={}
     for _,hit in ipairs(hits)do
-        items[#items+1]={text=hit.name..' · '..hit.total,noWrap=true,height=HIT_HEIGHT,selected=selectedHit==hit,
+        local item={text=hit.name..' · '..hit.total,noWrap=true,height=HIT_HEIGHT,selected=selectedHit==hit,
             click=function()U.itemHitId=hit.id;U.itemsDetailOpen=true;U.CloseDropdowns();U.RefreshMyCharacters()end}
+        -- Item icon in front, name bright, amount dim.
+        if styled()then
+            item.display=paint('text',hit.name)..paint('dim',' · '..hit.total)
+            local icon=S.itemIcon and S.itemIcon(hit.id)
+            item.icon=icon or T.IconSpec('search')
+            item.iconSize,item.textInset=20,36
+            if not icon then item.iconColor='dim'end
+        end
+        items[#items+1]=item
     end
     local hint
     if #query<2 and not tonumber(query)then hint=tr('Enter an item name with at least 2 characters or an item ID to search recorded bags and banks.')
     elseif #hits==0 then hint=tr('No matching items in recorded bags and banks.')end
-    U.SetEmptyHint(U.itemHitList,hint)
+    U.SetEmptyHint(U.itemHitList,hint,hint and'search'or nil)
     S.rows(U.itemHitList,items,HIT_HEIGHT)
     local byKey={};for _,r in ipairs(context.scoped)do byKey[r.key]=r end
     local holders={}
     if selectedHit then
         local bags,bank=0,0;for _,h in ipairs(selectedHit.holders)do bags=bags+(h.bags or 0);bank=bank+(h.bank or 0)end
-        holders[1]={text=GOLD..selectedHit.name..' · '..selectedHit.total..'|r\n'..tr('%d characters · Bags %d · Bank %d',#selectedHit.holders,bags,bank),height=38,header=true}
+        local headText=selectedHit.name..' · '..selectedHit.total
+        local headSub=tr('%d characters · Bags %d · Bank %d',#selectedHit.holders,bags,bank)
+        holders[1]={text=GOLD..headText..'|r\n'..headSub,height=38,header=true}
+        if styled()then
+            holders[1].section,holders[1].textInset=true,0
+            holders[1].display=paint('goldBright',headText)..'\n'..paint('dim',headSub)
+        end
         for _,h in ipairs(selectedHit.holders)do holders[#holders+1]=holderItem(h,byKey)end
     end
-    U.SetEmptyHint(U.itemHolderList,#hits>0 and tr('Select an item to see which characters hold it.')or nil)
+    U.SetEmptyHint(U.itemHolderList,#hits>0 and tr('Select an item to see which characters hold it.')or nil,#hits>0 and'search'or nil)
     S.rows(U.itemHolderList,holders,HOLDER_HEIGHT)
 end
 
@@ -364,20 +409,21 @@ function U.RefreshMyCharacters()
     U.accountOverviewInventory:SetChecked(overview.store and overview.store.inventory==true)
     U.accountOverviewInventory:SetEnabled(overview.Enabled())
     local recording,inventory=overview.Enabled(),overview.InventoryEnabled()
-    U.myCharactersRecordStatus:SetText(DIM..tr('Recording: %s · Bags and bank: %s',onOff(recording),onOff(recording and inventory))..'|r')
+    U.myCharactersRecordStatus:SetText(paint('dim',tr('Recording: %s · Bags and bank: %s',onOff(recording),onOff(recording and inventory))))
     local rows,context=U.MyCharactersRows()
     local selected=selectedRow(rows)
     if not selected then U.myCharactersDetailOpen=false end
     local items={};for _,r in ipairs(rows)do items[#items+1]=listItem(r)end
-    U.SetEmptyHint(U.characterList,emptyHint(context))
+    U.SetEmptyHint(U.characterList,emptyHint(context),'characters')
     S.rows(U.characterList,items,ROW_HEIGHT)
     U.myCharactersSummary:SetText(summary(context))
     U.myCharactersSelected=selected
     U.myCharactersHeader:SetText(selected and header(selected)or tr('Select a character.'))
     if selected and U.myCharactersIcon and T then T.SetTexture(U.myCharactersIcon,classIcon(selected))end
     U.sheetBlocks=selected and sheet(selected)or{}
+    -- The sheet is drawn by layoutSheet; these flat items only mirror its words (information, nothing clickable).
     local texts={}
-    for _,block in ipairs(U.sheetBlocks)do texts[#texts+1]={text=(block.head and(block.head..': ')or'')..block.text}end
+    for _,block in ipairs(U.sheetBlocks)do texts[#texts+1]={text=(block.head and(block.head..': ')or'')..block.text,flat=true,section=block.head~=nil or nil}end
     U.accountOverviewDetails.zenialItems=texts
     U.setMainButton:SetEnabled(canSetMain(selected)==true)
     local utility=overview.UtilityLoaded()and not overview.readOnly
@@ -459,7 +505,7 @@ function U.CreateMyCharacters(frame,helpers)
     local label,button,checkbox=S.label,S.button,S.checkbox
     U.sheetNodes={}
     -- Head: title and the private-storage note with its explanation.
-    U.profileCharactersTitle=label(frame,GOLD..tr('My characters')..'|r',0,0,400,'GameFontNormalLarge')
+    U.profileCharactersTitle=label(frame,paint('goldBright',tr('My characters')),0,0,400,'GameFontNormalLarge')
     U.myCharactersPrivacy=label(frame,tr('Stored privately'),400,-4,200)
     U.myCharactersPrivacy:SetJustifyH('RIGHT')
     U.myCharactersPrivacyHit=CreateFrame('Frame',nil,frame)
@@ -498,14 +544,23 @@ function U.CreateMyCharacters(frame,helpers)
     end,'primary')
     buttonTooltip(U.setMainButton,tr('While your public profile is visible, other players can see your main character and up to 10 other characters of this realm and faction.'))
     U.myCharactersMore=button(frame,'More',530,-182,80,toggleMenu)
+    -- The character sheet is information only: no sunken well (D-23).
     U.accountOverviewDetails=S.list(frame,320,-216,400,180)
+    if Z.Kit then Z.Kit.InfoBlock(U.accountOverviewDetails)end
     -- Inventory search: its own search, hits on the left and holders on the right.
     U.itemSearch=S.edit(frame,'Item name (2+ characters) or item ID',0,-60,300,64);U.itemSearch:SetScript('OnTextChanged',reset)
+    -- Small search symbol inside the field (pattern: U.memberSearchIcon).
+    if Z.Kit and T then
+        local icon=Z.Kit.Icon(U.itemSearch,'search',14,'muted');icon:SetPoint('LEFT',8,0);U.itemSearchIcon=icon
+        if U.itemSearch.SetTextInsets then U.itemSearch:SetTextInsets(26,8,4,4)end
+    end
     U.itemScope=label(frame,'',320,-77,300)
     U.itemsNote=label(frame,'',0,-108,800)
     U.itemsNote:SetHeight(60)
     U.itemHitList=S.list(frame,0,-142,300,260)
+    -- Who holds the item is information only: flat rows, no sunken well (D-23).
     U.itemHolderList=S.list(frame,320,-142,400,260)
+    if Z.Kit then Z.Kit.InfoBlock(U.itemHolderList)end
     U.itemsBack=button(frame,'Back to results',0,-142,140,function()U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
     -- Footer: recording status and the options popup.
     U.myCharactersRecordStatus=label(frame,'',0,-380,400)
