@@ -339,6 +339,12 @@ function U.RefreshMemberCategories()
     local page=U.pages[1];local compact=U.compactArea=='members';local h=page:GetHeight();local horizontal=page:GetWidth()/856
     local x0=(compact and 0 or 570)*horizontal;local W=(compact and 820 or 280)*horizontal;local pad=12;local inner=W-pad*2
     local top=compact and 46 or 70;local bottom=h-6;local card=U.memberCard
+    -- In the compact layout the card spans the page width, so it has to end above the page's footer buttons
+    -- (in the wide layout they sit left of the card).
+    if compact and U.memberContactDiary then
+        local _,_,_,_,footerY=U.memberContactDiary:GetPoint(1)
+        if type(footerY)=='number'then bottom=math.min(bottom,-footerY-8)end
+    end
     if U.memberFilterBar then U.memberFilterBar:SetShown(not compact)end
     local showCategories=U.memberKey~=nil and U.memberKey~=Z.me.key and not Z.db.blocked[U.memberKey]
     local headerHeight=U.memberCardHasMember and 82 or 12
