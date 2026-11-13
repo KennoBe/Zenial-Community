@@ -647,6 +647,7 @@ register("BAG_UPDATE_DELAYED")
 register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
 register("ADDON_ACTION_BLOCKED");register("ADDON_ACTION_FORBIDDEN")
+register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
 frame:SetScript("OnEvent",function(_,event,...)
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
@@ -677,6 +678,7 @@ frame:SetScript("OnEvent",function(_,event,...)
         A.DiscoveryTick(true)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
     elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
+    elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
 end)
 local elapsed,refresh,timed=0,0,0
