@@ -588,7 +588,9 @@ function Z.Initialize()
 end
 SLASH_ZENIALCOMMUNITY1="/zenial"
 SlashCmdList.ZENIALCOMMUNITY=function(text)
-    Z.Initialize();if not Z.db then return end; text=type(text)=="string" and string.lower(text:match("^%s*(.-)%s*$") or "") or ""
+    Z.Initialize();if not Z.db then return end
+    if Z.CrossFaction and Z.CrossFaction.HandleSubcommand and Z.CrossFaction.HandleSubcommand(text) then return end
+    text=type(text)=="string" and string.lower(text:match("^%s*(.-)%s*$") or "") or ""
     if text=="discover" or text=="finden" then Z.CommunityDirectory.RequestScan();A.DiscoveryTick(true)
     elseif text=="debug on"then Z.Companion.SetDebugPixel(true)
     elseif text=="debug off"then Z.Companion.SetDebugPixel(false)
@@ -651,7 +653,7 @@ register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
 frame:SetScript("OnEvent",function(_,event,...)
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
-    if event=="PLAYER_LOGIN" then Z.Initialize()
+    if event=="PLAYER_LOGIN" then Z.Initialize();if Z.CrossFaction then pcall(Z.CrossFaction.RegisterCommands)end
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
     elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then

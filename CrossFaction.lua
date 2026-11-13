@@ -33,15 +33,23 @@ function XF.SetSetting(name,value)
 end
 function XF.IsEnabled()return XF.Settings().enabled==true end
 -- Settings plus one chat filter per event (installed once).
-function XF.Initialize()
-    XF.Settings()
-    ensureRegistry()
+local function installFilters()
     if XF.filtersInstalled then return end
     local add=ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter or ChatFrame_AddMessageEventFilter
     if type(add)~='function'then return end
     local a=pcall(add,'CHAT_MSG_SAY',XF.filterSay)
     local b=pcall(add,'CHAT_MSG_YELL',XF.filterYell)
     XF.filtersInstalled=a and b
+end
+function XF.Initialize()
+    XF.Settings()
+    ensureRegistry()
+    installFilters()
+    -- Neighbour modules (idempotent themselves); some may not exist yet.
+    for _,name in ipairs({'CrossFactionChatBadge','CrossFactionTargetBadge','CrossFactionPresence'})do
+        local module=Z[name]
+        if type(module)=='table'and type(module.Initialize)=='function'then pcall(module.Initialize)end
+    end
 end
 -- Sliding window over the send times of single lines; only lines that were really handed to the client count.
 local function prune(now)
@@ -200,18 +208,11 @@ local function newAttempt(channel,messageId,text)
     messageCounter=(nextMessageId()+1)%256
     return id,XF.attempts[id]
 end
-function XF.Send(text,channel)
-    if channel~='SAY'and channel~='YELL'then return false,'api_error'end
-    if not XF.IsEnabled()then return false,'disabled'end
-    local clean,why,over=P.Prepare(text)
-    if not clean then return false,why,nil,over end
-    if type(InChatMessagingLockdown)=='function'and A.Call(InChatMessagingLockdown)then return false,'lockdown'end
-    local messageId=nextMessageId()
-    local lines=P.BuildMessage(clean,messageId)
-    if not lines then return false,'too_long'end
+-- Shared tail of Send/SendHello: rate budget, attempt record, synchronous client calls.
+local function transmit(channel,messageId,lines,text)
     local now=A.Clock();prune(now)
     if#sendTimes+#lines>P.LIMITS.rateLines then return false,'throttled'end
-    local attemptId,attempt=newAttempt(channel,messageId,clean)
+    local attemptId,attempt=newAttempt(channel,messageId,text)
     local function failed(code)
         attempt.state='failed';fire('SENDSTATE',{attemptId=attemptId,state='failed'})
         return false,code,attemptId
@@ -228,6 +229,37 @@ function XF.Send(text,channel)
     end
     fire('SENDSTATE',{attemptId=attemptId,state='sent'})
     return true,nil,attemptId
+end
+function XF.Send(text,channel)
+    if channel~='SAY'and channel~='YELL'then return false,'api_error'end
+    if not XF.IsEnabled()then return false,'disabled'end
+    local clean,why,over=P.Prepare(text)
+    if not clean then return false,why,nil,over end
+    if type(InChatMessagingLockdown)=='function'and A.Call(InChatMessagingLockdown)then return false,'lockdown'end
+    local messageId=nextMessageId()
+    local lines=P.BuildMessage(clean,messageId)
+    if not lines then return false,'too_long'end
+    return transmit(channel,messageId,lines,clean)
+end
+-- Addon version (major, minor) from the TOC; 0.0 when unreadable.
+local function tocVersion()
+    local get=C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+    local v=A.Call(get,'ZenialCommunity','Version')
+    if type(v)=='string'then
+        local major,minor=v:match('^(%d+)%.(%d+)')
+        if major then return tonumber(major),tonumber(minor)end
+    end
+    return 0,0
+end
+-- One hello frame (one line), same pre-checks and limiter as Send. Its own echo is tracked like any attempt line.
+function XF.SendHello(channel)
+    channel=channel or'SAY'
+    if channel~='SAY'and channel~='YELL'then return false,'api_error'end
+    if not XF.IsEnabled()then return false,'disabled'end
+    if type(InChatMessagingLockdown)=='function'and A.Call(InChatMessagingLockdown)then return false,'lockdown'end
+    local messageId=nextMessageId()
+    local major,minor=tocVersion()
+    return transmit(channel,messageId,P.BuildHello(messageId,major,minor),nil)
 end
 -- ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN: only relevant while one of our own send calls runs.
 function XF.OnBlocked(event,addonName,functionName)
@@ -419,4 +451,88 @@ function XF.CheckEchoes(now)
             fire('SENDSTATE',{attemptId=id,state='unconfirmed'})
         end
     end
+end
+-- ===== Slash commands (XF2-T06) and hello (XF3-T05) =====
+local CANDIDATES={SAY={'/z','/zsay'},YELL={'/zy','/zyell'}}
+local GLOBAL_PREFIX={SAY='SLASH_ZENIALXFSAY',YELL='SLASH_ZENIALXFYELL'}
+local FALLBACK={SAY='/zenial say',YELL='/zenial yell'}
+local aliases={SAY={},YELL={}}
+local commandsRegistered
+-- Set of lower-case commands that another addon or the client already owns (one pass over _G).
+local function takenCommands()
+    local taken={}
+    pcall(function()
+        for key,value in pairs(_G)do
+            if type(key)=='string'and type(value)=='string'and A.Safe(value)and key:find('^SLASH_')and key:sub(1,14)~='SLASH_ZENIALXF'then
+                taken[value:lower()]=true
+            end
+        end
+    end)
+    return taken
+end
+function XF.RegisterCommands()
+    if commandsRegistered then return end
+    commandsRegistered=true
+    local taken=takenCommands()
+    for _,channel in ipairs({'SAY','YELL'})do
+        local free,blocked={},{}
+        for _,cmd in ipairs(CANDIDATES[channel])do
+            if taken[cmd]then blocked[#blocked+1]=cmd else free[#free+1]=cmd end
+        end
+        aliases[channel]=free
+        for i,cmd in ipairs(free)do _G[GLOBAL_PREFIX[channel]..i]=cmd end
+        if#free>0 then
+            SlashCmdList['ZENIALXF'..channel]=function(text)XF.Command(text,channel)end
+        end
+        for _,cmd in ipairs(blocked)do
+            notice(tr('ZENIAL: %s is already used by another addon. Use %s instead.',cmd,free[1]or(FALLBACK[channel]..' <text>')))
+        end
+    end
+end
+local function commandName(channel)return aliases[channel][1]or FALLBACK[channel]end
+local ERRORS={
+    disabled='ZENIAL: Cross-faction chat is turned off. Turn it on in the ZENIAL Community settings (option "Enable cross-faction chat").',
+    invalid_chars='ZENIAL: The text contains characters that cannot be displayed. Nothing was sent.',
+    throttled='ZENIAL: Too many messages in a short time. Please wait a moment.',
+    lockdown='ZENIAL: Chat is currently locked. Nothing was sent.',
+    blocked='ZENIAL: The game client blocked sending. Nothing was sent.',
+    api_error='ZENIAL: Sending failed.',
+}
+local function report(code,overBy,channel,text)
+    if code=='empty'then
+        notice(tr('ZENIAL: Usage: %s <text>',commandName(channel)))
+    elseif code=='too_long'then
+        notice(tr('ZENIAL: The message is %d characters too long (at most %d bytes). Nothing was sent.',overBy or 0,P.LIMITS.maxTextBytes))
+        local open=ChatFrameUtil and ChatFrameUtil.OpenChat
+        if type(open)~='function'then open=ChatFrame_OpenChat end
+        if type(open)=='function'and type(text)=='string'then pcall(open,commandName(channel)..' '..text)end
+    else
+        notice(tr(ERRORS[code]or ERRORS.api_error))
+    end
+end
+-- Entry point of /z, /zy, /zsay, /zyell and /zenial say|yell. Sends only from this explicit user action.
+function XF.Command(text,channel)
+    if channel~='SAY'and channel~='YELL'then return end
+    if type(text)~='string'or not text:find('%S')then return report('empty',nil,channel)end
+    local ok,code,_,overBy=XF.Send(text,channel)
+    if not ok then report(code,overBy,channel,text)end
+end
+-- Called by /zenial before it lower-cases the text; true = handled here.
+function XF.HandleSubcommand(raw)
+    if type(raw)~='string'then return false end
+    local word,rest=raw:match('^%s*(%S+)%s*(.*)$')
+    if not word then return false end
+    word=word:lower()
+    if word=='say'then XF.Command(rest,'SAY');return true end
+    if word=='yell'then XF.Command(rest,'YELL');return true end
+    if word=='hello'then
+        local arg=rest:lower():match('^%s*(.-)%s*$')
+        if arg==''then arg='say'end
+        if arg~='say'and arg~='yell'then return false end
+        local channel=arg=='yell'and'YELL'or'SAY'
+        local ok,code=XF.SendHello(channel)
+        if not ok then report(code,nil,channel,nil)end
+        return true
+    end
+    return false
 end
