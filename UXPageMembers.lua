@@ -62,6 +62,10 @@ local function createMemberCard(page)
     end
     card.layerTag:SetHeight(16)
     card.layerTag:Hide()
+    -- No member selected: a symbol and the hint instead of an empty sheet (positioned by U.RefreshMemberCategories).
+    if Z.Kit and T then
+        card.empty = Z.Kit.EmptyState(card, { icon = 'members', title = tr('Select a member.'), hint = '', width = 240 })
+    end
     return card
 end
 
@@ -156,6 +160,15 @@ function S.createMembersPage(f)
             U.Message(ok and Z.T('Invitation submitted to %s; awaiting response.', c.target) or err)
         end
     end)
+    -- Action symbols on the left of the four secondary buttons.
+    if Z.Kit and T then
+        for button, name in pairs({ [U.memberWhisper] = 'whisper', [U.memberInvite] = 'invite', [U.memberFavorite] = 'star', [U.memberNoteSave] = 'note' }) do
+            local icon = Z.Kit.Icon(button, name, 14, 'textSoft')
+            icon:SetPoint('LEFT', 8, 0)
+            button.zenialActionIcon = icon
+            T.AlignButtonText(button, 28)
+        end
+    end
     for _, b in ipairs({ U.memberWhisper, U.memberInvite }) do
         if GameTooltip and b.HookScript then
             b:HookScript('OnEnter', function(self)

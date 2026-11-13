@@ -351,6 +351,12 @@ local function updateMemberHeader(m, s, layerText)
     end
     local has = m ~= nil
     U.memberCardHasMember = has
+    if card.empty then
+        card.empty:SetShown(not has)
+    end
+    if U.memberProfileScroll then
+        U.memberProfileScroll:SetShown(has)
+    end
     for _, region in ipairs({ card.portrait, card.name, card.classLine, card.status, card.statusDot, card.divider }) do
         region:SetShown(has)
     end

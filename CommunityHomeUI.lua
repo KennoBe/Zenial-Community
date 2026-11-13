@@ -41,6 +41,8 @@ local function applicationStatus(r)
     if p and(r.saved or r.kind=='EVENT'and not Z.ScheduledGroups.Verified(r.owner,r.id))then text=Z.T('Saved: %s',text)end
     return text,hex,accent
 end
+local ACTIVITY_ICON={EVENT='calendar',QUEST='quests',PVP='pvp'}
+local ACTIVITY_ICON_COLUMN=32
 local function activitySummary(r)
     local when=r.kind=='EVENT'and Z.ScheduleTime.Format(r.startsAt)or r.startsAt>A.Now()+120 and Z.ScheduleTime.Format(r.startsAt)or tr('Now')
     local source=tr(r.kind=='EVENT'and'Scheduled'or r.kind=='QUEST'and'Quest assistance'or r.kind=='PVP'and'PvP Help'or'Group')
@@ -48,12 +50,26 @@ local function activitySummary(r)
     if r.data and r.data.min then meta=meta..' · '..tr('Level')..' '..r.data.min..'–'..r.data.max end
     local status,hex,accent=applicationStatus(r)
     local heading=title(r)..(r.kind=='EVENT'and r.data and r.data.status=='DRAFT'and' · '..Z.ScheduledGroups.StateLabel('DRAFT')or'')
-    return '|cffffd36b'..heading..'|r\n'..meta..'\n'..Z.T('Organizer: %s',r.ownerName)..'\n|cff'..hex..status..'|r',accent
+    local organizer=Z.T('Organizer: %s',r.ownerName)
+    -- Visual weighting only (display): bright title, receding meta, status in its own colour. Colour changes
+    -- sit on the line breaks of text, never inside a line.
+    local T=Z.Theme
+    local function paint(key,value)return'|cff'..T.PaletteHex(key)..value..'|r'end
+    local display=paint('text',heading)..'\n'..paint('dim',meta)..'\n'..paint('dim',organizer)..'\n|cff'..hex..status..'|r'
+    local iconColor=r.own and'gold'or hex=='79bbff'and'accentBlue'or hex=='83df8b'and'success'or hex=='ff9690'and'dangerText'or'dim'
+    return '|cffffd36b'..heading..'|r\n'..meta..'\n'..organizer..'\n|cff'..hex..status..'|r',accent,display,ACTIVITY_ICON[r.kind]or'activities',iconColor
 end
 local function measuredHeight(text,width,minimum)
     U.activityMeasure:SetWidth(width);U.activityMeasure:SetText(text)
     local measured=A.Call(U.activityMeasure.GetStringHeight,U.activityMeasure)
     return math.max(minimum,math.ceil(type(measured)=='number'and measured or minimum-12)+12)
+end
+-- Plate behind the board's filters, scaled with the page width like the members page.
+function U.LayoutActivityBoard()
+    local bar=U.activityFilterBar;if not bar then return end
+    local pageWidth=U.pages[10]:GetWidth()
+    local horizontal=(type(pageWidth)=='number'and pageWidth>0 and pageWidth or 856)/856
+    bar:Place(0,0,850*horizontal,54)
 end
 function U.RefreshActivityBoard()
     if not U.activityList then return end
@@ -62,8 +78,9 @@ function U.RefreshActivityBoard()
     local items={};local selected
     for _,r in ipairs(source)do if r.key==U.activityKey then selected=r end end
     local first=(U.activityPage-1)*25+1
-    for i=first,math.min(first+24,#source)do local r=source[i];local text,accent=activitySummary(r)
-        items[#items+1]={text=text,accent=accent,selected=r.key==U.activityKey,height=measuredHeight(text,U.activityList.width-20,72),click=function()
+    for i=first,math.min(first+24,#source)do local r=source[i];local text,accent,display,iconName,iconColor=activitySummary(r)
+        -- The type symbol takes a column of the row; the measured width shrinks by the same amount.
+        items[#items+1]={text=text,display=display,icon=Z.Theme.IconSpec(iconName),iconColor=iconColor,iconSize=18,textInset=40,accent=accent,selected=r.key==U.activityKey,height=measuredHeight(text,U.activityList.width-20-ACTIVITY_ICON_COLUMN,72),click=function()
             if U.activityKey~=r.key then
                 U.activityKey=r.key
                 if not r.own and r.kind=='EVENT'then Z.ScheduledGroups.Query(r.owner,r.id)
@@ -334,13 +351,50 @@ function U.RefreshMemberCategories()
     H.showControl(U.memberPrivateNote,true);U.memberFavorite:Show();U.memberNoteSave:Show()
     local function position(control,x,y,width)control:ClearAllPoints();control:SetPoint('TOPLEFT',x,y);if width then control:SetWidth(width)end end
     position(U.memberPrivateNote,x0+pad,-noteTop,inner);position(U.memberPrivateNote.caption,x0+pad,-noteCaption,inner);U.memberPrivateNote.caption:SetHeight(14)
+    -- The note caption is a region of the page and the card is a child frame drawn above page regions:
+    -- the caption belongs to the card (draw order) but keeps its anchor on the page (layout).
+    local noteCaptionText=U.memberPrivateNote.caption
+    if card and noteCaptionText.SetParent then
+        noteCaptionText:SetParent(card);noteCaptionText:ClearAllPoints();noteCaptionText:SetPoint('TOPLEFT',page,'TOPLEFT',x0+pad,-noteCaption)
+    end
     local buttonWidth=compact and math.min(190,(inner-8)/2)or(inner-8)/2
     position(U.memberWhisper,x0+pad,-rowPrimary,buttonWidth);position(U.memberInvite,x0+pad+buttonWidth+8,-rowPrimary,buttonWidth)
     position(U.memberFavorite,x0+pad,-rowActions,buttonWidth);position(U.memberNoteSave,x0+pad+buttonWidth+8,-rowActions,buttonWidth)
-    if not U.memberCardCaptionsStyled and Z.Theme and Z.Theme.Tint then
+    -- Action symbols: the caption never loses characters to the symbol. Per button: normal layout, then a
+    -- tighter one, finally no symbol (the caption is centred again).
+    if Z.Theme and Z.Theme.AlignButtonText then
+        local function textWidth(button)
+            local fs=button.GetFontString and button:GetFontString()
+            local width=fs and fs.GetStringWidth and A.Call(fs.GetStringWidth,fs)
+            if type(width)=='number'then return width end
+            -- Without a font string (test mock): about 6 px per character.
+            local text=button.GetText and button:GetText()or''
+            return #text:gsub('[\128-\191]','')*6
+        end
+        for _,button in ipairs({U.memberWhisper,U.memberInvite,U.memberFavorite,U.memberNoteSave})do
+            local icon=button.zenialActionIcon
+            if icon then
+                local width=textWidth(button)
+                local level=width+38<=buttonWidth and 1 or width+24<=buttonWidth and 2 or 3
+                icon:SetShown(level<3);icon:ClearAllPoints()
+                if level==1 then icon:SetSize(14,14);icon:SetPoint('LEFT',10,0);Z.Theme.AlignButtonText(button,30)
+                elseif level==2 then icon:SetSize(12,12);icon:SetPoint('LEFT',6,0);Z.Theme.AlignButtonText(button,22,2)
+                else
+                    Z.Theme.AlignButtonText(button,4,4)
+                    local fs=button.GetFontString and button:GetFontString();if fs then fs:SetJustifyH('CENTER')end
+                end
+            end
+        end
+    end
+    if not U.memberCardCaptionsStyled and Z.Theme and Z.Theme.Font then
         U.memberCardCaptionsStyled=true
-        Z.Theme.Tint(U.memberPrivateNote.caption,'SetTextColor','goldDim')
-        if U.memberCategoryCaption then Z.Theme.Tint(U.memberCategoryCaption,'SetTextColor','goldDim')end
+        for _,caption in ipairs({U.memberPrivateNote.caption,U.memberCategoryCaption})do
+            Z.Theme.Font(caption,'overline','goldDim')
+            if Z.Kit and caption:GetText()then caption:SetText(Z.Kit.Upper(caption:GetText()))end
+        end
+    end
+    if card and card.empty then
+        card.empty:ClearAllPoints();card.empty:SetPoint('TOP',card,'TOP',0,-(headerHeight+16));card.empty:SetWidth(math.max(120,W-24))
     end
 end
 function U.CreateCommunityHome(helpers)
@@ -383,13 +437,18 @@ function U.CreateCommunityHome(helpers)
     local timeLabels={ALL='Any time',NOW='Now',TODAY='Today',LATER='Later'}
     local kindLabels={ALL='All activities',QUEST='Questing',DUNGEON='Dungeon',RAID='Raid',PVP='PvP',CUSTOM='Other'}
     local mineLabels={ALL='All offers',ORGANIZED='Organized by me',APPLICATIONS='My applications'}
-    U.activityWhen=selector(board,'When',0,0,160,{'ALL','NOW','TODAY','LATER'},reset,function(v)return tr(timeLabels[v])end)
-    U.activityKind=selector(board,'Activity',170,0,210,{'ALL','QUEST','DUNGEON','RAID','PVP','CUSTOM'},reset,function(v)return tr(kindLabels[v])end)
-    U.activityMine=selector(board,'Show',390,0,210,{'ALL','ORGANIZED','APPLICATIONS'},reset,function(v)return tr(mineLabels[v])end)
-    U.activitySearch=edit(board,'Search',610,0,240,64);U.activitySearch:SetScript('OnTextChanged',reset)
-    U.activityCount=label(board,'',0,-52,600)
+    -- Filter bar: a plate of page textures behind the four filters (placed by U.LayoutActivityBoard).
+    U.activityFilterBar=K.FilterBar(board)
+    U.activityWhen=selector(board,'When',10,-6,150,{'ALL','NOW','TODAY','LATER'},reset,function(v)return tr(timeLabels[v])end)
+    U.activityKind=selector(board,'Activity',168,-6,200,{'ALL','QUEST','DUNGEON','RAID','PVP','CUSTOM'},reset,function(v)return tr(kindLabels[v])end)
+    U.activityMine=selector(board,'Show',376,-6,200,{'ALL','ORGANIZED','APPLICATIONS'},reset,function(v)return tr(mineLabels[v])end)
+    U.activitySearch=edit(board,'Search',584,-6,256,64);U.activitySearch:SetScript('OnTextChanged',reset)
+    local searchIcon=K.Icon(U.activitySearch,'search',14,'muted');searchIcon:SetPoint('LEFT',8,0);U.activitySearchIcon=searchIcon
+    if U.activitySearch.SetTextInsets then U.activitySearch:SetTextInsets(26,8,4,4)end
+    U.activityCount=label(board,'',10,-62,600);T.Font(U.activityCount,'caption','dim')
     U.activityList=list(board,0,-80,350,310);U.activityDetail=list(board,370,-80,480,212)
     U.activityMeasure=label(board,'',0,0,310);U.activityMeasure:SetWordWrap(true);U.activityMeasure:Hide()
+    U.LayoutActivityBoard()
     U.activityInlineJoin=button(board,tr('Apply'),370,-302,112,function()if U.activityKey then U.JoinActivity(U.activityKey)end end,'primary')
     U.activityInlineWithdraw=button(board,tr('Withdraw'),488,-302,112,function()if U.activityKey then U.WithdrawActivity(U.activityKey)end end)
     U.activityInlineWhisper=button(board,tr('Whisper'),606,-302,112,function()if U.activityKey then U.ActivityWhisper(U.activityKey)end end)
@@ -422,6 +481,8 @@ function U.CreateCommunityHome(helpers)
     U.memberCategoryCaption=label(U.memberCategoryFrame,tr('Private categories'),12,16,256,'GameFontHighlightSmall');U.memberCategoryCaption:SetHeight(12)
     for _,id in ipairs(Z.SocialCategories.ORDER)do U.categoryChecks[id]=U.NewCategoryChip(U.memberCategoryFrame,id,H)end
     U.memberProfileScroll=CreateFrame('ScrollFrame',nil,U.pages[1],'UIPanelScrollFrameTemplate');U.memberProfileChild=CreateFrame('Frame',nil,U.memberProfileScroll);U.memberProfileScroll:SetScrollChild(U.memberProfileChild);U.memberDetail:SetParent(U.memberProfileChild)
+    if Z.Theme and Z.Theme.Font then Z.Theme.Font(U.memberDetail,'body','textSoft')end
+    if U.memberDetail.SetSpacing then U.memberDetail:SetSpacing(3)end
     if Z.Theme then Z.Theme.StyleScroll(U.memberProfileScroll);Z.Theme.AttachScrollWheel(U.memberProfileScroll,32)end
     U.memberCategories:Hide();button(U.pages[1],tr('Contact history'),140,-407,180,function()if U.memberKey then U.OpenHistory(U.memberKey)end end)
     U.memberContactDiary=button(U.pages[1],tr('Social diary'),330,-407,180,function()local m=U.memberKey and U.Shared.memberFor(U.memberKey);U.OpenSocialDiary(U.memberKey,m and m.target)end)
