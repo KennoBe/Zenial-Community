@@ -25,17 +25,13 @@ local function badge(control, count, minimap)
         control.noticeIcon = f
         f:SetFrameLevel(control:GetFrameLevel() + 2)
         f:EnableMouse(false)
-        if f.SetBackdrop then
-            f:SetBackdrop({
-                bgFile = 'Interface\\Tooltips\\UI-Tooltip-Background',
-                edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border',
-                tile = true,
-                tileSize = 16,
-                edgeSize = 8,
-                insets = { left = 3, right = 3, top = 3, bottom = 3 },
-            })
-        end
-        if f.SetBackdropColor then
+        -- Flat counter pill in the danger tone (palette keys only).
+        if T and T.Panel then
+            T.Panel(f, 'surface')
+            T.Tint(f, 'SetBackdropColor', 'danger')
+            T.Tint(f, 'SetBackdropBorderColor', 'dangerText', 0.55)
+        elseif f.SetBackdrop then
+            f:SetBackdrop({ bgFile = 'Interface\\Tooltips\\UI-Tooltip-Background', edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border', tile = true, tileSize = 16, edgeSize = 8, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
             f:SetBackdropColor(0.45, 0.045, 0.025, 1)
             f:SetBackdropBorderColor(1, 0.76, 0.28, 1)
         end
@@ -50,8 +46,8 @@ local function badge(control, count, minimap)
     end
     local f = control.noticeIcon
     local width = count > 99 and 28 or 20
-    f:SetSize(width, 20)
-    f.text:SetSize(width - 4, 16)
+    f:SetSize(width, 18)
+    f.text:SetSize(width - 4, 14)
     f.text:SetText(count > 0 and (count > 99 and '99+' or tostring(count)) or '')
     f:ClearAllPoints()
     f:SetPoint(minimap and 'TOPRIGHT' or 'RIGHT', control, minimap and 'TOPRIGHT' or 'RIGHT', minimap and 4 or -8, minimap and 4 or 0)
@@ -61,7 +57,7 @@ local function badge(control, count, minimap)
     local font = control.GetFontString and control:GetFontString()
     if font and control:GetParent() == U.sidebar then
         font:ClearAllPoints()
-        font:SetPoint('LEFT', control, 'LEFT', 34, 0)
+        font:SetPoint('LEFT', control, 'LEFT', control.zenialTextInset or 34, 0)
         font:SetPoint('RIGHT', control, 'RIGHT', count > 0 and -width - 14 or -8, 0)
         font:SetJustifyH('LEFT')
         font:SetWordWrap(false)

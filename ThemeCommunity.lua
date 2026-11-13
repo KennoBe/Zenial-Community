@@ -66,6 +66,7 @@ local function tint(region, method, key, alpha) return T.Tint(region, method, ke
 -- Flat 1px frames (backdrop with the client's white texture) and plain texture borders
 -- ---------------------------------------------------------------------------------------------
 local function flatBackdrop(frame, fillKey, fillAlpha, edgeKey, edgeAlpha)
+    if frame then frame.zenialPanelFill, frame.zenialPanelEdge = fillKey, edgeKey end
     if not frame or not frame.SetBackdrop then return frame end
     frame:SetBackdrop({ bgFile = FLAT, edgeFile = FLAT, tile = false, edgeSize = 1, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
     tint(frame, "SetBackdropColor", fillKey, fillAlpha)
@@ -73,23 +74,61 @@ local function flatBackdrop(frame, fillKey, fillAlpha, edgeKey, edgeAlpha)
     return frame
 end
 
-local PANELS = { shell = { "bg", .995, "edge" }, sidebar = { "side", .995, "line" }, surface = { "panel", .985, "line" },
-    inset = { "inset", .99, "line" }, parchment = { "panel", .98, "line" } }
+-- Panel kinds (fill key, fill alpha, edge key[, edge alpha]). "surface" is the default card, "raised" a
+-- lighter card on top of a card, "inset" a well for lists and inputs, "canvas" an invisible grouping frame.
+local PANELS = { shell = { "bg", .995, "edge" }, sidebar = { "side", .995, "lineSoft" }, surface = { "panel", .985, "line" },
+    inset = { "inset", .99, "lineSoft" }, parchment = { "panel", .98, "line" }, raised = { "panelRaised", .99, "highlight" },
+    canvas = { "bg", 0, "bg", 0 } }
 function T.Panel(frame, kind)
     local spec = PANELS[kind or "surface"] or PANELS.surface
-    return flatBackdrop(frame, spec[1], spec[2], spec[3])
+    return flatBackdrop(frame, spec[1], spec[2], spec[3], spec[4])
 end
 
+-- Soft drop shadow: four gradient strips outside the frame. Needs a real gradient; without one the strips
+-- stay hidden (a flat dark band would look like a second border).
+function T.Shadow(frame, size, strength)
+    if not frame or frame.zenialShadow or not frame.CreateTexture then return frame end
+    size, strength = size or 12, strength or .5
+    local shadow = {}
+    frame.zenialShadow = shadow
+    local function strip(orientation, from, to, place)
+        local texture = frame:CreateTexture(nil, "BACKGROUND")
+        place(texture)
+        if not T.SetGradient(texture, orientation, "shadow", "shadow", from, to) then texture:Hide() end
+        shadow[#shadow + 1] = texture
+    end
+    strip("VERTICAL", 0, strength, function(t) t:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 0); t:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 0); t:SetHeight(size) end)
+    strip("VERTICAL", strength, 0, function(t) t:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 0); t:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 0); t:SetHeight(size) end)
+    strip("HORIZONTAL", 0, strength, function(t) t:SetPoint("TOPRIGHT", frame, "TOPLEFT", 0, 0); t:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", 0, 0); t:SetWidth(size) end)
+    strip("HORIZONTAL", strength, 0, function(t) t:SetPoint("TOPLEFT", frame, "TOPRIGHT", 0, 0); t:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", 0, 0); t:SetWidth(size) end)
+    return frame
+end
+
+-- Thin gold line along the top edge that fades out to the right: the one brand accent of a window.
+local function accentLine(frame, height)
+    local line = frame:CreateTexture(nil, "OVERLAY")
+    line:SetPoint("TOPLEFT", 1, -1); line:SetPoint("TOPRIGHT", -1, -1); line:SetHeight(height or 2)
+    if not T.SetGradient(line, "HORIZONTAL", "gold", "gold", 1, 0) then tint(line, "SetColorTexture", "goldDim", .55) end
+    return line
+end
+
+-- Dialogs and secondary windows: raised card, gold accent line, drop shadow.
 function T.Shell(frame)
-    flatBackdrop(frame, "bg", .995, "edge")
+    flatBackdrop(frame, "panel", .995, "edge")
     if not frame or frame.zenialShellSkin then return frame end
     local skin = {}; frame.zenialShellSkin = skin
-    skin.title = frame:CreateTexture(nil, "BORDER")
-    skin.title:SetPoint("TOPLEFT", 1, -1); skin.title:SetPoint("TOPRIGHT", -1, -1); skin.title:SetHeight(69)
-    T.SetGradient(skin.title, "VERTICAL", "panelRaised", "bg")
-    skin.top = frame:CreateTexture(nil, "ARTWORK")
-    skin.top:SetPoint("TOPLEFT", 1, -70); skin.top:SetPoint("TOPRIGHT", -1, -70); skin.top:SetHeight(1)
-    tint(skin.top, "SetColorTexture", "edgeDeep")
+    skin.accent = accentLine(frame, 2)
+    T.Shadow(frame, 14, .55)
+    return frame
+end
+
+-- Main window chrome. The sidebar, top bar and footer are separate regions laid out by UXLayout.lua.
+function T.Window(frame)
+    flatBackdrop(frame, "bg", .995, "edge")
+    if not frame or frame.zenialWindowSkin then return frame end
+    local skin = {}; frame.zenialWindowSkin = skin
+    skin.accent = accentLine(frame, 2)
+    T.Shadow(frame, 16, .6)
     return frame
 end
 
@@ -164,10 +203,19 @@ local function fontObject(colorKey, size)
 end
 T.FontObject = fontObject
 
+-- normal, highlight, disabled palette keys per variant
 local BUTTON_TEXT = {
-    secondary = { "text", "goldBright", "disabledText" }, primary = { "goldText", "goldText", "disabledText" },
-    danger = { "dangerText", "goldText", "disabledText" }, nav = { "textSoft", "text", "disabledText" },
+    secondary = { "text", "goldBright", "disabledText" }, primary = { "primaryText", "primaryText", "disabledText" },
+    danger = { "dangerText", "goldText", "disabledText" }, nav = { "dim", "text", "disabledText" },
+    ghost = { "textSoft", "goldBright", "disabledText" }, tab = { "dim", "text", "disabledText" },
 }
+local SELECTABLE = { nav = "text", tab = "goldBright" }
+-- Palette key of the caption for the button's current state (also used by the layout preview and tests).
+function T.ButtonTextKey(button)
+    local spec = BUTTON_TEXT[button.zenialVariant or "secondary"] or BUTTON_TEXT.secondary
+    if button.IsEnabled and not button:IsEnabled() then return spec[3] end
+    return button.zenialSelected and SELECTABLE[button.zenialVariant] or spec[1]
+end
 -- Applies the per-state font objects of the button's variant. `size` overrides the current text size.
 function T.StyleButtonText(button, size)
     if not button then return end
@@ -179,8 +227,9 @@ function T.StyleButtonText(button, size)
         button.zenialFontSize = okFont and type(fontSize) == "number" and fontSize > 0 and math.floor(fontSize + .5) or 12
     end
     local spec = BUTTON_TEXT[button.zenialVariant or "secondary"] or BUTTON_TEXT.secondary
-    local normalKey = button.zenialSelected and button.zenialVariant == "nav" and "gold" or spec[1]
-    local highlightKey = button.zenialSelected and button.zenialVariant == "nav" and "gold" or spec[2]
+    local selectedKey = button.zenialSelected and SELECTABLE[button.zenialVariant]
+    local normalKey = selectedKey or spec[1]
+    local highlightKey = selectedKey or spec[2]
     local normal, highlight, disabled = fontObject(normalKey, button.zenialFontSize), fontObject(highlightKey, button.zenialFontSize), fontObject(spec[3], button.zenialFontSize)
     if normal and highlight and disabled then
         -- Per-state font objects only change with the variant, the selection or the size.
@@ -298,11 +347,15 @@ T.PressFeedback = pressFeedback
 -- ---------------------------------------------------------------------------------------------
 -- Buttons: one primary (red) and one secondary (dark) style, plus danger and the borderless nav style
 -- ---------------------------------------------------------------------------------------------
+-- secondary = default action, primary = the one main action of a view (gold), danger = destructive,
+-- ghost = low-emphasis action without a frame, nav / tab = borderless navigation entries.
 local VARIANTS = {
-    secondary = { top = "btnTop", bottom = "btnBottom", edge = "btnEdge", hoverEdge = "goldDim", hover = .10 },
-    primary = { top = "primaryTop", bottom = "primaryBottom", edge = "primaryEdge", hoverEdge = "goldBright", hover = .16 },
-    danger = { top = "dangerTop", bottom = "dangerBottom", edge = "dangerEdge", hoverEdge = "goldDim", hover = .12 },
-    nav = { hover = .07 },
+    secondary = { top = "btnTop", bottom = "btnBottom", edge = "btnEdge", hoverEdge = "goldDim", hover = .06 },
+    primary = { top = "primaryTop", bottom = "primaryBottom", edge = "primaryEdge", hoverEdge = "goldBright", hover = .14, hoverKey = "goldText" },
+    danger = { top = "dangerTop", bottom = "dangerBottom", edge = "dangerEdge", hoverEdge = "danger", hover = .10, hoverKey = "danger" },
+    ghost = { hover = .07, frameless = true, hoverKey = "text" },
+    nav = { hover = .05, frameless = true, hoverKey = "text" },
+    tab = { hover = .05, frameless = true, hoverKey = "text" },
 }
 local TEMPLATE_PARTS = { "Left", "Middle", "Right", "LeftDisabled", "MiddleDisabled", "RightDisabled" }
 local function hideTemplateArt(widget)
@@ -324,7 +377,7 @@ local function applyButtonState(button)
     if not skin then return end
     local variant = VARIANTS[button.zenialVariant] or VARIANTS.secondary
     local enabled = not button.IsEnabled or button:IsEnabled()
-    if button.zenialVariant == "nav" then
+    if variant.frameless then
         skin.fill:Hide(); for _, texture in pairs(skin.edges) do texture:Hide() end
     else
         skin.fill:Show(); for _, texture in pairs(skin.edges) do texture:Show() end
@@ -336,7 +389,7 @@ local function applyButtonState(button)
             tintEdges(skin.edges, "line")
         end
     end
-    tint(skin.hover, "SetColorTexture", "gold", variant.hover)
+    tint(skin.hover, "SetColorTexture", variant.hoverKey or "gold", variant.hover)
     T.StyleButtonText(button)
 end
 
@@ -369,19 +422,39 @@ end
 -- Navigation: borderless entries; selection is a gradient + 3px gold edge. Sidebar entries share one
 -- indicator that slides (Translation animation, instant without AnimationGroup) to the selected entry.
 -- ---------------------------------------------------------------------------------------------
+-- Left-aligns a button caption `inset` pixels from the left edge (captions are centred by the template).
+function T.AlignButtonText(button, inset, right)
+    button.zenialTextInset = inset
+    local fs = button.GetFontString and button:GetFontString()
+    if not fs then return end
+    fs:ClearAllPoints(); fs:SetPoint("LEFT", button, "LEFT", inset, 0); fs:SetPoint("RIGHT", button, "RIGHT", -(right or 8), 0)
+    fs:SetJustifyH("LEFT")
+    call(fs, "SetWordWrap", false)
+end
+
+-- Sidebar entry: atlas icon (a name from T.iconCells) or any texture spec on the left, caption left-aligned.
 function T.StyleNav(button, iconSpec)
     T.StyleButton(button, "nav")
     if iconSpec and not button.zenialIcon then
-        local icon = button:CreateTexture(nil, "ARTWORK"); icon:SetSize(19, 19); icon:SetPoint("LEFT", 10, 0); button.zenialIcon = icon
+        local icon = button:CreateTexture(nil, "ARTWORK"); icon:SetSize(18, 18); icon:SetPoint("LEFT", 12, 0); button.zenialIcon = icon
     end
     if button.zenialIcon then
-        if iconSpec then T.SetTexture(button.zenialIcon, iconSpec); button.zenialIcon:Show() else button.zenialIcon:Hide() end
+        if iconSpec then
+            button.zenialIconName = type(iconSpec) == "string" and T.iconCells and T.iconCells[iconSpec] and iconSpec or nil
+            if button.zenialIconName then T.SetIcon(button.zenialIcon, iconSpec, button.zenialSelected and "gold" or "dim")
+            else T.SetTexture(button.zenialIcon, iconSpec) end
+            button.zenialIcon:Show()
+            T.AlignButtonText(button, 38, 4)
+        else
+            button.zenialIcon:Hide()
+        end
     end
     return button
 end
 
+-- Sub-view tab: borderless caption with a gold underline while selected.
 function T.StyleTab(button, iconSpec)
-    T.StyleButton(button, "secondary")
+    T.StyleButton(button, "tab")
     if iconSpec then T.StyleNav(button, iconSpec) end
     return button
 end
@@ -401,9 +474,16 @@ function T.SetSelected(button, selected)
     button.zenialSelected = selected
     if not button.zenialSelection then
         local fill = button:CreateTexture(nil, "BORDER"); fill:SetPoint("TOPLEFT", 1, -1); fill:SetPoint("BOTTOMRIGHT", -1, 1)
-        T.SetGradient(fill, "HORIZONTAL", "selectTop", "selectBottom")
+        local line = button:CreateTexture(nil, "OVERLAY")
+        if button.zenialVariant == "tab" then
+            -- Tabs: underline, and a faint fill that rises from it.
+            T.SetGradient(fill, "VERTICAL", "selectBottom", "selectTop", 0, .14)
+            line:SetPoint("BOTTOMLEFT", 6, 0); line:SetPoint("BOTTOMRIGHT", -6, 0); line:SetHeight(2)
+        else
+            T.SetGradient(fill, "HORIZONTAL", "selectTop", "selectBottom")
+            line:SetPoint("TOPLEFT", 1, -1); line:SetPoint("BOTTOMLEFT", 1, 1); line:SetWidth(3)
+        end
         button.zenialSelection = fill
-        local line = button:CreateTexture(nil, "OVERLAY"); line:SetPoint("TOPLEFT", 1, -1); line:SetPoint("BOTTOMLEFT", 1, 1); line:SetWidth(3)
         tint(line, "SetColorTexture", "gold")
         button.zenialSelectionLine = line
     end
@@ -411,7 +491,8 @@ function T.SetSelected(button, selected)
     local visible = button.zenialIndicator and 0 or 1
     button.zenialSelection:SetShown(selected); button.zenialSelectionLine:SetShown(selected)
     button.zenialSelection:SetAlpha(visible); button.zenialSelectionLine:SetAlpha(visible)
-    if button.zenialVariant == "nav" then T.StyleButtonText(button) end
+    if SELECTABLE[button.zenialVariant] then T.StyleButtonText(button) end
+    if button.zenialIconName and button.zenialIcon then tint(button.zenialIcon, "SetVertexColor", selected and "gold" or "dim") end
     if selected and button.zenialIndicator then button.zenialIndicator:MoveTo(button) end
 end
 
@@ -475,6 +556,12 @@ function T.CreateNavIndicator(parent)
         place(x, y, w, h)
     end
     function indicator:Hide() frame:Hide(); self.target = nil end
+    -- Lets the marker's drawing reach `left` / `right` pixels past the entry (to the sidebar's edges).
+    function indicator:SetBleed(left, right)
+        left, right = left or 0, right or 0
+        fill:ClearAllPoints(); fill:SetPoint("TOPLEFT", -left, 0); fill:SetPoint("BOTTOMRIGHT", right, 0)
+        edge:ClearAllPoints(); edge:SetPoint("TOPLEFT", -left, 0); edge:SetPoint("BOTTOMLEFT", -left, 0)
+    end
     -- Ends a running slide at once (window closed, page rebuilt).
     function indicator:Settle()
         if self.playing then call(self.group, "Stop"); self:Finish() end
@@ -502,18 +589,27 @@ function T.StyleRow(row)
     row.zenialRowEdge:SetPoint("TOPLEFT", 0, -4); row.zenialRowEdge:SetPoint("BOTTOMLEFT", 0, 4); row.zenialRowEdge:SetWidth(3)
     tint(row.zenialRowEdge, "SetColorTexture", "gold"); row.zenialRowEdge:Hide()
     row.zenialRowIcon = row:CreateTexture(nil, "ARTWORK"); row.zenialRowIcon:SetSize(30, 30); row.zenialRowIcon:SetPoint("LEFT", 8, 0); row.zenialRowIcon:Hide()
-    hook(row, "OnEnter", function(self) self.zenialRowHover:Show() end)
+    hook(row, "OnEnter", function(self) if not self.zenialRowFlat then self.zenialRowHover:Show() end end)
     hook(row, "OnLeave", function(self) self.zenialRowHover:Hide() end)
     return row
 end
 
+-- item.selected: selection marker.  item.icon / item.iconColor: icon slot (iconColor is a palette key).
+-- item.color: own background.  item.flat: no background and no hover (plain text line inside a list).
+-- item.section: a flat row that heads a group; its divider is drawn as a visible rule.
 function T.UpdateRow(row, item)
     T.StyleRow(row); item = item or {}
     local selected = item.selected == true
+    local flat = item.flat == true or item.section == true
+    row.zenialRowFlat = flat
+    if flat then row.zenialRowHover:Hide() end
     row.zenialRowSelected:SetShown(selected); row.zenialRowEdge:SetShown(selected)
     if item.icon then T.SetTexture(row.zenialRowIcon, item.icon); row.zenialRowIcon:Show() else row.zenialRowIcon:Hide() end
-    if item.color and not selected then row.zenialRowBackground:SetVertexColor(item.color[1], item.color[2], item.color[3], item.color[4] or 1)
+    tint(row.zenialRowIcon, "SetVertexColor", item.iconColor or "white")
+    if flat then row.zenialRowBackground:SetVertexColor(T.PaletteColor("row", 0))
+    elseif item.color and not selected then row.zenialRowBackground:SetVertexColor(item.color[1], item.color[2], item.color[3], item.color[4] or 1)
     else row.zenialRowBackground:SetVertexColor(T.PaletteColor("row", .96)) end
+    tint(row.zenialRowDivider, "SetColorTexture", item.section and "line" or "lineSoft", item.flat and not item.section and 0 or nil)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -536,8 +632,9 @@ end
 function T.CreateScrollBar(parent, onValue)
     local bar = CreateFrame("Slider", nil, parent); bar:SetOrientation("VERTICAL"); bar:SetSize(12, 100); bar:SetValueStep(1)
     if bar.SetObeyStepOnDrag then bar:SetObeyStepOnDrag(false) end
-    local track = bar:CreateTexture(nil, "BACKGROUND"); track:SetAllPoints(); tint(track, "SetColorTexture", "line", .9)
-    local thumb = bar:CreateTexture(nil, "OVERLAY"); thumb:SetSize(8, 24); tint(thumb, "SetColorTexture", "goldDim", .9)
+    local track = bar:CreateTexture(nil, "BACKGROUND"); track:SetPoint("TOP", 0, 0); track:SetPoint("BOTTOM", 0, 0); track:SetWidth(4)
+    tint(track, "SetColorTexture", "lineSoft", .9)
+    local thumb = bar:CreateTexture(nil, "OVERLAY"); thumb:SetSize(4, 24); tint(thumb, "SetColorTexture", "highlight", 1)
     bar:SetThumbTexture(thumb); bar.zenialThumb = thumb
     bar:SetScript("OnValueChanged", function(self, value) if not self.zenialSyncing then onValue(value) end end)
     return bar

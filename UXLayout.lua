@@ -8,42 +8,65 @@ local refreshMembers, refreshProfessions, refreshCraftOrders = S.refreshMembers,
 local refreshOffers, refreshTradeRules, refreshTradeManage = S.refreshOffers, S.refreshTradeRules, S.refreshTradeManage
 local refreshCharacters = S.refreshCharacters
 
+-- Sidebar order from the top: numbers are page indices, 'group' starts the next labelled group
+-- (U.navGroupLabels: Play, Community, Economy, Account). Settings and the optional Addon Manager sit
+-- at the bottom of the sidebar.
+local NAV_ORDER = { 9, 'group', 10, 4, 'group', 1, 'group', 2, 5, 'group', 6 }
 function U.LayoutMainTabs()
     if not U.tabs or not U.frame then
         return
     end
+    local M = Z.Theme and Z.Theme.metrics or {}
     local width = U.sidebarWidth or 150
-    local y = -86
+    local frameWidth = U.sidebarFrameWidth or (width + 30)
+    local x = math.floor((frameWidth - width) / 2)
+    local entry = M.navEntry or 36
+    local pitch = entry + (M.navGap or 2)
+    local y = -((M.brand or 64) + 8)
     local positions = {}
-    for _, index in ipairs({ 9, 10, 4, 1, 2, 5, 6 }) do
-        positions[index] = y
-        y = y - 48
+    local group = 0
+    for _, item in ipairs(NAV_ORDER) do
+        if item == 'group' then
+            group = group + 1
+            y = y - 10
+            local caption = U.navGroupLabels and U.navGroupLabels[group]
+            if caption then
+                caption:ClearAllPoints()
+                caption:SetPoint('TOPLEFT', x + 12, y)
+                caption:SetWidth(width - 12)
+            end
+            y = y - (M.navGroupGap or 18)
+        else
+            positions[item] = y
+            y = y - pitch
+        end
     end
-    local height = U.sidebar and U.sidebar:GetHeight() or (U.frame:GetHeight() - 84)
+    local height = U.sidebar and U.sidebar:GetHeight() or (U.frame:GetHeight() - 2)
+    local bottom = 34
     -- Availability is based on installed providers, never leftover SavedVariables.
     if (U.addonAvailableCount or 0) > 0 and (not Z.ui or Z.ui.showAddonManager ~= false) then
-        positions[ADDON_PAGE] = -height + 96
+        positions[ADDON_PAGE] = -(height - bottom - entry - pitch)
     end
-    positions[11] = -height + 48
+    positions[11] = -(height - bottom - entry)
     -- Background refreshes run while the mouse may still be held down.
     -- Hiding and showing an unchanged button cancels its native release-click.
     for index, tab in ipairs(U.tabs) do
         local target = positions[index]
         if target then
-            local point, parent, relative, x, offset = tab:GetPoint()
+            local point, parent, relative, tabX, offset = tab:GetPoint()
             if
                 tab:GetNumPoints() ~= 1
                 or point ~= 'TOPLEFT'
                 or parent ~= tab:GetParent()
                 or relative ~= 'TOPLEFT'
-                or x ~= 6
+                or tabX ~= x
                 or offset ~= target
             then
                 tab:ClearAllPoints()
-                tab:SetPoint('TOPLEFT', 6, target)
+                tab:SetPoint('TOPLEFT', x, target)
             end
-            if tab:GetWidth() ~= width or tab:GetHeight() ~= 42 then
-                tab:SetSize(width, 42)
+            if tab:GetWidth() ~= width or tab:GetHeight() ~= entry then
+                tab:SetSize(width, entry)
             end
             if not tab:IsShown() then
                 tab:Show()
@@ -51,6 +74,10 @@ function U.LayoutMainTabs()
         elseif tab:IsShown() then
             tab:Hide()
         end
+    end
+    -- The selection marker runs from edge to edge of the sidebar, the entries keep their margin.
+    if U.navIndicator and U.navIndicator.SetBleed then
+        U.navIndicator:SetBleed(x - 1, frameWidth - width - x - 1)
     end
     for i, tab in ipairs(U.tabs) do
         selectNav(tab, mainTabSelected(i, U.page))
@@ -103,44 +130,83 @@ function U.SetProfileView(v)
     end
 end
 
+-- Places the top-bar actions from the right edge: close, Discord, PvP help, bell.
+function U.LayoutChrome(width)
+    local right = 44
+    for _, control in ipairs({ U.discordButton, U.pvpHeaderButton, U.notificationBell }) do
+        if control then
+            control:ClearAllPoints()
+            control:SetPoint('TOPRIGHT', U.frame, 'TOPRIGHT', -right, -14)
+            right = right + control:GetWidth() + 8
+        end
+    end
+    return right
+end
+
 function U.Layout(activeOnly, geometryOnly)
     if not U.frame or not U.pages then
         return
     end
+    local M = Z.Theme and Z.Theme.metrics or {}
     local width, height = U.frame:GetWidth(), U.frame:GetHeight()
     local compact = width < 1000
-    U.sidebarWidth = compact and 124 or 150
+    U.sidebarWidth = compact and 136 or 150
+    -- The horizontal page geometry is unchanged from 5.5.0 (pageX 188 / 158); the page gains height
+    -- because the old header band is gone.
     local pageX = compact and 158 or 188
     local contentX = pageX + 8
     local available = math.max(620, width - contentX - 16)
     local bannerHeight = U.joinBannerActive and U.JOIN_BANNER_HEIGHT or 0
-    local pageHeight = math.max(1, height - 146 - bannerHeight)
+    local topbar, footer = M.topbar or 58, M.footer or 30
+    local pageTop, pageBottom = M.pageTop or 68, M.pageBottom or 38
+    local pageHeight = math.max(1, height - pageTop - pageBottom - bannerHeight)
     local scale = math.min(available / 856, pageHeight / 500)
     local wasCompact = U.compactContent
     if not geometryOnly then
         U.compactContent = available < 780
     end
+    local sidebarWidth = pageX - 8
+    U.sidebarFrameWidth = sidebarWidth
+    local sidebarRight = sidebarWidth + 1
     if U.sidebar then
         U.sidebar:ClearAllPoints()
-        U.sidebar:SetPoint('TOPLEFT', 12, -72)
-        U.sidebar:SetPoint('BOTTOMLEFT', 12, 12)
-        U.sidebar:SetWidth(U.sidebarWidth + 12)
+        U.sidebar:SetPoint('TOPLEFT', 1, -1)
+        U.sidebar:SetPoint('BOTTOMLEFT', 1, 1)
+        U.sidebar:SetWidth(sidebarWidth)
     end
+    local actions = U.LayoutChrome(width)
+    local titleWidth = math.max(160, width - contentX - actions - 12)
     U.navPath:ClearAllPoints()
-    U.navPath:SetPoint('TOPLEFT', pageX, -77)
-    U.navPath:SetWidth(available)
+    U.navPath:SetPoint('TOPLEFT', contentX, -12)
+    U.navPath:SetWidth(titleWidth)
+    if U.pageSubtitle then
+        U.pageSubtitle:ClearAllPoints()
+        U.pageSubtitle:SetPoint('TOPLEFT', contentX, -37)
+        U.pageSubtitle:SetWidth(titleWidth)
+    end
+    if U.topbarFill then
+        U.topbarFill:ClearAllPoints()
+        U.topbarFill:SetPoint('TOPLEFT', sidebarRight, -1)
+        U.topbarFill:SetPoint('TOPRIGHT', -1, -1)
+        U.topbarFill:SetHeight(topbar - 1)
+    end
     U.navSeparator:ClearAllPoints()
-    U.navSeparator:SetPoint('TOPLEFT', pageX, -108)
-    U.navSeparator:SetWidth(available)
+    U.navSeparator:SetPoint('TOPLEFT', sidebarRight, -topbar)
+    U.navSeparator:SetWidth(math.max(1, width - sidebarRight - 1))
+    if U.footerLine then
+        U.footerLine:ClearAllPoints()
+        U.footerLine:SetPoint('BOTTOMLEFT', sidebarRight, footer)
+        U.footerLine:SetPoint('BOTTOMRIGHT', -1, footer)
+    end
     if U.contentBackground then
         U.contentBackground:ClearAllPoints()
-        U.contentBackground:SetPoint('TOPLEFT', pageX - 8, -112 - bannerHeight)
-        U.contentBackground:SetPoint('BOTTOMRIGHT', -12, 28)
+        U.contentBackground:SetPoint('TOPLEFT', sidebarRight, -(topbar + 1) - bannerHeight)
+        U.contentBackground:SetPoint('BOTTOMRIGHT', -1, footer + 1)
     end
     if U.joinBanner then
         U.joinBanner:ClearAllPoints()
-        U.joinBanner:SetPoint('TOPLEFT', pageX - 8, -112)
-        U.joinBanner:SetPoint('TOPRIGHT', -12, -112)
+        U.joinBanner:SetPoint('TOPLEFT', contentX, -(topbar + 8))
+        U.joinBanner:SetPoint('TOPRIGHT', -16, -(topbar + 8))
     end
     -- A scaled frame also scales its own anchor offsets on Forever. Compensate
     -- those offsets so only the page contents grow; the page origin stays on
@@ -156,13 +222,13 @@ function U.Layout(activeOnly, geometryOnly)
             end
             page:SetScale(pageScale)
             page:ClearAllPoints()
-            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / pageScale, (-118 - bannerHeight) / pageScale)
+            page:SetPoint('TOPLEFT', U.frame, 'TOPLEFT', contentX / pageScale, (-pageTop - bannerHeight) / pageScale)
             page:SetSize(available / pageScale, pageHeight / pageScale)
         end
     end
     U.status:ClearAllPoints()
-    U.status:SetPoint('BOTTOMLEFT', contentX, 12)
-    U.status:SetWidth(math.max(200, available - 160))
+    U.status:SetPoint('BOTTOMLEFT', contentX, 8)
+    U.status:SetWidth(math.max(200, available - 40))
     if not U.resizing and Z.ui then
         Z.ui.window.width, Z.ui.window.height = math.floor(width), math.floor(height)
     end

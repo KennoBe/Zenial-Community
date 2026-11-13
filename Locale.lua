@@ -1221,6 +1221,20 @@ DE["including hidden"]="inkl. ausgeblendete"
 DE["Enter an item name with at least 2 characters or an item ID to search recorded bags and banks."]="Gib einen Gegenstandsnamen mit mindestens 2 Zeichen oder eine Gegenstands-ID ein, um erfasste Taschen und Banken zu durchsuchen."
 DE["Select an item to see which characters hold it."]="Wähle einen Gegenstand, um zu sehen, welche Charaktere ihn haben."
 
+-- Visual overhaul: sidebar groups and page subtitles.
+DE["Play"]="Spielen"
+DE["Economy"]="Wirtschaft"
+DE["Find fellow players, keep notes and stay in touch"]="Mitspieler finden, Notizen führen und in Kontakt bleiben"
+DE["Recipes, crafting orders and shopping lists"]="Rezepte, Herstellungsaufträge und Einkaufslisten"
+DE["Groups, events and PvP help from the community"]="Gruppen, Termine und PvP-Hilfe aus der Community"
+DE["Shared quests, quest groups and help requests"]="Gemeinsame Quests, Questgruppen und Hilfegesuche"
+DE["Offers, requests and search alerts"]="Angebote, Gesuche und Suchalarme"
+DE["Your characters, public profile and item search"]="Deine Charaktere, dein öffentliches Profil und die Gegenstandssuche"
+DE["Past contacts and requests"]="Vergangene Kontakte und Anfragen"
+DE["Settings of your installed ZENIAL addons"]="Einstellungen deiner installierten ZENIAL-Addons"
+DE["Your wishes, open tasks and next appointments"]="Deine Wünsche, offenen Aufgaben und nächsten Termine"
+DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge und Daten"
+
 local I={locale=locale,isGerman=german,strings=DE,activities=ACTIVITY_DE}
 local function atomic(value)
     local english=reverse[value]or value

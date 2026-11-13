@@ -122,26 +122,38 @@ function U.RefreshActivityBoard()
     else detail={{text=tr('Select an activity to see its details and actions.'),height=72}}end
     H.rows(U.activityDetail,detail,48)
 end
--- Wishes remain local criteria. Cards only expose the saved, active values;
--- changing them still uses the existing private editor and explicit Save action.
+-- Today page. Top to bottom: four figures, the private wishes (cards expose only the saved, active
+-- values; changing them still uses the private editor and its explicit Save), the feed, quick actions.
+local HOME_TILE_HEIGHT,HOME_GAP=58,14
 function U.LayoutHomeWishes()
     if not U.homeWishCards then return end
-    local count=U.homeWishCardCount or 1;local width=(U.pages[9]:GetWidth()-6-(count-1)*10)/count;local bodyHeight=44
+    local pageWidth=U.pages[9]:GetWidth()-6;local top=0
+    if U.homeTiles then
+        local gap=10;local tileWidth=(pageWidth-(#U.homeTiles-1)*gap)/#U.homeTiles
+        for i,tile in ipairs(U.homeTiles)do tile:ClearAllPoints();tile:SetPoint('TOPLEFT',(i-1)*(tileWidth+gap),0);tile:SetSize(tileWidth,HOME_TILE_HEIGHT)end
+        top=HOME_TILE_HEIGHT+HOME_GAP
+    end
+    -- Caption of the wish block on the left, its edit action on the right.
+    local editWidth=math.min(220,U.homeWishEdit:GetWidth())
+    U.homeWishEdit:ClearAllPoints();U.homeWishEdit:SetPoint('TOPLEFT',pageWidth-editWidth,-top)
+    U.homeWishState:ClearAllPoints();U.homeWishState:SetPoint('TOPLEFT',0,-(top+6));U.homeWishState:SetWidth(math.max(120,pageWidth-editWidth-12))
+    local cardsTop=top+26+8
+    local count=U.homeWishCardCount or 1;local width=(pageWidth-(count-1)*10)/count;local bodyHeight=30
     for i,card in ipairs(U.homeWishCards)do
-        card.value:SetWidth(width-20)
+        card.value:SetWidth(width-28)
         if i<=count then local measured=A.Call(card.value.GetStringHeight,card.value)
             if type(measured)=='number'then bodyHeight=math.max(bodyHeight,math.min(88,math.ceil(measured)))end
         end
     end
     local cardHeight=bodyHeight+38
     for i,card in ipairs(U.homeWishCards)do
-        card:ClearAllPoints();card:SetPoint('TOPLEFT',(i-1)*(width+10),-44);card:SetSize(width,cardHeight)
-        card.heading:ClearAllPoints();card.heading:SetPoint('TOPLEFT',10,-8);card.heading:SetSize(width-20,18)
-        card.value:ClearAllPoints();card.value:SetPoint('TOPLEFT',10,-30);card.value:SetSize(width-20,bodyHeight)
+        card:ClearAllPoints();card:SetPoint('TOPLEFT',(i-1)*(width+10),-cardsTop);card:SetSize(width,cardHeight)
+        card.heading:ClearAllPoints();card.heading:SetPoint('TOPLEFT',16,-9);card.heading:SetSize(width-28,14)
+        card.value:ClearAllPoints();card.value:SetPoint('TOPLEFT',16,-28);card.value:SetSize(width-28,bodyHeight)
     end
     if U.homeList then
-        local _,_,_,x,y=U.homeList:GetPoint(1);local bottom=-y+U.homeList:GetHeight();local top=44+cardHeight+16
-        U.homeList:ClearAllPoints();U.homeList:SetPoint('TOPLEFT',x,-top);U.homeList:SetHeight(math.max(120,bottom-top));U.homeList.height=U.homeList:GetHeight()
+        local _,_,_,x,y=U.homeList:GetPoint(1);local bottom=-y+U.homeList:GetHeight();local listTop=cardsTop+cardHeight+HOME_GAP
+        U.homeList:ClearAllPoints();U.homeList:SetPoint('TOPLEFT',x,-listTop);U.homeList:SetHeight(math.max(120,bottom-listTop));U.homeList.height=U.homeList:GetHeight()
         if U.homeList.zenialRender then U.homeList.zenialRender()end
     end
 end
@@ -157,21 +169,41 @@ local function refreshWishSummary(P,state)
             card.heading:SetText(tr(state=='empty'and'No wishes chosen'or'No active wishes'))
             card.value:SetText(tr(state=='empty'and'Choose up to three private wishes. Matching activities and players appear below.'or''))
         end
+        -- A saved wish carries the gold marker; the placeholder card stays neutral.
+        if card.zenialAccent then card.zenialAccent:SetShown(wish~=nil)end
     end
     U.LayoutHomeWishes()
 end
+-- Feed rows keep their plain data text (item.text); item.display adds the visual weighting.
+local function paint(key,value)return'|cff'..Z.Theme.PaletteHex(key)..value..'|r'end
+local function feedDisplay(text)
+    local first,rest=text:match('^([^\n]*)\n?(.*)$')
+    local title,meta=first:match('^(.-)( · .*)$')
+    local out=paint('text',title or first)..(meta and paint('dim',meta)or'')
+    if rest~=''then out=out..'\n'..paint('dim',rest)end
+    return out
+end
+local function lineCount(text)local _,breaks=text:gsub('\n','\n');return breaks+1 end
+local KIND_ICON={EVENT='calendar',QUEST='quests',PVP='pvp'}
 function U.RefreshCommunityHome()
     if not U.homeList then return end
+    local T=Z.Theme
     local P=Z.SessionPlans;local state=P.State();refreshWishSummary(P,state)
     local home=B.Home();local items={}
-    local function heading(text)items[#items+1]={text='|cffffd36b'..tr(text)..'|r',height=32}end
-    local function section(label,entries,emptyText)
-        heading(tr(label)..' ('..#entries..')')
-        if#entries==0 then items[#items+1]={text=tr(emptyText),height=34}end
+    local function heading(label,count)
+        local text=tr(label)..' ('..count..')'
+        items[#items+1]={text='|cffffd36b'..text..'|r',display=paint('goldDim',Z.Kit.Upper(tr(label)))..'  '..paint('muted',tostring(count)),section=true,height=30}
+    end
+    local function section(label,entries,emptyText,iconColor)
+        heading(label,#entries)
+        if#entries==0 then items[#items+1]={text=tr(emptyText),display=paint('muted',tr(emptyText)),flat=true,height=28}end
         for i,entry in ipairs(entries)do if i>20 then break end
-            local r=entry.activity or entry;items[#items+1]={text=line(r)..(entry.reason and('\n'..Z.T('Matches wish %d',entry.priority))or'')..(entry.outside and('\n'..tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'))or''),height=entry.outside and 118 or 98,click=function()U.OpenActivity(r.key)end}
+            local r=entry.activity or entry
+            local text=line(r)..(entry.reason and('\n'..Z.T('Matches wish %d',entry.priority))or'')..(entry.outside and('\n'..tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'))or'')
+            items[#items+1]={text=text,display=feedDisplay(text),icon=T.IconSpec(KIND_ICON[r.kind]or'activities'),iconColor=iconColor,iconSize=18,textInset=40,
+                height=18+lineCount(text)*14,click=function()U.OpenActivity(r.key)end}
         end
-        if#entries>20 then items[#items+1]={text=tr('More matches are available under Activities.'),height=40,click=function()U.Navigate('activities')end}end
+        if#entries>20 then items[#items+1]={text=tr('More matches are available under Activities.'),icon=T.IconSpec('chevronRight'),iconColor='dim',iconSize=14,textInset=40,height=34,click=function()U.Navigate('activities')end}end
     end
     local relevant,appointments={},{}
     for _,entry in ipairs(home.now)do relevant[#relevant+1]=entry end
@@ -198,13 +230,19 @@ function U.RefreshCommunityHome()
         else tasks[#tasks+1]=r end
     end
     table.sort(appointments,function(a,b)local x=a.activity or a;local y=b.activity or b;if x.startsAt~=y.startsAt then return x.startsAt<y.startsAt end;return x.key<y.key end)
-    section('Open own tasks',tasks,'No open tasks today.')
-    section('Now relevant',relevant,'No matching activities received.')
-    for i,m in ipairs(home.people)do if i>3 then break end;local member=m;items[#items+1]={text=tr('Matching player')..': '..m.target..' · '..tr(m.status),height=36,click=function()
+    section('Open own tasks',tasks,'No open tasks today.','gold')
+    section('Now relevant',relevant,'No matching activities received.','accentBlue')
+    for i,m in ipairs(home.people)do if i>3 then break end;local member=m
+        local text=tr('Matching player')..': '..m.target..' · '..tr(m.status)
+        items[#items+1]={text=text,display=paint('dim',tr('Matching player')..': ')..paint('text',m.target)..paint('dim',' · '..tr(m.status)),icon=T.IconSpec('members'),iconColor='accentBlue',iconSize=18,textInset=40,height=34,click=function()
         if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
     end}end
-    section('Next appointments',appointments,'No upcoming appointments today.')
+    section('Next appointments',appointments,'No upcoming appointments today.','textSoft')
     H.rows(U.homeList,items,48)
+    if U.homeTiles then
+        local figures={#tasks,#relevant,#appointments,#home.people}
+        for i,tile in ipairs(U.homeTiles)do tile:SetValue(figures[i],figures[i]==0 and'muted'or i==1 and'gold'or'text')end
+    end
     U.homeWishState:SetText(state=='active'and(P.store.mode=='DAY'and Z.T('%d private wishes for today',#P.store.wishes)or Z.T('%d private wishes · %d min remaining',#P.store.wishes,math.ceil((P.store.expiresAt-A.Now())/60)))
         or tr(state=='expired'and'Session expired. Save explicitly to start again.'or state=='unsupported'and'Saved session wishes use an unsupported version. Data was preserved.'or state=='unknown'and'Server time is unavailable.'or'Your wishes for today · private'))
     U.homeWishEdit:SetEnabled(P.store~=nil)
@@ -307,16 +345,29 @@ end
 function U.CreateCommunityHome(helpers)
     H=helpers;local label,button,list,selector,edit=H.label,H.button,H.list,H.selector,H.edit
     local home=U.pages[9]
-    U.homeWishState=label(home,'',0,0,620);U.homeWishState:SetHeight(38)
-    U.homeWishEdit=button(home,tr('Edit private wishes'),630,-5,220,U.OpenHomeWishes)
+    -- Figures first: what needs me, what fits now, what is planned, who fits. Each tile opens its area.
+    local K,T=Z.Kit,Z.Theme
+    U.homeTiles={}
+    for i,spec in ipairs({
+        {icon='check',label='Open own tasks',go=function()U.Navigate('activities')end},
+        {icon='activities',label='Now relevant',go=function()U.Navigate('activities')end},
+        {icon='calendar',label='Next appointments',go=function()U.Navigate('groups','scheduled')end},
+        {icon='members',label='Matching fellow players',go=function()U.Navigate('members')end},
+    })do
+        local tile=K.StatTile(home,{icon=spec.icon,label=tr(spec.label),value=0,onClick=spec.go})
+        tile:SetPoint('TOPLEFT',(i-1)*214,0);tile:SetSize(204,58);U.homeTiles[i]=tile
+    end
+    U.homeWishState=label(home,'',0,-78,620);U.homeWishState:SetHeight(14);U.homeWishState:SetWordWrap(false);T.Font(U.homeWishState,'caption','dim')
+    U.homeWishEdit=button(home,tr('Edit private wishes'),630,-72,220,U.OpenHomeWishes)
     U.homeWishCards={}
     for i=1,Z.SessionPlans.MAX_WISHES do
-        local card=H.panel(home);card:ClearAllPoints();card:SetPoint('TOPLEFT',(i-1)*280,-44);card:SetSize(270,82)
-        card.heading=label(card,'',10,-8,250,'GameFontNormalSmall');card.heading:SetHeight(18)
-        card.value=label(card,'',10,-30,250,'GameFontHighlightSmall');card.value:SetHeight(44);card.value:SetWordWrap(true);if card.value.SetNonSpaceWrap then card.value:SetNonSpaceWrap(true)end
+        local card=H.panel(home);card:ClearAllPoints();card:SetPoint('TOPLEFT',(i-1)*280,-106);card:SetSize(270,68)
+        K.Accent(card,'gold')
+        card.heading=label(card,'',16,-9,242,'GameFontHighlightSmall');card.heading:SetHeight(14);card.heading:SetWordWrap(false);T.Font(card.heading,'caption','goldDim')
+        card.value=label(card,'',16,-28,242,'GameFontHighlight');card.value:SetHeight(30);card.value:SetWordWrap(true);if card.value.SetNonSpaceWrap then card.value:SetNonSpaceWrap(true)end;T.Font(card.value,'heading','text')
         U.homeWishCards[i]=card
     end
-    U.homeList=list(home,0,-142,832,248)
+    U.homeList=list(home,0,-188,832,208)
     button(home,tr('Shared quests'),0,-408,180,function()U.Navigate('quests','shared')end)
     button(home,tr('Quest groups'),190,-408,180,function()U.Navigate('quests','questgroups')end)
     button(home,tr('All activities'),380,-408,180,function()U.Navigate('activities')end)

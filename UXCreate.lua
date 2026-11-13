@@ -3,6 +3,7 @@ local U = Z.UI
 local L = Z.Logic
 local H = Z.History
 local T = Z.Theme
+local K = Z.Kit
 local S = U.Shared
 local tr = S.tr
 local ADDON_PAGE, MAIN_TAB_NAMES, MAIN_TAB_ICONS = S.ADDON_PAGE, S.MAIN_TAB_NAMES, S.MAIN_TAB_ICONS
@@ -43,7 +44,7 @@ function U.Create()
     local pos = Z.db.position or { x = 0, y = 0 }
     f:SetPoint('CENTER', UIParent, 'CENTER', pos.x, pos.y)
     if T then
-        T.Shell(f)
+        (T.Window or T.Shell)(f)
     elseif f.SetBackdrop then
         f:SetBackdrop({
             bgFile = 'Interface\\DialogFrame\\UI-DialogBox-Background-Dark',
@@ -68,29 +69,28 @@ function U.Create()
             Z.db.position = { x = math.floor(x - ux / sc), y = math.floor(y - uy / sc) }
         end
     end)
-    -- Header: logo, title and subtitle on the left; bell, PvP-Hilfe and Discord (secondary buttons) and
-    -- the native close button on the right.
-    local icon = f:CreateTexture(nil, 'ARTWORK')
-    icon:SetSize(40, 40)
-    icon:SetPoint('TOPLEFT', 16, -15)
-    icon:SetTexture('Interface\\AddOns\\ZenialCommunity\\Media\\Icon.tga')
-    local title = label(f, 'ZENIAL COMMUNITY', 66, -17, 460, 'GameFontNormalLarge')
-    tone(title, 'gold', 1, 0.82, 0.36)
-    U.headerSubtitle = label(f, tr('Community-Werkzeuge für Azeroth'), 66, -41, 430)
-    tone(U.headerSubtitle, 'dim', 0.7, 0.64, 0.54)
-    U.pvpHeaderButton = button(f, tr('PvP-Hilfe'), 0, 0, 190, function()
+    -- Top bar (right of the sidebar): page title and subtitle on the left; bell, PvP help, Discord and the
+    -- native close button on the right. The brand lives in the sidebar. U.LayoutChrome places everything.
+    U.topbarFill = f:CreateTexture(nil, 'BORDER')
+    if T and T.SetGradient then
+        T.SetGradient(U.topbarFill, 'VERTICAL', 'bgGlow', 'bg')
+    end
+    U.pvpHeaderButton = button(f, tr('PvP-Hilfe'), 0, 0, 150, function()
         U.OpenPvPRequester()
-    end)
+    end, 'danger')
     U.pvpHeaderButton:SetHeight(30)
-    U.pvpHeaderButton:ClearAllPoints()
-    U.pvpHeaderButton:SetPoint('TOPRIGHT', -146, -20)
-    local discord = button(f, 'Discord', 0, 0, 105, function()
+    U.discordButton = button(f, 'Discord', 0, 0, 96, function()
         U.ShowDiscord()
-    end)
-    discord:SetHeight(30)
-    discord:ClearAllPoints()
-    discord:SetPoint('TOPRIGHT', -38, -20)
-    local close = U.CloseButton(f, -4, -4, function()
+    end, 'ghost')
+    U.discordButton:SetHeight(30)
+    if K then
+        for control, name in pairs({ [U.pvpHeaderButton] = 'pvp', [U.discordButton] = 'discord' }) do
+            control.zenialGlyph = K.Icon(control, name, 16, name == 'pvp' and 'dangerText' or 'textSoft')
+            control.zenialGlyph:SetPoint('LEFT', 10, 0)
+            T.AlignButtonText(control, 32)
+        end
+    end
+    local close = U.CloseButton(f, -6, -12, function()
         if S.openPopup then
             S.openPopup:Hide()
             S.openPopup = nil
@@ -98,6 +98,7 @@ function U.Create()
         U.HideAddonPanels()
         f:Hide()
     end)
+    U.closeButton = close
     f:SetScript('OnHide', function()
         U.FinishResize()
         U.CloseDialogs()
@@ -120,6 +121,12 @@ function U.Create()
     U.modalBlocker:SetAllPoints(f)
     U.modalBlocker:SetFrameLevel(f:GetFrameLevel() + 40)
     U.modalBlocker:EnableMouse(true)
+    if T and T.Tint then
+        -- Dims the page behind a dialog; the sidebar stays above the blocker and readable.
+        U.modalDim = U.modalBlocker:CreateTexture(nil, 'BACKGROUND')
+        U.modalDim:SetAllPoints()
+        T.Tint(U.modalDim, 'SetColorTexture', 'overlay', 0.62)
+    end
     U.modalBlocker:Hide()
     U.sidebar = CreateFrame('Frame', nil, f, BackdropTemplateMixin and 'BackdropTemplate' or nil)
     if T then
@@ -129,9 +136,45 @@ function U.Create()
             U.navIndicator = T.CreateNavIndicator(U.sidebar)
         end
     end
+    -- Brand block at the top of the sidebar and the labels of the navigation groups.
+    local logo = U.sidebar:CreateTexture(nil, 'ARTWORK')
+    logo:SetSize(30, 30)
+    logo:SetPoint('TOPLEFT', 16, -17)
+    logo:SetTexture('Interface\\AddOns\\ZenialCommunity\\Media\\Icon.tga')
+    U.brandLogo = logo
+    if K then
+        U.brandTitle = K.Text(U.sidebar, 'ZENIAL', 'title', 'gold')
+        U.brandTitle:SetPoint('TOPLEFT', 55, -16)
+        U.brandTitle:SetSize(110, 18)
+        U.headerSubtitle = K.Text(U.sidebar, 'COMMUNITY', 'overline', 'dim')
+        U.headerSubtitle:SetPoint('TOPLEFT', 56, -36)
+        U.headerSubtitle:SetSize(110, 12)
+        U.brandLine = U.sidebar:CreateTexture(nil, 'ARTWORK')
+        U.brandLine:SetHeight(1)
+        U.brandLine:SetPoint('TOPLEFT', 1, -T.metrics.brand)
+        U.brandLine:SetPoint('TOPRIGHT', -1, -T.metrics.brand)
+        T.Tint(U.brandLine, 'SetColorTexture', 'lineSoft')
+        U.navGroupLabels = {}
+        for index, name in ipairs({ 'Play', 'Community', 'Economy', 'Account' }) do
+            local group = K.Text(U.sidebar, K.Upper(tr(name)), 'overline', 'muted')
+            group:SetHeight(12)
+            if group.SetWordWrap then
+                group:SetWordWrap(false)
+            end
+            U.navGroupLabels[index] = group
+        end
+    else
+        U.headerSubtitle = label(U.sidebar, 'COMMUNITY', 56, -36, 110)
+    end
+    -- The page area has no frame of its own any more: cards and lists carry the structure.
     U.contentBackground = CreateFrame('Frame', nil, f, BackdropTemplateMixin and 'BackdropTemplate' or nil)
     if T then
-        T.Panel(U.contentBackground, 'parchment')
+        T.Panel(U.contentBackground, 'canvas')
+    end
+    U.footerLine = f:CreateTexture(nil, 'ARTWORK')
+    U.footerLine:SetHeight(1)
+    if T and T.Tint then
+        T.Tint(U.footerLine, 'SetColorTexture', 'lineSoft')
     end
     -- Notice while ZENIAL Community membership is missing; U.RefreshJoinBanner shows it and U.Layout makes room.
     U.joinBanner = CreateFrame('Frame', nil, f, BackdropTemplateMixin and 'BackdropTemplate' or nil)
@@ -158,13 +201,26 @@ function U.Create()
     U.joinBanner:Hide()
     U.navSeparator = f:CreateTexture(nil, 'ARTWORK')
     if T and T.Tint then
-        T.Tint(U.navSeparator, 'SetColorTexture', 'edge', 0.72)
+        T.Tint(U.navSeparator, 'SetColorTexture', 'line')
     else
         U.navSeparator:SetColorTexture(0.72, 0.5, 0.2, 0.72)
     end
     U.navSeparator:SetSize(856, 1)
-    U.navPath = label(f, '', 188, -77, 850, 'GameFontNormalLarge')
-    tone(U.navPath, 'gold', 1, 0.82, 0.36)
+    U.navPath = label(f, '', 196, -12, 500, 'GameFontNormalLarge')
+    U.navPath:SetHeight(24)
+    U.pageSubtitle = label(f, '', 196, -37, 500, 'GameFontHighlightSmall')
+    U.pageSubtitle:SetHeight(14)
+    for _, region in ipairs({ U.navPath, U.pageSubtitle }) do
+        if region.SetWordWrap then
+            region:SetWordWrap(false)
+        end
+    end
+    if T and T.Font then
+        T.Font(U.navPath, 'display')
+        T.Font(U.pageSubtitle, 'caption')
+    else
+        tone(U.navPath, 'gold', 1, 0.82, 0.36)
+    end
     U.pages, U.tabs = {}, {}
     for i, name in ipairs(MAIN_TAB_NAMES) do
         local p = CreateFrame('Frame', nil, f)
@@ -191,16 +247,23 @@ function U.Create()
         U.tabs[i].zenialIndicator = U.navIndicator
     end
     U.status = label(f, '', 188, -660, 850)
+    U.status:SetHeight(14)
+    if U.status.SetWordWrap then
+        U.status:SetWordWrap(false)
+    end
     tone(U.status, 'gold', 1, 0.75, 0.35)
     if T and T.CreateToast then
         U.statusToast = T.CreateToast(f)
     end
     local resize = CreateFrame('Button', nil, f)
-    resize:SetSize(22, 22)
-    resize:SetPoint('BOTTOMRIGHT', -7, 7)
+    resize:SetSize(18, 18)
+    resize:SetPoint('BOTTOMRIGHT', -4, 4)
     local resizeTexture = resize:CreateTexture(nil, 'ARTWORK')
     resizeTexture:SetAllPoints()
     resizeTexture:SetTexture('Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up')
+    if T and T.Tint then
+        T.Tint(resizeTexture, 'SetVertexColor', 'dim')
+    end
     U.resizeDriver = CreateFrame('Frame', nil, f)
     resize:SetScript('OnMouseDown', function(_, button)
         if button ~= 'LeftButton' then
@@ -228,12 +291,11 @@ function U.Create()
         end
     end)
     U.resizeHandle = resize
-    U.versionLabel = label(f, Z.ADDON_VERSION, 0, 0, 150, 'GameFontHighlightSmall')
+    U.versionLabel = label(U.sidebar, Z.ADDON_VERSION, 0, 0, 120, 'GameFontHighlightSmall')
     U.versionLabel:ClearAllPoints()
-    U.versionLabel:SetPoint('BOTTOMRIGHT', f, 'BOTTOMRIGHT', -36, 13)
-    U.versionLabel:SetJustifyH('RIGHT')
-    U.versionLabel:SetHeight(14)
-    tone(U.versionLabel, 'dim', 0.65, 0.6, 0.47)
+    U.versionLabel:SetPoint('BOTTOMLEFT', U.sidebar, 'BOTTOMLEFT', 16, 12)
+    U.versionLabel:SetHeight(12)
+    tone(U.versionLabel, 'muted', 0.65, 0.6, 0.47)
     f:SetScript('OnSizeChanged', function()
         if U.pages then
             if U.resizing then

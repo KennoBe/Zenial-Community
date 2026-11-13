@@ -57,7 +57,9 @@ CompanionPixel.lua
 CompanionVitals.lua
 CompanionQuestAreas.lua
 Theme.lua
+ThemeTokens.lua
 ThemeCommunity.lua
+UIKit.lua
 UI.lua
 NoticeUI.lua
 UX.lua

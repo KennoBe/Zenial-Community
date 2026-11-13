@@ -32,20 +32,24 @@ local MAIN_TAB_NAMES = {
 S.MAIN_TAB_NAMES = MAIN_TAB_NAMES
 local NAV_ICONS = T and T.assets and T.assets.icons or {}
 S.NAV_ICONS = NAV_ICONS
-local MAIN_TAB_ICONS = {
-    NAV_ICONS.members,
-    NAV_ICONS.crafting,
-    NAV_ICONS.groups,
-    NAV_ICONS.quests,
-    NAV_ICONS.trade,
-    NAV_ICONS.profile,
-    NAV_ICONS.history,
-    NAV_ICONS.addons,
-    NAV_ICONS.groups,
-    NAV_ICONS.groups,
-    NAV_ICONS.profile,
-}
+-- Sidebar icons are names of the Community icon atlas (T.iconCells); list rows keep NAV_ICONS.
+local MAIN_TAB_ICONS = { 'members', 'craft', 'activities', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings' }
 S.MAIN_TAB_ICONS = MAIN_TAB_ICONS
+-- One line under the page title in the top bar, per main page.
+local PAGE_SUBTITLES = {
+    'Find fellow players, keep notes and stay in touch',
+    'Recipes, crafting orders and shopping lists',
+    'Groups, events and PvP help from the community',
+    'Shared quests, quest groups and help requests',
+    'Offers, requests and search alerts',
+    'Your characters, public profile and item search',
+    'Past contacts and requests',
+    'Settings of your installed ZENIAL addons',
+    'Your wishes, open tasks and next appointments',
+    'Groups, events and PvP help from the community',
+    'Display, privacy, tools and data',
+}
+S.PAGE_SUBTITLES = PAGE_SUBTITLES
 local PVP, DUNGEONS, RAIDS = Z.GroupFinder.Activities.PVP, Z.GroupFinder.Activities.DUNGEON, Z.GroupFinder.Activities.RAID
 S.PVP = PVP
 S.DUNGEONS = DUNGEONS
@@ -344,6 +348,9 @@ local function updateNavPath()
             .. tr(U.questView == 'questgroups' and 'Quest groups' or shared and 'Shared quests' or 'Quest assistance')
     end
     U.navPath:SetText(name)
+    if U.pageSubtitle then
+        U.pageSubtitle:SetText(tr(PAGE_SUBTITLES[U.page] or ''))
+    end
 end
 S.updateNavPath = updateNavPath
 local function edit(parent, caption, x, y, w, max, multi)
@@ -744,7 +751,7 @@ local function rows(view, items, height)
             b.text:SetPoint('TOPLEFT', textLeft, item.iconTop and -3 or -5)
             b.text:SetWidth(view.width - textLeft - 8)
             b.text:SetWordWrap(item.noWrap ~= true)
-            b.text:SetText(item.text)
+            b.text:SetText(item.display or item.text)
             b.zenialTooltip = item.tooltip
             -- Keep the match count in a separate line: single-line title
             -- truncation must never hide the subtitle on the native client.
@@ -1110,7 +1117,12 @@ local function panel(parent)
     local f = CreateFrame('Frame', nil, parent, BackdropTemplateMixin and 'BackdropTemplate' or nil)
     f:SetAllPoints()
     if T then
-        T.Panel(f, 'inset')
+        -- Panels on the window itself (or inside another dialog) are dialogs; panels on a page are cards.
+        if parent == U.frame or parent.zenialShellSkin then
+            T.Shell(f)
+        else
+            T.Panel(f, 'surface')
+        end
     end
     return f
 end

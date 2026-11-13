@@ -24,7 +24,10 @@ function U.CreateNotificationInbox(helpers)
         if U.notificationInbox:IsShown()then U.notificationInbox:Hide();return end
         U.CloseDialogs();U.CloseDropdowns();N.ReadRecent();U.notificationInbox:Show();U.RefreshNotificationInbox()
     end);U.notificationBell=bell;bell:ClearAllPoints();bell:SetPoint('TOPRIGHT',U.frame,'TOPRIGHT',-344,-20);bell:SetHeight(30)
-    local icon=bell:CreateTexture(nil,'ARTWORK');icon:SetSize(22,22);icon:SetPoint('CENTER');icon:SetTexture('Interface\\AddOns\\ZenialCommunity\\Media\\Bell.tga')
+    local icon=bell:CreateTexture(nil,'ARTWORK');icon:SetSize(18,18);icon:SetPoint('CENTER');U.notificationBellIcon=icon
+    -- Atlas icon and frameless style when the skin is available; the original bell art otherwise.
+    if not(Z.Theme and Z.Theme.SetIcon and Z.Theme.SetIcon(icon,'bell','textSoft'))then icon:SetSize(22,22);icon:SetTexture('Interface\\AddOns\\ZenialCommunity\\Media\\Bell.tga')end
+    if Z.Theme and Z.Theme.StyleButton then Z.Theme.StyleButton(bell,'ghost')end
     local badge=CreateFrame('Frame',nil,bell,BackdropTemplateMixin and'BackdropTemplate'or nil);U.notificationBellBadge=badge;badge:SetSize(20,16);badge:SetPoint('TOPRIGHT',5,4);Z.Theme.Panel(badge,'inset')
     U.notificationBellCount=badge:CreateFontString(nil,'OVERLAY','GameFontHighlightSmall');U.notificationBellCount:SetAllPoints();U.notificationBellCount:SetJustifyH('CENTER')
     bell:SetScript('OnEnter',function()if GameTooltip then GameTooltip:SetOwner(bell,'ANCHOR_BOTTOM');GameTooltip:AddLine(Z.T('Notifications'));GameTooltip:Show()end end)
