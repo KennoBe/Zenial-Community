@@ -3,10 +3,13 @@
 -- Everything timed hangs on N.Tick (the one-second tick of Main.lua): no timer, no OnUpdate. SendChatMessage is never called here.
 local Z,A=ZenialCommunity,ZenialCommunity.Adapter
 local R=Z.CrossFactionRegistry
-local N={PREFIX='ZENIALXF1',PROTO=1,
-    RATE={hello=30,bundle=1.5,ping=300,pingGap=2,beacon=15,reply=60,await=10,pendingTTL=600,pendingMax=64,awaitingMax=32},
+-- XF3-T07 (D-09 d): Battle.net ping for opponents (C_BattleNet.SendGameData, same prefix). Built and tested, but locked: it only
+-- works when BNET_UNLOCKED is true (set by hand after test G10 and decision E-07) and the bnetDiscovery switch is on.
+local N={PREFIX='ZENIALXF1',PROTO=1,BNET_UNLOCKED=false,
+    RATE={hello=30,bundle=1.5,ping=300,pingGap=2,beacon=15,reply=60,await=10,pendingTTL=600,pendingMax=64,awaitingMax=32,
+        bnetPing=1800,bnetGap=10,bnetReply=60},
     pending={},awaiting={},
-    stats={sent={H=0,P=0,A=0,B=0},failed={H=0,P=0,A=0,B=0}}}
+    stats={sent={H=0,P=0,A=0,B=0,BP=0,BA=0},failed={H=0,P=0,A=0,B=0,BP=0,BA=0}}}
 Z.CrossFactionPresence=N
 local MAX_BYTES=64
 local KINDS={H=true,P=true,A=true,B=true}
@@ -14,6 +17,7 @@ local KINDS={H=true,P=true,A=true,B=true}
 -- an addon whisper counts; everywhere else the faction stays unknown until a chat line shows the language.
 local OWN_FACTION={WHISPER=true}
 local helloAt,helloDone,beaconAt,pingAt,replyAt,lastPing={},{},{},{},{}
+local bnetPingAt,bnetReplyAt,bnetLast={},{},nil
 local dueAt
 local registered,listening
 local hooked={}
@@ -21,6 +25,10 @@ local hooked={}
 local function discovery()
     local XF=Z.CrossFaction
     return type(XF)=='table'and XF.Settings().discovery==true
+end
+local function bnetEnabled()
+    local XF=Z.CrossFaction
+    return N.BNET_UNLOCKED==true and type(XF)=='table'and XF.Settings().bnetDiscovery==true
 end
 local function ownGuid()
     local g=Z.me and Z.me.guid
@@ -212,15 +220,110 @@ local function targetName()
         return cleanSender(name)
     end
 end
+-- ===== Battle.net ping (D-09 d, locked) =====
+-- Same send path as BattleNetTransport: securecall in pcall, native result captured inside; nothing reported = success there.
+local function bnetSend(kind,gameAccountID)
+    local payload=N.Payload(kind)
+    if not payload then return false end
+    local stat='B'..kind
+    local fn=C_BattleNet and C_BattleNet.SendGameData
+    local ok=false
+    if type(fn)=='function'and type(securecall)=='function'then
+        local nativeOK,result
+        local called=pcall(securecall,function()nativeOK,result=pcall(fn,gameAccountID,N.PREFIX,payload)end)
+        if called and nativeOK and A.Safe(result)then
+            local e=Enum and Enum.SendAddonMessageResult or{}
+            ok=result==nil or result==true or result==e.Success
+        end
+    end
+    local bucket=ok and N.stats.sent or N.stats.failed
+    bucket[stat]=bucket[stat]+1
+    return ok
+end
+local function readableAccount(info)
+    return A.PublicTable(info)and A.Safe(info.playerGuid,info.characterName,info.factionName)and info or nil
+end
+-- Online game account of the same project for a target GUID, or nil.
+local function bnetAccountFor(guid)
+    local fn=C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID
+    if type(fn)~='function'then return nil end
+    local ok,info=pcall(fn,guid)
+    if not ok or not A.PublicTable(info)then return nil end
+    if not A.Safe(info.gameAccountID,info.isOnline,info.clientProgram,info.wowProjectID)then return nil end
+    local id=info.gameAccountID
+    if type(id)~='number'or id~=id or id<1 or id>2147483647 or id%1~=0 or info.isOnline~=true then return nil end
+    if info.clientProgram~=nil and info.clientProgram~='WoW'then return nil end
+    if info.wowProjectID~=nil and WOW_PROJECT_ID~=nil and info.wowProjectID~=WOW_PROJECT_ID then return nil end
+    return id
+end
+local function bnetPing(guid)
+    local XF=Z.CrossFaction
+    if not bnetEnabled()then return false end
+    local mine=ownGuid()
+    if not mine or guid==mine then return false end
+    local now=A.Clock()
+    if within(bnetLast,now,N.RATE.bnetGap)or within(bnetPingAt[guid],now,N.RATE.bnetPing)then return false end
+    local refresh=R.NeedsRefresh(guid)
+    if XF.GetPlayerStatus(guid)~=nil and not refresh then return false end
+    local id=bnetAccountFor(guid)
+    if not id then return false end
+    bnetLast,bnetPingAt[guid]=now,now
+    local ok=bnetSend('P',id)
+    if ok and refresh then noteAwaiting(guid,now)end
+    return ok
+end
+
 function N.OnTarget()
-    if not discovery()then return end
-    if A.Call(UnitIsPlayer,'target')~=true or A.Call(UnitIsFriend,'player','target')~=true then return end
+    if A.Call(UnitIsPlayer,'target')~=true then return end
+    local friend=A.Call(UnitIsFriend,'player','target')
+    if friend==false then
+        if not bnetEnabled()then return end
+        local guid=readableGuid(A.Call(UnitGUID,'target'))
+        if guid then bnetPing(guid)end
+        return
+    end
+    if not discovery()or friend~=true then return end
     local guid=readableGuid(A.Call(UnitGUID,'target'))
     if not guid then return end
     local now=A.Clock()
     if within(lastPing,now,N.RATE.pingGap)or within(pingAt[guid],now,N.RATE.ping)then return end
     local name=targetName()
     if name then ping(guid,name)end
+end
+-- BN_CHAT_MSG_ADDON with our prefix: sender is the game account ID. The GUID counts only if the client reports it for that account.
+function N.OnBNet(prefix,payload,sender)
+    if not A.Safe(prefix,payload,sender)then return false end
+    if type(prefix)~='string'or prefix~=N.PREFIX or type(payload)~='string'or type(sender)~='number'then return false end
+    if sender~=sender or sender<1 or sender>2147483647 or sender%1~=0 then return false end
+    if not bnetEnabled()then return false end
+    local msg=N.Parse(payload)
+    if not msg or(msg.kind~='P'and msg.kind~='A')then return false end
+    local mine=ownGuid()
+    if mine and msg.guid==mine then return false end
+    local fn=C_BattleNet and C_BattleNet.GetGameAccountInfoByID
+    if type(fn)~='function'then return false end
+    local ok,info=pcall(fn,sender)
+    info=ok and readableAccount(info)
+    if not info or info.playerGuid~=msg.guid then return false end
+    local name=type(info.characterName)=='string'and#info.characterName<=64 and info.characterName or''
+    local f=info.factionName
+    if f~='Horde'and f~='Alliance'then f=nil end
+    local XF=Z.CrossFaction
+    if type(XF)~='table'then return false end
+    N.awaiting[msg.guid]=nil
+    if msg.proto~=N.PROTO then
+        XF.MarkIncompatible(msg.guid,{name=name,proto=msg.proto,source='bnet',faction=f})
+        return true
+    end
+    if not XF.Confirm(msg.guid,{name=name,proto=msg.proto,caps=msg.caps,xfChat=msg.caps%2==1,source='bnet',faction=f})then return false end
+    if msg.kind=='P'then
+        local now=A.Clock()
+        if not within(bnetReplyAt[msg.guid],now,N.RATE.bnetReply)then
+            bnetReplyAt[msg.guid]=now
+            bnetSend('A',sender)
+        end
+    end
+    return true
 end
 -- CHAT_MSG_WHISPER / CHAT_MSG_WHISPER_INFORM: arg2 is the conversation partner, arg12 his GUID.
 function N.OnWhisper(event,...)
@@ -287,6 +390,8 @@ function N.Tick()
     end
     for guid,at in pairs(pingAt)do if not within(at,now,N.RATE.ping)then pingAt[guid]=nil end end
     for guid,at in pairs(replyAt)do if not within(at,now,N.RATE.reply)then replyAt[guid]=nil end end
+    for guid,at in pairs(bnetPingAt)do if not within(at,now,N.RATE.bnetPing)then bnetPingAt[guid]=nil end end
+    for guid,at in pairs(bnetReplyAt)do if not within(at,now,N.RATE.bnetReply)then bnetReplyAt[guid]=nil end end
 end
 
 -- Idempotent: prefix, listener and hooks are set up once (hooks retried while their function is missing).

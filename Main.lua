@@ -664,7 +664,10 @@ frame:SetScript("OnEvent",function(_,event,...)
     end
     if event=="PLAYER_LOGIN" then Z.Initialize();if Z.CrossFaction then pcall(Z.CrossFaction.RegisterCommands)end
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
-    elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end
+    elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...
+        -- The presence prefix never reaches BattleNetTransport; a secret or non-string prefix goes the old way.
+        if Z.CrossFactionPresence and A.Safe(prefix)and type(prefix)=="string"and prefix==Z.CrossFactionPresence.PREFIX then pcall(Z.CrossFactionPresence.OnBNet,prefix,payload,sender)
+        else Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end end
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then
         if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.Reset("disconnect")end end
     elseif event=="PLAYER_LEVEL_UP" then
