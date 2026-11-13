@@ -16,6 +16,7 @@ CommunityDirectory.lua
 BattleNetTransport.lua
 WhisperGuard.lua
 CommunityMesh.lua
+CrossFactionCodec.lua
 QuestHelper.lua
 QuestGroups.lua
 UpdateNotice.lua
