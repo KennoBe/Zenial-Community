@@ -1254,6 +1254,16 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["You can look for at most 3 activities at once."]="Du kannst höchstens 3 Aktivitäten gleichzeitig suchen."
+DE["Only dungeons, raids and battlegrounds can be combined in a search."]="Nur Dungeons, Raids und Schlachtfelder lassen sich in einer Suche kombinieren."
+DE["You are not looking for a group."]="Du suchst gerade keine Gruppe."
+DE["1 more instance"]="1 weitere Instanz"
+DE["%d more instances"]="%d weitere Instanzen"
+DE["Stop looking here"]="Hier nicht mehr suchen"
+DE["Look here too (%d/%d)"]="Auch hier suchen (%d/%d)"
+DE["Looking for a group"]="Gruppensuche"
+DE["%s added to your search (%d/%d)."]="%s zur Suche hinzugefügt (%d/%d)."
+DE["%s removed from your search."]="%s aus der Suche entfernt."
 DE["Happening now"]="Aktuell"
 DE["Questing and levelling"]="Questen"
 DE["1 group"]="1 Gruppe"

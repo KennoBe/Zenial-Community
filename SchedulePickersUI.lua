@@ -7,7 +7,9 @@ function U.AutofillGroupNeeds()
     if assigned~='TANK'and assigned~='HEALER'and assigned~='DAMAGER'and preferred then
         if preferred=='TANK'then tank=tank+1 elseif preferred=='HEALER'then heal=heal+1 else dd=dd+1 end
     end
-    local unknown=math.max(0,state.total-tank-heal-dd);local remaining=math.max(0,size-state.total);local wantedTank=math.min(remaining,math.max(0,1-tank));local wantedHeal=math.min(remaining-wantedTank,math.max(0,1-heal));U.groupAutofilling=true;U.groupNeedsAuto=true
+    -- Tanks and healers a group of this size usually takes (5: 1/1, 10: 2/2, 20: 2/4, 40: 4/8).
+    local needTank=size>=40 and 4 or size>=10 and 2 or 1;local needHeal=size>=40 and 8 or size>=20 and 4 or size>=10 and 2 or 1
+    local unknown=math.max(0,state.total-tank-heal-dd);local remaining=math.max(0,size-state.total);local wantedTank=math.min(remaining,math.max(0,needTank-tank));local wantedHeal=math.min(remaining-wantedTank,math.max(0,needHeal-heal));U.groupAutofilling=true;U.groupNeedsAuto=true
     U.groupFields.tank:SetText(tostring(wantedTank));U.groupFields.healer:SetText(tostring(wantedHeal))
     U.groupFields.dd:SetText(tostring(math.max(0,remaining-wantedTank-wantedHeal)));U.groupAutofilling=false
     U.groupHave:SetText(state.total==1 and tr('Solo')or Z.T('%d players in your group',state.total));if unknown>0 then U.groupHave:SetText(U.groupHave:GetText()..'\n'..Z.T('%d group roles unknown; check the needed roles.',unknown))end

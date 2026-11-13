@@ -382,7 +382,16 @@ local function describe(r, context)
         local hex = T.ClassColorHex and T.ClassColorHex(classFile, class)
         d.title = hex and ('|cff' .. hex .. r.ownerName .. '|r') or r.ownerName
         local who = Z.T('Level %d', g.min) .. (classFile and ' · ' .. L.ClassName(class, classFile) or '')
-        d.meta = context.named and Z.T('Looking for: %s', name) .. ' · ' .. who or who
+        local wanted = C.SearchActivities(g)
+        if context.named then
+            local names = {}
+            for index, id in ipairs(wanted) do
+                names[index] = activityName(id)
+            end
+            d.meta = Z.T('Looking for: %s', table.concat(names, ', ')) .. ' · ' .. who
+        else
+            d.meta = who .. (#wanted > 1 and ' · ' .. plural('1 more instance', '%d more instances', #wanted - 1) or '')
+        end
         d.roleItems = {}
         for _, role in ipairs(C.SearchRoles(g)) do
             d.roleItems[#d.roleItems + 1] = { role = role, text = Z.Locale.Role(role) }
@@ -833,6 +842,25 @@ function U.StartFinderSearch(activity, roles, note)
     U.Publish()
     return true
 end
+function U.AddFinderSearch(activity)
+    local id, why = C.AddSearch(activity)
+    if not id then
+        U.Message(tr(why))
+        return false
+    end
+    U.Message(Z.T('%s added to your search (%d/%d).', activityName(activity), #C.SearchActivities(Z.db.lfg[1]), C.MAX_SEARCH))
+    U.Publish()
+    return true
+end
+function U.RemoveFinderSearch(activity)
+    if not C.RemoveSearch(activity) then
+        return false
+    end
+    local g = Z.db.lfg[1]
+    U.Message(g and C.IsSearch(g) and Z.T('%s removed from your search.', activityName(activity)) or tr('Search ended.'))
+    U.Publish()
+    return true
+end
 function U.StopFinderSearch()
     if C.StopSearch() then
         U.Message(tr('Search ended.'))
@@ -884,14 +912,8 @@ function U.OpenFinderCreate(activity, planned)
         fields.note:SetText(own.note or '')
     end
     U.groupLoading = false
-    if e.size > 5 and A.GroupState().total <= 1 then
-        local wanted = C.RoleDefaults(e.size, Z.db.roles)
-        U.groupAutofilling = true
-        fields.tank:SetText(tostring(wanted.tank))
-        fields.healer:SetText(tostring(wanted.healer))
-        fields.dd:SetText(tostring(wanted.dd))
-        U.groupAutofilling = false
-    elseif U.AutofillGroupNeeds then
+    -- Wanted roles follow the group size (U.AutofillGroupNeeds, also when the size field changes later).
+    if U.AutofillGroupNeeds then
         U.AutofillGroupNeeds()
     end
     U.CaptureGroupDraft()
@@ -1093,8 +1115,16 @@ local function renderDetail(snap, top, width, height)
     hero.create:SetText(tr(own and not C.IsSearch(own) and 'Manage my group' or 'Create group'))
     hero.search:ClearAllPoints()
     hero.search:SetPoint('BOTTOMLEFT', x + 168, 10)
-    hero.search:SetText(tr(searching and 'Stop search' or 'I am looking for a group'))
-    hero.search:SetEnabled(searching or not own or C.IsSearch(own))
+    -- One search, up to three instances: start it here, add this instance to it, or take it out again.
+    local searched = own and C.IsSearch(own) and #C.SearchActivities(own) or 0
+    if searching then
+        hero.search:SetText(tr('Stop looking here'))
+    elseif searched > 0 then
+        hero.search:SetText(Z.T('Look here too (%d/%d)', searched, C.MAX_SEARCH))
+    else
+        hero.search:SetText(tr('I am looking for a group'))
+    end
+    hero.search:SetEnabled(searching or not own or (searched > 0 and searched < C.MAX_SEARCH))
     local journal = e.journal ~= nil and J.Available()
     hero.journal:SetShown(journal)
     if journal then
@@ -1168,7 +1198,11 @@ local function renderStatus(snap, width)
             parts[#parts + 1] = { role, Z.Locale.Role(role) }
         end
         status.over:SetText(K.Upper(tr('My search')))
-        status.line:SetText(paint('text', Z.T('You are looking for a group for %s.', activityName(search.title))) .. paint('dim', '  ' .. tr('Roles') .. ': ') .. K.Roles(parts))
+        local names = {}
+        for index, id in ipairs(C.SearchActivities(search.data)) do
+            names[index] = activityName(id)
+        end
+        status.line:SetText(paint('dim', tr('Looking for a group') .. ': ') .. paint('text', table.concat(names, ' · ')) .. paint('dim', '   ' .. tr('Roles') .. ': ') .. K.Roles(parts))
         if C.Get(search.title) then
             actions[1] = { text = tr('Show instance'), width = 132, click = function()
                 U.OpenFinderActivity(search.title)
@@ -1315,6 +1349,29 @@ function U.LayoutFinder()
     end
 end
 
+-- The former board shares page 10 with the finder. It is hidden while the finder shows, not merely covered:
+-- the window turns translucent while the character moves, and anything left underneath would shine through.
+local function coverBoard(covered)
+    local page = U.pages[10]
+    for _, getter in ipairs({ 'GetChildren', 'GetRegions' }) do
+        local parts = type(page[getter]) == 'function' and { pcall(page[getter], page) } or { false }
+        for index = 2, parts[1] and #parts or 0 do
+            local part = parts[index]
+            if part ~= F.frame and type(part) == 'table' and type(part.IsShown) == 'function' then
+                if covered then
+                    if part:IsShown() then
+                        part.zenialFinderCovered = true
+                        part:Hide()
+                    end
+                elseif part.zenialFinderCovered then
+                    part.zenialFinderCovered = nil
+                    part:Show()
+                end
+            end
+        end
+    end
+    F.boardCovered = covered
+end
 -- view: now | dungeons | raids | pvp | quests | other | list. nil keeps the tab that was open.
 function U.SetFinderView(view, keepActivity)
     if not F.frame then
@@ -1322,6 +1379,7 @@ function U.SetFinderView(view, keepActivity)
     end
     if view == 'list' then
         F.frame:Hide()
+        coverBoard(false)
         U.RefreshActivityBoard()
         return
     end
@@ -1336,6 +1394,7 @@ function U.SetFinderView(view, keepActivity)
     end
     F.applyKey, F.applyRole = nil, nil
     F.frame:Show()
+    coverBoard(true)
     U.RefreshFinder()
 end
 -- Opens the group overview of one catalogue activity (from a tile, a notice or another page).
@@ -1385,6 +1444,14 @@ function U.CreateFinder()
     -- the deepest finder widget sits six levels above this frame.
     frame:SetFrameLevel((page:GetFrameLevel() or 1) + 8)
     frame:EnableMouse(true)
+    -- The board's refresh shows and hides its own buttons; while the finder is up they stay hidden.
+    local refreshBoard = U.RefreshActivityBoard
+    U.RefreshActivityBoard = function(...)
+        refreshBoard(...)
+        if F.frame:IsShown() then
+            coverBoard(true)
+        end
+    end
     frame.fill = frame:CreateTexture(nil, 'BACKGROUND')
     frame.fill:SetPoint('TOPLEFT', -8, 6)
     frame.fill:SetPoint('BOTTOMRIGHT', 8, -6)
@@ -1491,8 +1558,11 @@ function U.CreateFinder()
     end, 'secondary')
     hero.search = T.Button(hero, tr('I am looking for a group'), 178, 26, function()
         local stats = F.snapshot and F.snapshot.by[F.activity]
+        local own = Z.db.lfg[1]
         if stats and stats.ownSearch then
-            U.StopFinderSearch()
+            U.RemoveFinderSearch(F.activity)
+        elseif own and C.IsSearch(own) then
+            U.AddFinderSearch(F.activity)
         else
             F.searchOpen = not F.searchOpen
             U.RefreshFinder()

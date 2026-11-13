@@ -190,12 +190,24 @@ function C.Snapshot()
             if r.kind == 'LIVE' and r.data then
                 local b, t = bucket(id), total(r.category)
                 if C.IsSearch(r.data) then
-                    b.seekers = b.seekers + 1
-                    t.seekers = t.seekers + 1
-                    b.rows.seekers[#b.rows.seekers + 1] = r
+                    -- One player, up to three activities: counted under each of them, once per category.
+                    local counted = {}
+                    for index, activity in ipairs(C.SearchActivities(r.data)) do
+                        local sb = bucket(activity)
+                        sb.seekers = sb.seekers + 1
+                        sb.rows.seekers[#sb.rows.seekers + 1] = r
+                        if r.own then
+                            sb.ownSearch = true
+                        end
+                        local category = index == 1 and r.category or ENTRIES[activity].kind
+                        if not counted[category] then
+                            counted[category] = true
+                            local st = total(category)
+                            st.seekers = st.seekers + 1
+                        end
+                    end
                     snap.seekers[#snap.seekers + 1] = r
                     if r.own then
-                        b.ownSearch = true
                         snap.own.search = r
                     end
                 else
@@ -233,12 +245,54 @@ function C.Snapshot()
 end
 
 -- "Looking for group" -------------------------------------------------------------------------------
--- roles = { TANK = true, HEALER = false, DAMAGER = true }. Uses the one live record a player has; an open
--- group has to be closed first.
-function C.StartSearch(activity, roles, note, minutes)
-    activity = L.ActivityID(activity)
-    if not L.Text(activity, 64) then
+-- A search is the one live record a player has, with mode "LFG": roles are the roles the player offers
+-- (1 or 0 each). A player may look for up to MAX_SEARCH catalogue activities at once (dungeons, raids and
+-- battlegrounds in any mix). The first one is the record's activity; the others travel in the field `have`,
+-- which means nothing for a search, as "+Second;Third". Clients that do not know this show the search under
+-- its first activity only. Creating a group stays limited to one.
+C.MAX_SEARCH = 3
+function C.SearchActivities(g)
+    local out, seen = {}, {}
+    if type(g) ~= 'table' then
+        return out
+    end
+    local first = L.ActivityID(g.activity)
+    if type(first) == 'string' and first ~= '' then
+        out[1], seen[first] = first, true
+    end
+    local more = type(g.have) == 'string' and g.have:match('^%+(.+)$')
+    if more then
+        for name in more:gmatch('[^;]+') do
+            local id = L.ActivityID(name)
+            if ENTRIES[id] and not seen[id] and #out < C.MAX_SEARCH then
+                out[#out + 1], seen[id] = id, true
+            end
+        end
+    end
+    return out
+end
+-- activities: one activity or a list; roles = { TANK = true, HEALER = false, DAMAGER = true }.
+-- An open group has to be closed first. Calling it again while searching replaces the search (same id).
+function C.StartSearch(activities, roles, note, minutes)
+    local list, seen = {}, {}
+    for _, name in ipairs(type(activities) == 'table' and activities or { activities }) do
+        local id = L.ActivityID(name)
+        if L.Text(id, 64) and not seen[id] then
+            list[#list + 1], seen[id] = id, true
+        end
+    end
+    if #list == 0 then
         return nil, 'Enter an activity.'
+    end
+    if #list > C.MAX_SEARCH then
+        return nil, 'You can look for at most 3 activities at once.'
+    end
+    if #list > 1 then
+        for _, id in ipairs(list) do
+            if not ENTRIES[id] then
+                return nil, 'Only dungeons, raids and battlegrounds can be combined in a search.'
+            end
+        end
     end
     local now = A.Now()
     Z.ExpireFinder(now)
@@ -251,15 +305,19 @@ function C.StartSearch(activity, roles, note, minutes)
     if tank + healer + dd == 0 then
         return nil, 'Choose at least one role.'
     end
-    local e = ENTRIES[activity]
+    local have = #list > 1 and '+' .. table.concat(list, ';', 2) or 'SOLO'
+    if not L.Text(have, 64) then
+        return nil, 'Only dungeons, raids and battlegrounds can be combined in a search.'
+    end
+    local e = ENTRIES[list[1]]
     local level = math.max(1, math.min(100, math.floor(tonumber(Z.me and Z.me.level) or 1)))
     local g = {
         id = current and current.id or nil,
         mode = 'LFG',
-        activity = activity,
+        activity = list[1],
         min = level,
         max = level,
-        have = 'SOLO',
+        have = have,
         start = current and current.start or now,
         expires = now + math.max(1, math.min(1440, tonumber(minutes) or 120)) * 60,
         note = note or '',
@@ -269,6 +327,54 @@ function C.StartSearch(activity, roles, note, minutes)
         dd = dd,
     }
     return Z.SaveGroup(g, now)
+end
+local function searchRoles(g)
+    return { TANK = (g.tank or 0) > 0, HEALER = (g.healer or 0) > 0, DAMAGER = (g.dd or 0) > 0 }
+end
+local function remaining(g)
+    return math.max(1, math.ceil((g.expires - A.Now()) / 60))
+end
+-- Adds one catalogue activity to the running search (same roles, note and end time).
+function C.AddSearch(activity)
+    local g = Z.db and Z.db.lfg[1]
+    if not g or not C.IsSearch(g) then
+        return nil, 'You are not looking for a group.'
+    end
+    local id = L.ActivityID(activity)
+    local list = C.SearchActivities(g)
+    for _, existing in ipairs(list) do
+        if existing == id then
+            return g.id
+        end
+    end
+    if #list >= C.MAX_SEARCH then
+        return nil, 'You can look for at most 3 activities at once.'
+    end
+    list[#list + 1] = id
+    return C.StartSearch(list, searchRoles(g), g.note, remaining(g))
+end
+-- Takes one activity out of the running search; the last one ends the search.
+function C.RemoveSearch(activity)
+    local g = Z.db and Z.db.lfg[1]
+    if not g or not C.IsSearch(g) then
+        return false
+    end
+    local id = L.ActivityID(activity)
+    local list, found = {}, false
+    for _, existing in ipairs(C.SearchActivities(g)) do
+        if existing == id then
+            found = true
+        else
+            list[#list + 1] = existing
+        end
+    end
+    if not found then
+        return false
+    end
+    if #list == 0 then
+        return C.StopSearch()
+    end
+    return C.StartSearch(list, searchRoles(g), g.note, remaining(g)) ~= nil
 end
 function C.StopSearch()
     local g = Z.db and Z.db.lfg[1]
