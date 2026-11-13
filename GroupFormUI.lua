@@ -264,10 +264,10 @@ function U.StyleGroupForm()
     place(U.groupHave, 142, -362, 492, 28)
 
     -- Foot: back and discard on the left, template and the one primary action on the right.
-    place(U.groupFormBack, 16, -398, 130)
-    place(U.groupDiscard, 154, -398, 150)
-    place(U.groupTemplateSave, 330, -398, 150)
-    place(U.groupSave, 488, -398, 146)
+    place(U.groupFormBack, 16, -396, 130)
+    place(U.groupDiscard, 154, -396, 150)
+    place(U.groupTemplateSave, 330, -396, 150)
+    place(U.groupSave, 488, -396, 146)
 
     -- Keep the added widgets in step with the fields.
     local capture = U.CaptureGroupDraft
