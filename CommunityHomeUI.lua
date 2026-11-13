@@ -41,6 +41,8 @@ local function applicationStatus(r)
     if p and(r.saved or r.kind=='EVENT'and not Z.ScheduledGroups.Verified(r.owner,r.id))then text=Z.T('Saved: %s',text)end
     return text,hex,accent
 end
+-- Colour codes for item.display, always from the palette.
+local function paint(key,value)return'|cff'..Z.Theme.PaletteHex(key)..value..'|r'end
 local ACTIVITY_ICON={EVENT='calendar',QUEST='quests',PVP='pvp'}
 local ACTIVITY_ICON_COLUMN=32
 local function activitySummary(r)
@@ -53,8 +55,6 @@ local function activitySummary(r)
     local organizer=Z.T('Organizer: %s',r.ownerName)
     -- Visual weighting only (display): bright title, receding meta, status in its own colour. Colour changes
     -- sit on the line breaks of text, never inside a line.
-    local T=Z.Theme
-    local function paint(key,value)return'|cff'..T.PaletteHex(key)..value..'|r'end
     local display=paint('text',heading)..'\n'..paint('dim',meta)..'\n'..paint('dim',organizer)..'\n|cff'..hex..status..'|r'
     local iconColor=r.own and'gold'or hex=='79bbff'and'accentBlue'or hex=='83df8b'and'success'or hex=='ff9690'and'dangerText'or'dim'
     return '|cffffd36b'..heading..'|r\n'..meta..'\n'..organizer..'\n|cff'..hex..status..'|r',accent,display,ACTIVITY_ICON[r.kind]or'activities',iconColor
@@ -64,6 +64,8 @@ local function measuredHeight(text,width,minimum)
     local measured=A.Call(U.activityMeasure.GetStringHeight,U.activityMeasure)
     return math.max(minimum,math.ceil(type(measured)=='number'and measured or minimum-12)+12)
 end
+local DETAIL_FACT_HEIGHT=26
+local DETAIL_ROLE_COLOR={TANK='accentBlue',HEALER='success',DAMAGER='dangerText'}
 -- Plate behind the board's filters, scaled with the page width like the members page.
 function U.LayoutActivityBoard()
     local bar=U.activityFilterBar;if not bar then return end
@@ -106,37 +108,63 @@ function U.RefreshActivityBoard()
     U.activityInlineArchive:SetEnabled(actions.archive==true)
     U.activityInlineRepeat:SetEnabled(actions.repeatSeries==true)
     U.activityInlineForget:SetEnabled(selected~=nil and foreign and selected.kind=='EVENT' and U.CanForgetScheduled(Z.ScheduledGroups.Get(selected.owner,selected.id))==true)
+    -- Detail column: the selected activity as a section head, its facts as plain lines on the column (flat),
+    -- the comment set apart as a card. item.text stays the data contract; display only recolours it at the
+    -- label/value boundary and at line breaks.
     local detail={};if selected then
-        local summary,accent=activitySummary(selected)
-        detail[#detail+1]={text=summary,accent=accent,height=measuredHeight(summary,U.activityDetail.width-20,72)}
+        local width=U.activityDetail.width-20
+        local summary,accent,summaryDisplay=activitySummary(selected)
+        detail[#detail+1]={text=summary,display=summaryDisplay,section=true,accent=accent,height=measuredHeight(summary,width,72)}
+        local function fact(text,display,height)detail[#detail+1]={text=text,display=display,flat=true,height=height or DETAIL_FACT_HEIGHT}end
+        local function pair(label,value,key)return paint('dim',label)..paint(key or'text',value)end
+        local function roleList(parts)
+            local shown={};for i,part in ipairs(parts)do shown[i]=paint(DETAIL_ROLE_COLOR[part[1]],part[2])end
+            return table.concat(shown,paint('dim',' · '))
+        end
         local e=selected.data
         if e then
             if selected.kind=='EVENT'and not selected.own then
-                detail[#detail+1]={text=tr(Z.ScheduledGroups.Reach(selected.owner)),height=32}
+                local reach=tr(Z.ScheduledGroups.Reach(selected.owner));fact(reach,paint('textSoft',reach))
                 local following=Z.ScheduledGroups.Follow(selected.owner,selected.id)
-                if following then detail[#detail+1]={text=tr('Delivery: ')..Z.ScheduledGroups.DeliveryLabel(following.delivery),height=32}end
+                if following then local label,value=tr('Delivery: '),Z.ScheduledGroups.DeliveryLabel(following.delivery);fact(label..value,pair(label,value))end
             end
-            if e.min then detail[#detail+1]={text=tr('Level')..' '..e.min..' – '..e.max,height=32}end
+            if e.min then local label,value=tr('Level')..' ',e.min..' – '..e.max;fact(label..value,pair(label,value))end
             if selected.kind=='LIVE'then
-                local roles=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER')
+                local parts={{'TANK',e.tank..' '..Z.Locale.Role('TANK')},{'HEALER',e.healer..' '..Z.Locale.Role('HEALER')},{'DAMAGER',e.dd..' '..Z.Locale.Role('DAMAGER')}}
+                local needed=tr('Needed')..': '
                 local party=Z.ActivityParty.Info(selected)
-                detail[#detail+1]={text=tr('Current party size')..': '..(party and party.total or tr('Unknown'))..' / '..e.size..'\n'..roles,height=measuredHeight(roles,U.activityDetail.width-20,48)}
+                local label,value=tr('Current party size')..': ',(party and party.total or tr('Unknown'))..' / '..e.size
+                local text=label..value..'\n'..needed..parts[1][2]..' · '..parts[2][2]..' · '..parts[3][2]
+                fact(text,pair(label,value)..'\n'..paint('dim',needed)..roleList(parts),measuredHeight(text,width,DETAIL_FACT_HEIGHT))
             elseif selected.kind=='EVENT'then
-                local party=Z.ActivityParty.Info(selected);local used=party and party.used or e.participants and Z.ScheduledGroups.Counts(e)or e.used;local roles={}
-                detail[#detail+1]={text=tr('Current party size')..': '..(party and party.total or tr('Unknown'))..' / '..(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER),height=32}
-                for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
-                detail[#detail+1]={text=tr('Free roles: ')..table.concat(roles,' · ')..'\n'..Z.T('Duration: %d min',math.floor((e.endsAt-e.startsAt)/60)),height=52}
+                local party=Z.ActivityParty.Info(selected);local used=party and party.used or e.participants and Z.ScheduledGroups.Counts(e)or e.used;local roles,parts={},{}
+                local label,value=tr('Current party size')..': ',(party and party.total or tr('Unknown'))..' / '..(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)
+                fact(label..value,pair(label,value))
+                for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role];parts[#parts+1]={role,roles[#roles]}end
+                local free,duration=tr('Free roles: '),Z.T('Duration: %d min',math.floor((e.endsAt-e.startsAt)/60))
+                local text=free..table.concat(roles,' · ')..'\n'..duration
+                fact(text,paint('dim',free)..roleList(parts)..'\n'..paint('textSoft',duration),measuredHeight(text,width,DETAIL_FACT_HEIGHT))
             end
-            if selected.kind=='PVP'then detail[#detail+1]={text=tr(e.response=='coming'and'Coming to help'or'No application'),height=32}end
+            if selected.kind=='PVP'then local response=tr(e.response=='coming'and'Coming to help'or'No application');fact(response,paint(e.response=='coming'and'success'or'dim',response))end
         end
         if not selected.own and(selected.kind=='LIVE'or selected.kind=='EVENT')then
-            detail[#detail+1]={text=tr('My role')..': '..Z.Locale.Role(Z.Logic.Role(Z.db.roles)or'DAMAGER'),height=30}
+            local role=Z.Logic.Role(Z.db.roles)or'DAMAGER';local label,value=tr('My role')..': ',Z.Locale.Role(role)
+            fact(label..value,pair(label,value,DETAIL_ROLE_COLOR[role]))
         end
-        local reason,outside=B.Reason(selected);if reason then detail[#detail+1]={text=reason,height=48};if outside then detail[#detail+1]={text=tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget'),height=44}end end
-        if selected.saved then detail[#detail+1]={text=tr('Saved state; verification pending'),height=44}end
-        if selected.data and selected.data.note and selected.data.note~=''then local note=tr('Comment')..'\n'..selected.data.note;detail[#detail+1]={text=note,height=measuredHeight(note,U.activityDetail.width-20,48)}end
-
-    else detail={{text=tr('Select an activity to see its details and actions.'),height=72}}end
+        local reason,outside=B.Reason(selected)
+        if reason then
+            fact(reason,paint('textSoft',reason),measuredHeight(reason,width,DETAIL_FACT_HEIGHT))
+            if outside then local text=tr(Z.SessionPlans.store and Z.SessionPlans.store.mode=='DAY'and'Continues tomorrow'or'Outside your session time budget');fact(text,paint('warning',text),measuredHeight(text,width,DETAIL_FACT_HEIGHT))end
+        end
+        if selected.saved then local text=tr('Saved state; verification pending');fact(text,paint('warning',text),measuredHeight(text,width,DETAIL_FACT_HEIGHT))end
+        if selected.data and selected.data.note and selected.data.note~=''then
+            local note=tr('Comment')..'\n'..selected.data.note
+            detail[#detail+1]={text=note,display=paint('goldDim',Z.Kit.Upper(tr('Comment')))..'\n'..paint('text',selected.data.note),height=measuredHeight(note,width,48)}
+        end
+    else
+        local hint=tr('Select an activity to see its details and actions.')
+        detail={{text=hint,display=paint('muted',hint),flat=true,icon=Z.Theme.IconSpec('info'),iconColor='muted',iconSize=14,iconTop=true,textInset=30,height=72}}
+    end
     H.rows(U.activityDetail,detail,48)
 end
 -- Today page. Top to bottom: four figures, the private wishes (cards expose only the saved, active
@@ -193,7 +221,6 @@ local function refreshWishSummary(P,state)
     U.LayoutHomeWishes()
 end
 -- Feed rows keep their plain data text (item.text); item.display adds the visual weighting.
-local function paint(key,value)return'|cff'..Z.Theme.PaletteHex(key)..value..'|r'end
 local function feedDisplay(text)
     local first,rest=text:match('^([^\n]*)\n?(.*)$')
     local title,meta=first:match('^(.-)( · .*)$')
