@@ -24,14 +24,18 @@ local function bindNote(key)
 end
 function U.RefreshSocialDiary()
     if not U.socialDiary then return end
-    local diary=D();local rows=U.SocialDiaryRows();local items={}
+    local diary=D();local rows=U.SocialDiaryRows();local items={};local K=Z.Kit
     local maxPage=math.max(1,math.ceil(#rows/PAGE));U.socialDiaryPage=math.max(1,math.min(U.socialDiaryPage or 1,maxPage))
     U.socialDiaryEnabled:SetChecked(diary.Enabled())
     for id,check in pairs(U.socialDiarySources)do check:SetChecked(diary.SourceEnabled(id));check:SetEnabled(diary.Enabled())end
     for i=(U.socialDiaryPage-1)*PAGE+1,math.min(U.socialDiaryPage*PAGE,#rows)do local r=rows[i]
         local marks={};if r.known then marks[#marks+1]=tr('Known')end;if r.favorite then marks[#marks+1]=tr('Favorite')end;if r.note~=''then marks[#marks+1]=tr('With note')end
-        items[#items+1]={text=r.target..(#marks>0 and(' · '..table.concat(marks,', '))or'')..'\n'..tr('Last encounter')..': '..when(r.last)..'\n'..tr('%d encounters',r.count),
-            height=58,selected=r.key==U.socialDiaryKey,click=function()U.SelectSocialDiary(r.key,r.target)end}
+        -- Visual weighting only (display): bright name, marks in dimmed gold, receding meta lines.
+        local markText=#marks>0 and(' · '..table.concat(marks,', '))or'';local lastLabel=tr('Last encounter')..': '
+        items[#items+1]={text=r.target..markText..'\n'..lastLabel..when(r.last)..'\n'..tr('%d encounters',r.count),
+            display=K.Paint('text',r.target)..(markText~=''and K.Paint('goldDim',markText)or'')..'\n'..K.Fact(lastLabel,when(r.last),'textSoft')..'\n'..K.Paint('dim',tr('%d encounters',r.count)),
+            -- Three fixed lines: a long first line is cut off instead of pushing the count out of the row.
+            noWrap=true,height=58,selected=r.key==U.socialDiaryKey,click=function()U.SelectSocialDiary(r.key,r.target)end}
     end
     H.rows(U.socialDiaryList,items,58)
     U.socialDiaryCount:SetText(tr('Players')..' ('..#rows..') · '..U.socialDiaryPage..'/'..maxPage..(diary.readOnly and(' · '..tr('The social diary uses a newer format.'))or''))
@@ -39,16 +43,27 @@ function U.RefreshSocialDiary()
     local key=U.socialDiaryKey;local r=selectedRow(rows)
     local target=r and r.target or U.socialDiaryTarget
     local p=key and diary.Get(key)
+    -- The right column is a block of facts about the selected player, not a list: flat rows without cells.
+    -- item.text stays the data contract; display dims labels and brightens values.
     local details={}
+    local function fact(text,display,height)details[#details+1]={text=text,display=display,flat=true,textInset=0,height=height}end
     if not key then
-        details[1]={text=tr(diary.Enabled()and'Select a player.'or'Automatic recording is off. Known players, favorites and notes are still listed.'),height=48}
+        local hint=tr(diary.Enabled()and'Select a player.'or'Automatic recording is off. Known players, favorites and notes are still listed.')
+        fact(hint,K.Paint('muted',hint),48)
     else
         local favorite=Z.Social.IsFavorite(key);local known=diary.IsKnown(key)
-        details[#details+1]={text=(target or key)..(p and p.level and(' · '..tr('Level')..' '..p.level)or'')..(p and p.classFile and(' · '..Z.Locale.Class(nil,p.classFile))or''),height=40}
-        details[#details+1]={text=tr('First contact')..': '..when(p and p.first)..'\n'..tr('Last encounter')..': '..when(p and p.last)..'\n'..tr('%d encounters',p and p.count or 0),height=58}
+        local name=target or key
+        local meta=(p and p.level and(' · '..tr('Level')..' '..p.level)or'')..(p and p.classFile and(' · '..Z.Locale.Class(nil,p.classFile))or'')
+        details[1]={text=name..meta,display=K.Paint('text',name)..(meta~=''and K.Paint('dim',meta)or''),section=true,textInset=0,height=34}
+        local first,last,count=tr('First contact')..': ',tr('Last encounter')..': ',tr('%d encounters',p and p.count or 0)
+        fact(first..when(p and p.first)..'\n'..last..when(p and p.last)..'\n'..count,
+            K.Fact(first,when(p and p.first))..'\n'..K.Fact(last,when(p and p.last))..'\n'..K.Paint('dim',count),58)
         local timeline=diary.Timeline(key)
-        if #timeline==0 then details[#details+1]={text=tr('No recorded encounters.'),height=36}end
-        for _,e in ipairs(timeline)do details[#details+1]={text=when(e.at)..(e.zone~=''and(' · '..e.zone)or'')..'\n'..e.text,height=40}end
+        if #timeline==0 then local none=tr('No recorded encounters.');fact(none,K.Paint('muted',none),36)end
+        for _,e in ipairs(timeline)do
+            local head=when(e.at)..(e.zone~=''and(' · '..e.zone)or'')
+            fact(head..'\n'..e.text,K.Paint('dim',head)..'\n'..K.Paint('textSoft',e.text),40)
+        end
         U.socialDiaryKnown:SetText(tr(known and'Remove known mark'or'Mark as known'))
         U.socialDiaryFavorite:SetText(tr(favorite and'Remove favorite'or'Add favorite'))
     end
@@ -86,8 +101,12 @@ end
 function U.CreateSocialDiary(helpers)
     H=helpers;local diary=D()
     local f=H.panel(U.frame);U.socialDiary=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,550)
-    H.label(f,'Social diary',16,-18,400,'GameFontNormalLarge')
-    H.label(f,'Private and local. Never shared.',330,-22,304)
+    local title=H.label(f,'Social diary',16,-18,400,'GameFontNormalLarge')
+    -- Dialog head: the title in a band with a close symbol; the privacy line sits right-aligned in the band.
+    Z.Kit.DialogHeader(f,title,function()f:Hide()end)
+    local privacy=H.label(f,'Private and local. Never shared.',330,-22,304)
+    privacy:ClearAllPoints();privacy:SetPoint('TOPRIGHT',f,'TOPRIGHT',-44,-16);privacy:SetWidth(260);privacy:SetJustifyH('RIGHT')
+    Z.Theme.Font(privacy,'caption','dim')
     U.socialDiaryEnabled=H.checkbox(f,tr('Record encounters automatically'),16,-48,618,function(self)
         local ok,why=diary.SetEnabled(self:GetChecked()==true);if not ok then U.Message(tr(why))end;U.RefreshSocialDiary()
     end)
@@ -102,8 +121,10 @@ function U.CreateSocialDiary(helpers)
     U.socialDiaryMode=H.selector(f,'Filter',226,-104,190,{'D_ALL','D_KNOWN','D_FAVORITES','D_NOTES','D_GROUPED'},reset,function(v)return tr(MODES[v]or v)end)
     U.socialDiarySort=H.selector(f,'Sort',426,-104,208,{'D_LAST','D_COUNT','D_NAME'},reset,function(v)return tr(SORTS[v]or v)end)
     U.socialDiaryCount=H.label(f,'',16,-158,618)
-    U.socialDiaryList=H.list(f,16,-178,252,322);U.socialDiaryDetails=H.list(f,290,-178,344,196)
+    U.socialDiaryList=H.list(f,16,-178,252,322);U.socialDiaryDetails=Z.Kit.InfoBlock(H.list(f,290,-178,344,196))
     U.socialDiaryNote=H.edit(f,'Private note',290,-382,344,500,true);U.socialDiaryNote:SetHeight(40)
+    -- The multi-line box has no visible field of its own in the client: draw one.
+    Z.Theme.FieldBackground(U.socialDiaryNote)
     U.socialDiaryKnown=H.button(f,tr('Mark as known'),290,-446,110,function()
         local key=U.socialDiaryKey;if not key then return end
         local ok,why=diary.SetKnown(key,U.socialDiaryTarget,not diary.IsKnown(key));if not ok then U.Message(tr(why))end;U.RefreshSocialDiary()
