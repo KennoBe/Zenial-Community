@@ -11,6 +11,30 @@ local NAV_ICONS, selectNav, updateNavPath, rows, keys = S.NAV_ICONS, S.selectNav
 local peerOnline, stateName, deliveryState, peerLocation = S.peerOnline, S.stateName, S.deliveryState, S.peerLocation
 local peerLocationLine, priorContactsText = S.peerLocationLine, S.priorContactsText
 
+-- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays
+-- the data contract. With a symbol name the row gets the small atlas symbol of the other pages.
+local function weigh(items, symbol)
+    local K = Z.Kit
+    if not K then
+        return
+    end
+    for _, item in ipairs(items) do
+        item.display = K.Lines(item.text)
+        if symbol and T and T.IconSpec then
+            -- A row that brings its own symbol size keeps it (quest rows: 20, category heads: 14).
+            item.icon, item.iconColor, item.iconSize, item.textInset = T.IconSpec(symbol), item.selected and 'gold' or 'dim', item.iconSize or 18, 40
+        end
+    end
+end
+-- Palette-coloured text for labels and display strings; plain text when the kit is not loaded.
+local function paint(key, value)
+    local K = Z.Kit
+    return K and K.Paint(key, value) or tostring(value)
+end
+local function dimLine(value)
+    return value == '' and '' or paint('dim', value)
+end
+
 function U.OpenSharedQuestRequest()
     local chosen
     for _, q in ipairs(Z.QuestHelper.quests) do
@@ -110,8 +134,9 @@ function U.RefreshSharedQuests()
             height = 30,
             iconSize = 14,
             icon = isCollapsed and 'Interface\\Buttons\\UI-PlusButton-Up' or 'Interface\\Buttons\\UI-MinusButton-Up',
-            color = { 0.10, 0.08, 0.05, 0.9 },
+            color = T and { T.PaletteColor('panelRaised', 0.96) } or { 0.10, 0.08, 0.05, 0.9 },
             text = '|cffd9b86b' .. (name ~= '' and name or tr('Other quests')) .. ' |cff9d927b(' .. #group.items .. ')|r',
+            display = Z.Kit and (paint('text', name ~= '' and name or tr('Other quests')) .. paint('dim', ' (' .. #group.items .. ')')) or nil,
             click = function()
                 collapsed[name] = not collapsed[name] or nil
                 U.RefreshSharedQuests()
@@ -129,7 +154,8 @@ function U.RefreshSharedQuests()
             end
         end
     end
-    U.SetEmptyHint(U.sharedQuestList, 'No quests found. Accept a quest in the game and it appears here.')
+    U.SetEmptyHint(U.sharedQuestList, 'No quests found. Accept a quest in the game and it appears here.', 'quests')
+    weigh(items, 'quests')
     rows(U.sharedQuestList, display, 38)
     U.sharedQuestCount:SetText(Z.T('%d quests', #items))
     U.sharedRequest:SetEnabled(selected ~= nil)
@@ -152,7 +178,7 @@ function U.RefreshSharedQuests()
         rows(U.sharedMemberList, {}, 68)
         return
     end
-    U.sharedQuestTitle:SetText('|cffffd36b' .. selected.title .. '|r')
+    U.sharedQuestTitle:SetText(paint('goldText', selected.title))
     local matches = matchIndex[selected.id] or {}
     local members = {}
     local chosen
@@ -163,9 +189,25 @@ function U.RefreshSharedQuests()
         end
         local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[m.classFile]
         local hex = color and string.format('%02x%02x%02x', color.r * 255, color.g * 255, color.b * 255) or 'ffd36b'
+        local location, others = peerLocation(key), Z.T('%d other shared quests', m.common - 1)
+        local levelStatus = tr('Level') .. ' ' .. m.level .. ' · ' .. tr(m.status)
         members[#members + 1] = {
             selected = key == U.sharedMemberKey,
             icon = T and T.ClassIcon(m.classFile),
+            -- The class colour stays on the name; the rest recedes (a colour changes only at the ' · ' boundary).
+            display = Z.Kit
+                and (
+                    '|cff'
+                    .. (color and hex or T.PaletteHex('goldText'))
+                    .. m.target
+                    .. '|r'
+                    .. paint('textSoft', ' · ' .. levelStatus)
+                    .. '\n'
+                    .. dimLine(location)
+                    .. '\n'
+                    .. dimLine(others)
+                )
+                or nil,
             text = '|cff'
                 .. hex
                 .. m.target
@@ -176,9 +218,9 @@ function U.RefreshSharedQuests()
                 .. ' · '
                 .. tr(m.status)
                 .. '\n'
-                .. peerLocation(key)
+                .. location
                 .. '\n'
-                .. Z.T('%d other shared quests', m.common - 1),
+                .. others,
             click = function()
                 U.sharedMemberKey = key
                 U.RefreshSharedQuests()
@@ -227,7 +269,8 @@ function U.RefreshQuestGroups()
             chosen = s
         end
     end
-    U.SetEmptyHint(U.questGroupList, 'No quest groups yet. They appear when other players share quests that overlap with yours.')
+    U.SetEmptyHint(U.questGroupList, 'No quest groups yet. They appear when other players share quests that overlap with yours.', 'members')
+    weigh(items)
     rows(U.questGroupList, items, 42)
     U.questGroupStatus:SetText(
         meta.state ~= 'ready' and tr('Quest data unavailable.')
@@ -265,6 +308,7 @@ function U.RefreshQuestGroups()
             end,
         }
     end
+    weigh(members)
     rows(U.questGroupMembers, members, 52)
     local titles = {}
     for _, q in ipairs(Z.QuestHelper.quests) do
@@ -288,9 +332,13 @@ function U.RefreshQuestGroups()
             text = titles[id] or tostring(id),
             subtitle = text,
             noWrap = true,
+            -- Facts, nothing to click: flat text lines (the list is an info block, see UXPageQuests).
+            flat = true,
+            textInset = 0,
             tooltip = (titles[id] or tostring(id)) .. ' (#' .. id .. ')\n' .. text,
         }
     end
+    weigh(quests)
     rows(U.questGroupQuests, quests, 38)
     if not member then
         U.questGroupMemberKey = nil
@@ -341,6 +389,9 @@ function U.SelectQuest(key, id)
     U.OpenCompactArea('quests')
 end
 S.refreshQuestBrowse = function()
+    if U.LayoutQuestsVisual then
+        U.LayoutQuestsVisual()
+    end
     local items = {}
     local query = string.lower(U.questFilterSearch and U.questFilterSearch:GetText() or '')
     local zone = string.lower(U.questFilterZone and U.questFilterZone:GetText() or '')
@@ -374,7 +425,8 @@ S.refreshQuestBrowse = function()
             }
         end
     end
-    U.SetEmptyHint(U.questBrowseList, 'No quest requests match. Change the filters or create your own request under My Quest Request.')
+    U.SetEmptyHint(U.questBrowseList, 'No quest requests match. Change the filters or create your own request under My Quest Request.', 'search')
+    weigh(items, 'quests')
     rows(U.questBrowseList, items, 80)
     if U.questBrowseCount then
         U.questBrowseCount:SetText(#items == 1 and '1 Questanfrage' or #items .. ' Questanfragen')
@@ -392,9 +444,8 @@ S.refreshQuestBrowse = function()
     end
     local c = Z.db.contacts[U.questKey]
     U.questBrowseDetail:SetText(
-        '|cffffd36b'
-            .. q.title
-            .. '|r\n'
+        paint('goldText', q.title)
+            .. '\n'
             .. (c and c.target or U.questKey)
             .. '\n'
             .. peerLocationLine(U.questKey, 'Leader current location')
@@ -461,7 +512,8 @@ S.refreshQuestOutgoing = function()
     if not selected then
         U.questOutgoingToken = nil
     end
-    U.SetEmptyHint(U.questOutgoingList, 'You have not offered help yet. Open Quest Requests and press Offer help.')
+    U.SetEmptyHint(U.questOutgoingList, 'You have not offered help yet. Open Quest Requests and press Offer help.', 'quests')
+    weigh(display, 'quests')
     rows(U.questOutgoingList, display, 68)
     U.questOutgoingCount:SetText(#display == 1 and tr('1 Hilfsangebot') or #display .. tr(' Hilfsangebote'))
     local chosen
@@ -477,9 +529,8 @@ S.refreshQuestOutgoing = function()
     end
     Z.Notifications.ReadVisible('quests', 'outgoing', 'quests:outgoing:' .. chosen.key .. ':' .. chosen.id)
     U.questOutgoingDetail:SetText(
-        '|cffffd36b'
-            .. chosen.content
-            .. '|r\n'
+        paint('goldText', chosen.content)
+            .. '\n'
             .. chosen.target
             .. '\n'
             .. peerLocationLine(chosen.key, 'Leader current location')
@@ -567,7 +618,8 @@ function U.CaptureQuestDraft()
     end
     if U.questFormPreview then
         U.questFormPreview:SetText(
-            '|cffffd36bVORSCHAU|r\n'
+            paint('goldText', 'VORSCHAU')
+                .. '\n'
                 .. (draft.title ~= '' and draft.title or 'Titel eingeben')
                 .. ((draft.zone or '') ~= '' and '\n' .. draft.zone or '')
                 .. '\nLevel '
@@ -675,7 +727,8 @@ local function refreshQuestApplicants()
         U.questApplicantKey = nil
     end
     U.questApplicantCount:SetText(tr('My helpers') .. ' (' .. open .. ')')
-    U.SetEmptyHint(U.questApplicantList, 'No helpers yet. They appear here as soon as someone offers help.')
+    U.SetEmptyHint(U.questApplicantList, 'No helpers yet. They appear here as soon as someone offers help.', 'members')
+    weigh(items, 'members')
     rows(U.questApplicantList, items, 64)
     local r = U.questApplicantKey and bucket[U.questApplicantKey]
     if r and q then
@@ -716,9 +769,7 @@ S.refreshQuestMine = function()
     U.questMineSummary:SetShown(q ~= nil)
     if q then
         U.questOwnSummary:SetText(
-            '|cffffd36b'
-                .. q.title
-                .. '|r'
+            paint('goldText', q.title)
                 .. (q.zone ~= '' and ' · ' .. q.zone or '')
                 .. ' · Level '
                 .. q.min

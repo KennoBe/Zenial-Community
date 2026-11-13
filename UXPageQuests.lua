@@ -6,6 +6,20 @@ local tr = S.tr
 local label, button, navButton, edit, selector, list, panel = S.label, S.button, S.navButton, S.edit, S.selector, S.list, S.panel
 local panelContent, decideQuest = S.panelContent, S.decideQuest
 
+-- Plate behind the quest-help filters, scaled with the page width like the members page. It belongs to the
+-- browse frame (so it is gone with it in the other sub views) and is hidden while the compact detail is open.
+function U.LayoutQuestsVisual()
+    local bar = U.questFilterBar
+    if not bar then
+        return
+    end
+    local page = U.pages and U.pages[4]
+    local pageWidth = page and page:GetWidth()
+    local horizontal = (type(pageWidth) == 'number' and pageWidth > 0 and pageWidth or 856) / 856
+    bar:Place(0, 0, 850 * horizontal, 56)
+    bar:SetShown(U.compactArea ~= 'quests')
+end
+
 function S.createQuestsPage(f)
     local p = U.pages[4]
     U.questBrowseTab = navButton(p, tr('Questanfragen'), 0, 0, 170, function()
@@ -57,28 +71,31 @@ function S.createQuestsPage(f)
         S.refreshQuestBrowse()
     end)
     U.questApplyFrame:Hide()
-    U.questFilterSearch = edit(U.questBrowseFrame, tr('Spieler, Titel oder Notiz'), 0, 0, 300, 96)
-    U.questFilterZone = edit(U.questBrowseFrame, tr('Zone'), 315, 0, 210, 64)
-    U.questFilterLevel = edit(U.questBrowseFrame, tr('Level'), 540, 0, 90, 3)
+    -- Filter bar: a plate of page textures behind the filters (placed by U.LayoutQuestsVisual).
+    U.questFilterBar = Z.Kit and Z.Kit.FilterBar(U.questBrowseFrame)
+    U.questFilterSearch = edit(U.questBrowseFrame, tr('Spieler, Titel oder Notiz'), 10, -6, 300, 96)
+    U.questFilterZone = edit(U.questBrowseFrame, tr('Zone'), 325, -6, 210, 64)
+    U.questFilterLevel = edit(U.questBrowseFrame, tr('Level'), 550, -6, 90, 3)
     U.questFilterSearch:SetScript('OnTextChanged', S.refreshQuestBrowse)
     U.questFilterZone:SetScript('OnTextChanged', S.refreshQuestBrowse)
     U.questFilterLevel:SetScript('OnTextChanged', S.refreshQuestBrowse)
-    U.questFilterReset = button(U.questBrowseFrame, tr('Filter zurücksetzen'), 650, -17, 170, function()
+    U.questFilterReset = button(U.questBrowseFrame, tr('Filter zurücksetzen'), 660, -23, 170, function()
         U.questFilterSearch:SetText('')
         U.questFilterZone:SetText('')
         U.questFilterLevel:SetText('')
         S.refreshQuestBrowse()
     end)
     U.questBrowseList:ClearAllPoints()
-    U.questBrowseList:SetPoint('TOPLEFT', 0, -68)
-    U.questBrowseList:SetSize(410, 302)
+    U.questBrowseList:SetPoint('TOPLEFT', 0, -86)
+    U.questBrowseList:SetSize(410, 284)
     U.questBrowseDetail:ClearAllPoints()
     U.questBrowseDetail:SetPoint('TOPLEFT', 430, -68)
-    U.questBrowseCount = label(U.questBrowseFrame, '0 Questanfragen', 0, -50, 220, 'GameFontNormal')
+    U.questBrowseCount = label(U.questBrowseFrame, '0 Questanfragen', 0, -64, 220, 'GameFontNormal')
     U.questBack = button(U.questBrowseFrame, tr('← Zurück zur Liste'), 665, 0, 180, function()
         U.CloseCompactArea('quests')
     end)
     U.questBack:Hide()
+    U.LayoutQuestsVisual()
     U.sharedQuestTab = navButton(p, 'Shared Quests', 0, 0, 165, function()
         U.SetQuestView('shared')
     end)
@@ -113,7 +130,8 @@ function S.createQuestsPage(f)
     U.questGroupSummary = label(U.questGroupFrame, '', 350, -26, 496, 'GameFontHighlight')
     U.questGroupSummary:SetHeight(42)
     U.questGroupMembers = list(U.questGroupFrame, 350, -74, 496, 112)
-    U.questGroupQuests = list(U.questGroupFrame, 350, -192, 496, 112)
+    -- Only shows which quests the members share and cannot be clicked: an info block, not a list of cells.
+    U.questGroupQuests = Z.Kit.InfoBlock(list(U.questGroupFrame, 350, -192, 496, 112))
     U.questGroupActionState = label(U.questGroupFrame, '', 350, -312, 496)
     U.questGroupActionState:SetHeight(45)
     U.questGroupInvite = button(U.questGroupFrame, 'Invite', 350, -366, 145, U.InviteQuestGroupMember)
@@ -251,7 +269,7 @@ function S.createQuestsPage(f)
     U.questFields.note = edit(U.questFormContent, tr('Notiz (optional)'), 0, -118, 640, 96, true)
     U.questNoteCount = label(U.questFormContent, '0 / 96', 558, -187, 82)
     U.questNoteCount:SetJustifyH('RIGHT')
-    U.questFormPreview = label(U.questFormContent, '|cffffd36bVORSCHAU|r', 665, -60, 167, 'GameFontHighlight')
+    U.questFormPreview = label(U.questFormContent, Z.Kit.Paint('goldText', 'VORSCHAU'), 665, -60, 167, 'GameFontHighlight')
     U.questFormPreview:SetHeight(125)
     U.questSave = button(U.questFormContent, 'Erstellen', 0, -225, 190, function()
         local now = A.Now()
