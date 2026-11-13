@@ -1247,6 +1247,7 @@ DE["Past contacts and requests"]="Vergangene Kontakte und Anfragen"
 DE["Settings of your installed ZENIAL addons"]="Einstellungen deiner installierten ZENIAL-Addons"
 DE["Your wishes, open tasks and next appointments"]="Deine Wünsche, offenen Aufgaben und nächsten Termine"
 DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge und Daten"
+DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 local EN={
     ["%d characters taken over from ZENIAL Utility, %d not assignable."]="%d characters imported from ZENIAL Utility; %d could not be matched safely.",

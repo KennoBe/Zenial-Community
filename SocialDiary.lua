@@ -1,12 +1,16 @@
 -- Private encounter diary. Account-scoped like favorites and notes, stored only
 -- in SavedVariables. No profile field, transport, mesh or companion topic reads
 -- this store, and chat messages are never recorded.
+-- The diary is always on and records the players you were in a group with. Players who were only
+-- targeted, hovered or seen nearby are no longer recorded; rows and events an earlier version stored
+-- for them stay in SavedVariables untouched but are not listed.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local D={VERSION=1,MAX_PLAYERS=2000,PRUNE_TO=1900,MAX_EVENTS=30,RETENTION=180*86400,EVENT_RETENTION=365*86400,
-    GAP=1800,THROTTLE=60,GROUP_THROTTLE=10,DUNGEON_GAP=4*3600,MAX_RECENT=400}
+    GAP=1800,GROUP_THROTTLE=10,DUNGEON_GAP=4*3600}
 Z.SocialDiary=D
-D.SOURCES={"target","mouseover","nameplate","group"}
+-- Event kinds a stored row may carry. Only group and dungeon are still written.
 local KINDS={target=true,mouseover=true,nameplate=true,group=true,dungeon=true}
+local SOURCES={"target","mouseover","nameplate","group"}
 local MAX_TIME=4102444800
 
 local function defaults()
@@ -46,7 +50,7 @@ local function recount()
     local n=0;for _ in pairs(D.store.players)do n=n+1 end;D.count=n
 end
 function D.Initialize()
-    D.recent,D.recentSize,D.lastGroupScan,D.lastGroupSignature={},0,nil,nil;D.revision=0
+    D.lastGroupScan,D.lastGroupSignature=nil,nil;D.revision=0
     local social=Z.Social and Z.Social.store;if not social then return end
     local raw=social.diary;local now=A.Now()
     -- A newer format from a later addon version stays untouched and read-only.
@@ -54,8 +58,10 @@ function D.Initialize()
     if D.readOnly then D.store=defaults();recount();return end
     local store=defaults()
     if type(raw)=="table"then
+        -- The former opt-in switch and source choices are carried along unchanged for older addon versions;
+        -- this version no longer reads them.
         store.enabled=raw.enabled==true
-        if type(raw.sources)=="table"then for _,id in ipairs(D.SOURCES)do store.sources[id]=raw.sources[id]~=false end end
+        if type(raw.sources)=="table"then for _,id in ipairs(SOURCES)do store.sources[id]=raw.sources[id]~=false end end
         local inspected=0
         for key,row in pairs(type(raw.players)=="table"and raw.players or{})do
             inspected=inspected+1;if inspected>D.MAX_PLAYERS*2 then break end
@@ -64,17 +70,8 @@ function D.Initialize()
     end
     social.diary=store;D.store=store;recount();D.Cleanup(now)
 end
-function D.Enabled()return D.store~=nil and not D.readOnly and D.store.enabled==true end
-function D.SetEnabled(value)
-    if not D.store or D.readOnly then return nil,"The social diary uses a newer format."end
-    D.store.enabled=value==true;changed();return true
-end
-function D.SourceEnabled(id)return D.store~=nil and D.store.sources[id]==true end
-function D.SetSource(id,value)
-    if not D.store or D.readOnly then return nil,"The social diary uses a newer format."end
-    if D.store.sources[id]==nil then return nil,"Invalid source."end
-    D.store.sources[id]=value==true;changed();return true
-end
+-- Always on; only a newer, unreadable format stops recording.
+function D.Enabled()return D.store~=nil and not D.readOnly end
 -- Removes expired unprotected rows and, when over the cap, the oldest
 -- unprotected rows. Known players, favorites and players with a note stay.
 function D.Cleanup(now)
@@ -136,16 +133,6 @@ function D.Record(key,target,kind,info)
     end
     p.last=now;changed();return p,added
 end
-local function remember(id)
-    if not id then return true end
-    local clock=A.Clock()or 0;local seen=D.recent[id]
-    if seen and clock-seen<D.THROTTLE then return false end
-    if not seen then
-        if D.recentSize>=D.MAX_RECENT then D.recent,D.recentSize={},0 end
-        D.recentSize=D.recentSize+1
-    end
-    D.recent[id]=clock;return true
-end
 local function identity(unit)
     local key,target,realm=A.UnitIdentity(unit);if not key then return nil end
     local faction=A.Call(UnitFactionGroup,unit)or Z.me.faction
@@ -155,24 +142,12 @@ local function details(unit)
     local _,classFile=A.Call(UnitClass,unit);local level=A.Call(UnitLevel,unit)
     return{classFile=classFile,level=level,zone=zoneText()}
 end
--- Target, mouseover and nameplate units. Throttled per GUID so repeated
--- events for the same player cost one table lookup.
-function D.ObserveUnit(unit,source)
-    if not D.Enabled()or not D.store.sources[source]or type(unit)~="string"then return nil end
-    if source~="target"and A.Call(InCombatLockdown)==true then return nil end
-    if A.Call(UnitIsPlayer,unit)~=true or A.Call(UnitIsUnit,unit,"player")==true then return nil end
-    local guid=A.Call(UnitGUID,unit);guid=type(guid)=="string"and #guid<=64 and guid or nil
-    if guid and not remember(source..":"..guid)then return nil end
-    local key,target=identity(unit);if not key then return nil end
-    if not guid and not remember(source..":"..key)then return nil end
-    return D.Record(key,target,source,details(unit))
-end
 local function instance()
     local name,instanceType=A.Call(GetInstanceInfo)
     if(instanceType=="party"or instanceType=="raid")and L.Text(name,96)then return name end
 end
 function D.ObserveGroup(force)
-    if not D.Enabled()or not D.store.sources.group then return 0 end
+    if not D.Enabled()then return 0 end
     local total=A.Call(GetNumGroupMembers)or 0;if type(total)~="number"or total<2 then return 0 end
     local dungeon=instance();local signature=tostring(total).."\t"..(dungeon or"")
     local clock=A.Clock()or 0
@@ -192,15 +167,12 @@ function D.ObserveGroup(force)
     end
     return n
 end
-function D.OnEvent(event,unit)
+function D.OnEvent(event)
     if not D.store then return end
-    if event=="PLAYER_TARGET_CHANGED"then D.ObserveUnit("target","target")
-    elseif event=="UPDATE_MOUSEOVER_UNIT"then D.ObserveUnit("mouseover","mouseover")
-    elseif event=="NAME_PLATE_UNIT_ADDED"then if type(unit)=="string"and unit:match("^nameplate%d+$")then D.ObserveUnit(unit,"nameplate")end
-    elseif event=="GROUP_ROSTER_UPDATE"then D.ObserveGroup(false)
+    if event=="GROUP_ROSTER_UPDATE"then D.ObserveGroup(false)
     elseif event=="PLAYER_ENTERING_WORLD"or event=="ZONE_CHANGED_NEW_AREA"then D.ObserveGroup(true)end
 end
--- Manual actions work while automatic recording is off.
+-- Manual marks work for any player, grouped with or not.
 function D.SetKnown(key,target,value)
     if not D.store or D.readOnly then return nil,"The social diary uses a newer format."end
     if not L.ValidIdentityKey(key)or key==Z.me.key or Z.db.blocked[key]then return nil,"Invalid player."end
@@ -230,7 +202,8 @@ local function grouped(p)
     for _,e in ipairs(p and p.events or{})do if e.kind=="group"or e.kind=="dungeon"then return true end end
     return false
 end
--- Diary rows plus favorites and private notes that have no diary row yet.
+-- Players you were grouped with, plus every player you marked yourself (known, favorite, private note),
+-- with or without a diary row. Rows that only hold sightings from an earlier version are not listed.
 -- Favorites and notes are read from the shared social store, never copied.
 function D.List(filter)
     filter=filter or{};local mode=filter.mode or"ALL";local sort=filter.sort or"LAST"
@@ -245,7 +218,8 @@ function D.List(filter)
             local r={key=key,target=p and p.target or displayTarget(key),first=p and p.first,last=p and p.last,count=p and p.count or 0,
                 known=p and p.known==true or false,favorite=Z.Social.IsFavorite(key),note=note,classFile=p and p.classFile,level=p and p.level,
                 grouped=grouped(p),lastZone=p and p.events[#p.events]and p.events[#p.events].zone or""}
-            local include=mode=="ALL"or mode=="KNOWN"and r.known or mode=="FAVORITES"and r.favorite or mode=="NOTES"and note~=""or mode=="GROUPED"and r.grouped
+            local include=r.grouped or r.known or r.favorite or note~=""
+            include=include and(mode=="ALL"or mode=="KNOWN"and r.known or mode=="FAVORITES"and r.favorite or mode=="NOTES"and note~=""or mode=="GROUPED"and r.grouped)
             if include and query~=""then include=string.lower(r.target.." "..note.." "..r.lastZone):find(query,1,true)~=nil end
             if include then out[#out+1]=r end
         end
@@ -258,14 +232,15 @@ function D.List(filter)
     end)
     return out
 end
-local LABELS={target="Targeted",mouseover="Mouseover",nameplate="Seen nearby",group="Grouped together",dungeon="Dungeon together"}
+local LABELS={group="Grouped together",dungeon="Dungeon together"}
 function D.KindLabel(kind)return Z.T(LABELS[kind]or kind or"")end
 -- Diary observations merged with the existing contact history; nothing from
 -- History is copied into the diary store.
 function D.Timeline(key)
     local out={};local p=D.store and D.store.players[key]
     for _,e in ipairs(p and p.events or{})do
-        out[#out+1]={at=e.at,kind=e.kind,zone=e.zone or"",text=D.KindLabel(e.kind)..(e.detail and(": "..e.detail)or""),source="diary"}
+        -- Sightings stored by an earlier version are not part of the timeline.
+        if LABELS[e.kind]then out[#out+1]={at=e.at,kind=e.kind,zone=e.zone or"",text=D.KindLabel(e.kind)..(e.detail and(": "..e.detail)or""),source="diary"}end
     end
     local H=Z.History
     for _,e in ipairs(H and H.byPeer and H.byPeer[key]or{})do
