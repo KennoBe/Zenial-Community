@@ -1254,6 +1254,10 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["1 quest in common"]="1 gemeinsame Quest"
+DE["Players with quests in common"]="Spieler mit gemeinsamen Quests"
+DE["Switch it on under Settings, Privacy, to see who has the same quests."]="Schalte sie unter Einstellungen, Datenschutz, ein, um zu sehen, wer dieselben Quests hat."
+DE["Nobody online shares one of your quests right now."]="Gerade teilt niemand, der online ist, eine deiner Quests."
 DE["You can look for at most 3 activities at once."]="Du kannst höchstens 3 Aktivitäten gleichzeitig suchen."
 DE["Only dungeons, raids and battlegrounds can be combined in a search."]="Nur Dungeons, Raids und Schlachtfelder lassen sich in einer Suche kombinieren."
 DE["You are not looking for a group."]="Du suchst gerade keine Gruppe."

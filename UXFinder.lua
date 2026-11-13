@@ -369,6 +369,59 @@ local function whisperAction(r, state)
     end }
 end
 
+-- Quests the player has in common with another member. The members share the ids of their quest log
+-- (QuestHelper.lua, their own privacy switch); titles come from the player's own log. nil means unknown
+-- (not shared, offline, own log not read yet) and is never shown as "none".
+local function commonQuests(key)
+    local Q = Z.QuestHelper
+    if not Q or type(Q.MatchMember) ~= 'function' or not key or key == Z.me.key then
+        return nil
+    end
+    return Q.MatchMember(key)
+end
+local function questTitles(ids)
+    local Q, byID, titles = Z.QuestHelper, {}, {}
+    for _, quest in ipairs(Q and Q.quests or {}) do
+        byID[quest.id] = quest.title
+    end
+    for _, id in ipairs(ids or {}) do
+        if byID[id] then
+            titles[#titles + 1] = byID[id]
+        end
+    end
+    table.sort(titles)
+    return titles
+end
+local function commonText(n)
+    return plural('1 quest in common', '%d shared quests', n)
+end
+-- Card of a member who shares quests with the player (Questing tab).
+local function describePartner(m)
+    local d = { actions = {}, glyph = 'quests' }
+    local hex = T.ClassColorHex and T.ClassColorHex(m.classFile)
+    d.title = hex and ('|cff' .. hex .. m.target .. '|r') or m.target
+    local where = U.Shared.peerLocation and U.Shared.peerLocation(m.key)
+    d.meta = Z.T('Level %d', tonumber(m.level) or 0)
+        .. (m.classFile and ' · ' .. L.ClassName(nil, m.classFile) or '')
+        .. ' · '
+        .. tr(m.status)
+        .. (type(where) == 'string' and where ~= '' and ' · ' .. where or '')
+    d.common, d.commonTitles = m.common, questTitles(m.quests)
+    d.roles = paint('goldBright', commonText(m.common))
+    d.note, d.noteRaw = table.concat(d.commonTitles, ', '), true
+    local Q = Z.QuestHelper
+    d.actions[1] = { text = tr('Invite'), enabled = Q.CanInvite(m.key, m.quests[1]) == true, click = function()
+        local ok, why = Q.Invite(m.key, m.quests[1])
+        U.Message(ok and tr('Invitation submitted; awaiting response.') or tr(why or 'Quest match no longer available.'))
+        U.RefreshFinder()
+    end }
+    d.actions[2] = { text = tr('Whisper'), click = function()
+        if not A.Whisper(m.target) then
+            U.Message(tr('Whisper is unavailable.'))
+        end
+    end }
+    return d
+end
 -- Returns what a card shows for row r. context.named: the card stands among other activities and names its own.
 local function describe(r, context)
     local d = { actions = {} }
@@ -376,6 +429,10 @@ local function describe(r, context)
     local e = C.Get(r.title)
     d.entry, d.glyph = e, r.kind == 'QUEST' and 'quests' or r.kind == 'PVP' and 'pvp' or r.kind == 'EVENT' and 'calendar' or nil
     local name = r.kind == 'QUEST' and r.title or activityName(r.title)
+    local match = not r.own and commonQuests(r.owner)
+    if match then
+        d.common, d.commonTitles = match.common, questTitles(match.quests)
+    end
     if r.kind == 'LIVE' and r.data and C.IsSearch(r.data) then
         local g = r.data
         local classFile, class = ownerFacts(r)
@@ -555,6 +612,28 @@ local function createCard(parent)
         end)
         card.chips[index].zenialRole = role
     end
+    -- Titles of the quests in common, as far as the own log knows them.
+    card:SetScript('OnEnter', function(self)
+        local titles = self.zenialCommon
+        if not titles or #titles == 0 or not GameTooltip or not GameTooltip.SetOwner then
+            return
+        end
+        GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+        GameTooltip:AddLine(commonText(#titles), 1, 0.85, 0.42)
+        for index, title in ipairs(titles) do
+            if index > 12 then
+                GameTooltip:AddLine('…', 0.78, 0.8, 0.85)
+                break
+            end
+            GameTooltip:AddLine(title, 0.78, 0.8, 0.85)
+        end
+        GameTooltip:Show()
+    end)
+    card:SetScript('OnLeave', function()
+        if GameTooltip and GameTooltip.Hide then
+            GameTooltip:Hide()
+        end
+    end)
     card:SetScript('OnClick', function(self)
         if self.zenialClick then
             self.zenialClick()
@@ -564,12 +643,13 @@ local function createCard(parent)
 end
 local function updateCard(card, item, width, context)
     local r = item.row
-    local d = describe(r, context)
+    local d = item.partner and describePartner(item.partner) or describe(r, context)
     card.row = r
+    card.zenialCommon = d.commonTitles
     card:SetSize(width, CARD_HEIGHT)
     card.zenialClick = d.click
     local left = 12
-    local picture = context.thumbs == true
+    local picture = context.thumbs == true and not item.partner
     card.picture:SetShown(false)
     if picture then
         card.picture:Place('TOPLEFT', 8, -8, 124, 70)
@@ -586,7 +666,7 @@ local function updateCard(card, item, width, context)
     if d.badge then
         badgeWidth = setBadge(card.badge, d.badge, d.tone or 'neutral') + 10
     end
-    local applying = F.applyKey == r.key and d.apply == true
+    local applying = r ~= nil and F.applyKey == r.key and d.apply == true
     local textWidth = width - left - 12
     card.title:ClearAllPoints()
     card.title:SetPoint('TOPLEFT', left, -9)
@@ -594,7 +674,9 @@ local function updateCard(card, item, width, context)
     oneLine(card.title, math.max(40, textWidth - badgeWidth), 15)
     card.meta:ClearAllPoints()
     card.meta:SetPoint('TOPLEFT', left, -27)
-    card.meta:SetText(d.meta or '')
+    -- Quests in common with the organizer or the player looking, where both share their quests.
+    local shared = not item.partner and d.common and paint('dim', ' · ') .. paint('goldBright', commonText(d.common)) or ''
+    card.meta:SetText((d.meta or '') .. shared)
     oneLine(card.meta, textWidth, 13)
     card.roles:ClearAllPoints()
     card.roles:SetPoint('TOPLEFT', left, -44)
@@ -665,7 +747,7 @@ local function updateCard(card, item, width, context)
     local note = d.note or ''
     card.note:ClearAllPoints()
     card.note:SetPoint('TOPLEFT', left, -61)
-    card.note:SetText(note ~= '' and '„' .. note .. '“' or '')
+    card.note:SetText(note == '' and '' or d.noteRaw and note or '„' .. note .. '“')
     oneLine(card.note, textWidth, 13)
 end
 
@@ -1044,6 +1126,21 @@ local function renderCategory(snap, top, width, height)
     local items = {}
     local quest = F.view == 'quests'
     if quest then
+        -- Members who share quests with the player, most quests first (QuestGroups keeps the ranking).
+        local Q, G = Z.QuestHelper, Z.QuestGroups
+        local partners = Q and G and G.CurrentCandidates and G.CurrentCandidates() or {}
+        items[#items + 1] = { type = 'section', text = tr('Players with quests in common'), count = #partners }
+        if not Q or not Q.Sharing() then
+            items[#items + 1] = { type = 'hint', text = tr('Quest sharing is disabled.') .. ' ' .. tr('Switch it on under Settings, Privacy, to see who has the same quests.') }
+        elseif #partners == 0 then
+            items[#items + 1] = { type = 'hint', text = tr('Nobody online shares one of your quests right now.') }
+        end
+        for index, partner in ipairs(partners) do
+            if index > 12 then
+                break
+            end
+            items[#items + 1] = { type = 'card', partner = partner }
+        end
         local help = {}
         for _, r in ipairs(snap.other) do
             if r.kind == 'QUEST' then
@@ -1053,8 +1150,14 @@ local function renderCategory(snap, top, width, height)
         addSection(items, tr('Quest assistance'), help, tr('Nobody asks for quest help right now.'))
     end
     addSection(items, tr('Open groups'), ofCategory(snap.groups, category), tr(quest and 'No questing or levelling group is open.' or 'No other group is open.'))
-    addSection(items, tr('Players looking for a group'), ofCategory(snap.seekers, category))
-    addSection(items, tr('Planned'), ofCategory(snap.planned, category))
+    -- Sections without entries are left out here; the open groups above keep their hint.
+    local looking, planned = ofCategory(snap.seekers, category), ofCategory(snap.planned, category)
+    if #looking > 0 then
+        addSection(items, tr('Players looking for a group'), looking)
+    end
+    if #planned > 0 then
+        addSection(items, tr('Planned'), planned)
+    end
     F.stream:ClearAllPoints()
     F.stream:SetPoint('TOPLEFT', 0, -top)
     renderStream(F.stream, width, height, items, width >= 760 and 2 or 1, { named = true, thumbs = true })
