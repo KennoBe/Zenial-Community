@@ -9,6 +9,11 @@ local label, button, navButton, edit, selector, checkbox = S.label, S.button, S.
 local list, panel, craftStatusText, setCraftFeedback = S.list, S.panel, S.craftStatusText, S.setCraftFeedback
 local refreshProfessions, refreshCraftOrders, place = S.refreshProfessions, S.refreshCraftOrders, S.place
 
+-- Lists that only show facts (nothing clickable) are text blocks without a sunken well (D-23).
+local function infoList(view)
+    return Z.Kit and Z.Kit.InfoBlock(view) or view
+end
+
 function S.createCraftPage(f)
     local p = U.pages[2]
     U.craftSearchTab = navButton(p, tr('Suchen'), 0, 0, 150, function()
@@ -36,11 +41,21 @@ function S.createCraftPage(f)
     U.craftSearchFrame = CreateFrame('Frame', nil, p)
     U.craftSearchFrame:SetPoint('TOPLEFT', 0, -40)
     U.craftSearchFrame:SetSize(856, 500)
-    U.recipeSearch = edit(U.craftSearchFrame, tr('Rezept, Gegenstand oder Beruf'), 0, 0, 365, 64)
+    -- Filter plate: textures of the search frame behind the search controls (placed in U.LayoutCraftVisual).
+    U.craftSearchBar = Z.Kit and Z.Kit.FilterBar(U.craftSearchFrame)
+    U.recipeSearch = edit(U.craftSearchFrame, tr('Rezept, Gegenstand oder Beruf'), 10, -4, 365, 64)
+    if Z.Kit and T then
+        local icon = Z.Kit.Icon(U.recipeSearch, 'search', 14, 'muted')
+        icon:SetPoint('LEFT', 8, 0)
+        U.craftSearchIcon = icon
+        if U.recipeSearch.SetTextInsets then
+            U.recipeSearch:SetTextInsets(26, 8, 4, 4)
+        end
+    end
     U.recipeSearch:SetScript('OnTextChanged', U.RecipeSearchChanged)
     U.recipeSearch:SetScript('OnEnterPressed', U.StartRecipeSearch)
-    U.craftSearchButton = button(U.craftSearchFrame, tr('Suchen'), 377, -17, 105, U.StartRecipeSearch)
-    U.craftResetButton = button(U.craftSearchFrame, tr('Zurücksetzen'), 494, -17, 125, function()
+    U.craftSearchButton = button(U.craftSearchFrame, tr('Suchen'), 387, -21, 105, U.StartRecipeSearch)
+    U.craftResetButton = button(U.craftSearchFrame, tr('Zurücksetzen'), 504, -21, 125, function()
         if Z.RecipeSearch then
             Z.RecipeSearch.Cancel()
         end
@@ -49,10 +64,10 @@ function S.createCraftPage(f)
         U.recipeQueryID = nil
         refreshProfessions()
     end)
-    U.craftProfessionFilter = selector(U.craftSearchFrame, tr('Beruf'), 0, -48, 220, { 'ALL_PROFESSIONS' }, U.RecipeSearchChanged)
-    U.craftOnlineFilter = selector(U.craftSearchFrame, tr('Spieler'), 232, -48, 145, { 'ALL', 'ONLINE' }, refreshProfessions)
-    U.professionCount = label(U.craftSearchFrame, tr('0 Ergebnisse'), 389, -66, 105, 'GameFontNormal')
-    U.craftSearchState = label(U.craftSearchFrame, '', 500, -66, 340, 'GameFontHighlightSmall')
+    U.craftProfessionFilter = selector(U.craftSearchFrame, tr('Beruf'), 10, -52, 220, { 'ALL_PROFESSIONS' }, U.RecipeSearchChanged)
+    U.craftOnlineFilter = selector(U.craftSearchFrame, tr('Spieler'), 242, -52, 145, { 'ALL', 'ONLINE' }, refreshProfessions)
+    U.professionCount = label(U.craftSearchFrame, tr('0 Ergebnisse'), 399, -70, 105, 'GameFontNormal')
+    U.craftSearchState = label(U.craftSearchFrame, '', 504, -70, 336, 'GameFontHighlightSmall')
     U.craftSearchState:SetJustifyH('RIGHT')
     U.professionList = list(U.craftSearchFrame, 0, -102, 470, 270)
     U.professionDetail =
@@ -67,7 +82,7 @@ function S.createCraftPage(f)
     end)
     U.craftDetailMaterialsToggle:Hide()
     U.craftDetailMaterialsTitle = label(U.craftSearchFrame, tr('Materials for this recipe'), 495, -272, 345, 'GameFontNormal')
-    U.craftDetailMaterials = list(U.craftSearchFrame, 495, -196, 345, 168)
+    U.craftDetailMaterials = infoList(list(U.craftSearchFrame, 495, -196, 345, 168))
     U.craftDetailMaterialState = label(U.craftSearchFrame, '', 495, -390, 345, 'GameFontHighlightSmall')
     U.craftDetailMaterialState:SetHeight(30)
     U.craftDetailCrafts = edit(U.craftSearchFrame, tr('Crafts to plan'), 495, -416, 90, 6)
@@ -122,7 +137,7 @@ function S.createCraftPage(f)
         U.craftOrderMaterials:SetChecked(false)
         U.RefreshCraftIngredients()
         U.Navigation.Pristine('craftOrderForm')
-    end)
+    end, 'primary')
     U.craftOrderRequest:SetEnabled(false)
     U.craftBack = button(U.craftSearchFrame, tr('← Zurück zur Liste'), 665, 0, 180, function()
         U.CloseCompactArea('craft')
@@ -167,7 +182,7 @@ function S.createCraftPage(f)
     )
     U.craftYieldNote:SetHeight(40)
     U.craftIngredientTitle = label(U.craftOrderForm, tr('Ingredients per craft'), 16, -164, 824, 'GameFontNormal')
-    U.craftIngredientList = list(U.craftOrderForm, 16, -184, 792, 58)
+    U.craftIngredientList = infoList(list(U.craftOrderForm, 16, -184, 792, 58))
     U.craftShoppingSave = button(U.craftOrderForm, tr('Save shopping list'), 16, -250, 220, function()
         local id, err = U.SaveCraftShopping()
         U.Message(id and tr('Private shopping list saved.') or err)
@@ -223,10 +238,36 @@ function S.createCraftPage(f)
     U.craftOrderCancel = button(U.craftOrderForm, tr('Abbrechen'), 250, -326, 220, function()
         U.craftOrderForm:Hide()
     end)
+    -- Dialog head around the title; the request context moves into the band, right of the title. The form's
+    -- other controls start below the 44 px band already.
+    local K = Z.Kit
+    if K then
+        K.DialogHeader(U.craftOrderForm, U.craftOrderTitle, function()
+            U.craftOrderForm:Hide()
+        end)
+    end
     function U.LayoutCraftOrderForm()
         U.craftOrderForm:ClearAllPoints()
         U.craftOrderForm:SetPoint('TOPLEFT', U.craftSearchFrame, 'TOPLEFT', 0, U.compactArea == 'craft' and 0 or -102)
         U.craftOrderForm:SetPoint('BOTTOMRIGHT', U.craftSearchFrame, 'BOTTOMRIGHT', 0, 0)
+        -- The shared form layout places the title again on its own baseline; the head positions it last.
+        local header = U.craftOrderForm.zenialDialogHeader
+        if header then
+            header:SetSubtitle('')
+            local context = U.craftOrderContextText
+            context:ClearAllPoints()
+            local formWidth = U.craftOrderForm:GetWidth()
+            formWidth = type(formWidth) == 'number' and formWidth > 0 and formWidth or 856
+            local x = math.max(260, formWidth - 44 - 480)
+            context:SetPoint('TOPLEFT', x, -15)
+            U.craftOrderTitle:SetWidth(x - 16 - 8)
+            context:SetWidth(formWidth - 44 - x)
+            context:SetHeight(16)
+            context:SetJustifyH('RIGHT')
+            if context.SetWordWrap then
+                context:SetWordWrap(false)
+            end
+        end
     end
     U.LayoutCraftOrderForm()
     U.craftOrderForm:Hide()
@@ -248,7 +289,12 @@ function S.createCraftPage(f)
     if T then
         T.Panel(U.craftNotice, 'inset')
     end
-    label(U.craftNotice, tr('|cffff5555WICHTIG: DAS PASSENDE BERUFSFENSTER MUSS GEÖFFNET SEIN|r'), 14, -12, 790, 'GameFontNormalLarge')
+    -- The translated warning carries its own colour code; the words stay, the colour comes from the palette.
+    local warning = tr('|cffff5555WICHTIG: DAS PASSENDE BERUFSFENSTER MUSS GEÖFFNET SEIN|r')
+    if Z.Kit then
+        warning = Z.Kit.Paint('dangerText', (warning:gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')))
+    end
+    label(U.craftNotice, warning, 14, -12, 790, 'GameFontNormalLarge')
     local scanHelp = label(
         U.craftNotice,
         tr(
@@ -271,7 +317,7 @@ function S.createCraftPage(f)
         U.Message(msg)
         U.SetCraftView('mine')
         setCraftFeedback(msg, ok)
-    end, 'primary')
+    end)
     U.craftScanFeedback = label(
         U.craftMineFrame,
         tr('Der automatische Scan wartet auf ein eigenes geöffnetes Berufsfenster.'),
@@ -309,7 +355,12 @@ function S.createCraftPage(f)
     U.materialOrderForm:ClearAllPoints()
     U.materialOrderForm:SetPoint('CENTER', U.frame, 'CENTER', 0, 0)
     U.materialOrderForm:SetSize(520, 270)
-    label(U.materialOrderForm, tr('Material planning'), 16, -16, 480, 'GameFontNormalLarge')
+    U.materialOrderTitle = label(U.materialOrderForm, tr('Material planning'), 16, -16, 480, 'GameFontNormalLarge')
+    if Z.Kit then
+        Z.Kit.DialogHeader(U.materialOrderForm, U.materialOrderTitle, function()
+            U.materialOrderForm:Hide()
+        end)
+    end
     U.materialOrderText = label(U.materialOrderForm, '', 16, -48, 480, 'GameFontHighlightSmall')
     U.materialOrderText:SetHeight(80)
     U.materialOrderCount = edit(U.materialOrderForm, tr('Crafts for material planning'), 16, -140, 240, 6)
@@ -349,7 +400,7 @@ function S.createCraftPage(f)
     U.materialStoreState = label(U.materialPlanFrame, '', 0, -4, 240, 'GameFontHighlightSmall')
     U.materialStoreState:SetHeight(64)
     U.materialPlanList = list(U.materialPlanFrame, 0, -74, 216, 242)
-    U.materialDetail = list(U.materialPlanFrame, 270, -4, 546, 88)
+    U.materialDetail = infoList(list(U.materialPlanFrame, 270, -4, 546, 88))
     U.materialIngredients = list(U.materialPlanFrame, 270, -102, 546, 126)
     U.materialRecheck = button(U.materialPlanFrame, tr('Recheck'), 0, -330, 112, function()
         U.RefreshMaterialPlans(true)
@@ -400,4 +451,18 @@ function S.createCraftPage(f)
     U.materialOfferState:SetHeight(30)
     U.materialOffers = list(U.materialPlanFrame, 270, -296, 546, 64)
     U.materialPlanFrame:Hide()
+
+    -- Search plate: encloses the search controls at every page width. The controls sit at fixed positions and
+    -- are scaled with the page width, so the plate follows the same factor. Hidden in the compact craft area.
+    function U.LayoutCraftVisual()
+        local bar = U.craftSearchBar
+        if not bar then
+            return
+        end
+        local width = U.craftSearchFrame:GetWidth()
+        local horizontal = (type(width) == 'number' and width > 0 and width or 856) / 856
+        bar:Place(0, 0, 850 * horizontal, 98)
+        bar:SetShown(U.compactArea ~= 'craft')
+    end
+    U.LayoutCraftVisual()
 end

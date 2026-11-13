@@ -7,6 +7,44 @@ local S = U.Shared
 local tr = S.tr
 local ORDER_TERMINAL, NAV_ICONS, rows, itemIcon, peerOnline, selectNav = S.ORDER_TERMINAL, S.NAV_ICONS, S.rows, S.itemIcon, S.peerOnline, S.selectNav
 
+-- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays
+-- the data contract. Rows without a click are placeholders and read as plain lines. With a symbol name the row
+-- gets the small atlas symbol the activity board uses.
+local function weigh(items, symbol)
+    local K = Z.Kit
+    if not K then
+        return items
+    end
+    for _, item in ipairs(items) do
+        if item.click then
+            item.display = item.display or K.Lines(item.text)
+            if symbol and T and T.IconSpec then
+                item.icon, item.iconColor, item.iconSize, item.textInset = T.IconSpec(symbol), item.selected and 'gold' or 'dim', 18, 40
+            end
+        else
+            item.flat, item.display = true, item.display or K.Lines(item.text)
+            if not item.icon then
+                item.textInset = 0
+            end
+        end
+    end
+    return items
+end
+-- Facts nobody can click: flat rows, the icon (if any) keeps its inset.
+local function factRows(items)
+    local K = Z.Kit
+    if not K then
+        return items
+    end
+    for _, item in ipairs(items) do
+        item.flat, item.display = true, item.display or K.Lines(item.text)
+        if not item.icon then
+            item.textInset = 0
+        end
+    end
+    return items
+end
+
 local function recipeScanCoverage()
     local total, scanned = 0, 0
     local scans = Z.db.recipeScans or {}
@@ -103,6 +141,7 @@ local function refreshProfessions()
                 end,
             }
         end
+        weigh(recipeItems)
         local state = own and (#recipeItems .. tr(' Rezepte'))
             or c and c.complete and ((c.total or #recipeItems) .. tr(' Rezepte'))
             or c and (tr('Lade Rezepte … ') .. #recipeItems .. '/' .. (c.total or '?'))
@@ -252,6 +291,7 @@ local function refreshProfessions()
                 or (q ~= '' and tr('Press Enter or Search to find community recipes.') or '')
         )
     end
+    weigh(items)
     rows(U.professionList, items, 55)
     if U.professionCount then
         U.professionCount:SetText(#items == 1 and tr('1 Ergebnis') or #items .. tr(' Ergebnisse'))
@@ -387,7 +427,7 @@ function U.RefreshCraftDetailMaterials()
         if not U.craftDetailMissingItem and (row.missing or 0) > 0 then U.craftDetailMissingItem = row.itemID end
     end
     if #items == 0 then items[1] = { text = tr(reason or result and result.reason or 'Recipe data is unavailable.') } end
-    rows(U.craftDetailMaterials, items, 48)
+    rows(U.craftDetailMaterials, factRows(items), 48)
     local inventory = P.ReadInventory()
     local bagState = not inventory.known and tr('Bag contents could not be read. Unknown is not zero.')
         or type(inventory.at) == 'number' and Z.T('Bags read at %s.', date('%d.%m.%Y %H:%M', inventory.at))
@@ -444,7 +484,7 @@ function U.RefreshCraftIngredients()
     if #items == 0 then
         items = { { text = tr(reason or result and result.reason or 'Recipe data is unavailable.') } }
     end
-    rows(U.craftIngredientList, items, 62)
+    rows(U.craftIngredientList, factRows(items), 62)
     U.refreshingIngredients = false
 end
 function U.OpenOrderMaterials(order)
@@ -494,7 +534,7 @@ function U.RefreshMaterialPlans(force)
         }
     end
     U.SetEmptyHint(U.materialPlanList, 'No shopping lists yet. Open a craft request and press Save shopping list.')
-    rows(U.materialPlanList, items, 54)
+    rows(U.materialPlanList, weigh(items, 'layers'), 54)
     U.materialStoreState:SetText(
         tr(
             not P.store and 'Saved material plans use an unsupported version. Data was preserved.'
@@ -511,7 +551,7 @@ function U.RefreshMaterialPlans(force)
         selected and not selected.order and (U.craftOrderContext and U.craftOrderContext.planID == selected.id or returnPlanID == selected.id) or false
     )
     if not selected then
-        rows(U.materialDetail, { { text = tr('Select a private shopping list.') } }, 48)
+        rows(U.materialDetail, Z.Kit and Z.Kit.FactRows({ { text = tr('Select a private shopping list.') } }) or { { text = tr('Select a private shopping list.') } }, 48)
         rows(U.materialIngredients, {}, 62)
         rows(U.materialOffers, {}, 64)
         U.materialOfferState:SetText('')
@@ -543,7 +583,7 @@ function U.RefreshMaterialPlans(force)
     if order then
         details[#details + 1] = { text = tr('Materials supplied: ') .. tr(order.materialsProvided and 'Yes' or 'No'), height = 32 }
     end
-    rows(U.materialDetail, details, 36)
+    rows(U.materialDetail, Z.Kit and Z.Kit.FactRows(details, true) or details, 36)
     local result = P.Progress(selected.id, force)
     items = {}
     local ingredient
@@ -564,7 +604,7 @@ function U.RefreshMaterialPlans(force)
     if #items == 0 then
         items = { { text = tr(result.reason or 'Recipe data is unavailable.') } }
     end
-    rows(U.materialIngredients, items, 62)
+    rows(U.materialIngredients, weigh(items), 62)
     local active = P.Active(selected)
     U.materialMark:SetEnabled(active and ingredient ~= nil)
     U.materialFind:SetEnabled(active and ingredient ~= nil)
@@ -586,7 +626,7 @@ function U.RefreshMaterialPlans(force)
             end,
         }
     end
-    rows(U.materialOffers, items, 56)
+    rows(U.materialOffers, weigh(items), 56)
     U.materialOfferState:SetText(
         tr(
             searching and 'Searching community offers…'
@@ -635,11 +675,8 @@ local function refreshCraftOrders()
                 Z.Notifications.ReadVisible('craft', 'orders', 'craft:' .. token)
             end
             local peer = Z.db.contacts[order.peer]
-            items[#items + 1] = {
-                selected = token == U.craftOrderID,
-                icon = itemIcon(order.itemID) or NAV_ICONS.crafting,
-                text = (Z.Notifications.IsUnread('craft:' .. token) and '|cffff5555!|r ' or '')
-                    .. '|cffffd36b'
+            local unread = Z.Notifications.IsUnread('craft:' .. token)
+            local body = '|cffffd36b'
                     .. order.recipeName
                     .. '|r · '
                     .. order.quantity
@@ -648,7 +685,13 @@ local function refreshCraftOrders()
                     .. ' · '
                     .. (ORDER_NAMES[order.state] or order.state)
                     .. ' · '
-                    .. (order.direction == 'incoming' and tr('Eingang') or tr('Ausgang')),
+                    .. (order.direction == 'incoming' and tr('Eingang') or tr('Ausgang'))
+            items[#items + 1] = {
+                selected = token == U.craftOrderID,
+                icon = itemIcon(order.itemID) or NAV_ICONS.crafting,
+                text = (unread and '|cffff5555!|r ' or '') .. body,
+                -- The unread marker is painted through the palette; the words stay those of text.
+                display = Z.Kit and ((unread and Z.Kit.Paint('dangerText', '!') .. ' ' or '') .. Z.Kit.Lines(body)) or nil,
                 click = function()
                     U.craftOrderID = token
                     refreshCraftOrders()
