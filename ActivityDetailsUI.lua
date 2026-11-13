@@ -152,33 +152,51 @@ function U.RefreshActivityDetails()
     -- Opening a chat does not require a current addon-presence report.
     U.activityWhisper:SetEnabled(actionState.whisper)
     U.activityDiary:SetEnabled(actionState.diary)
-    local details={{text=r.ownerName..' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now'),height=32}}
+    -- The information is a block of facts, not a list: flat rows without cells (nothing here can be clicked).
+    -- item.text stays the data contract; display dims the label and brightens the value.
+    local K=Z.Kit;local details={}
+    local function fact(text,display,height,measure)details[#details+1]={text=text,display=display,flat=true,textInset=0,height=height,measure=measure}end
+    local function labelled(label,value,height,valueKey)fact(label..value,K.Fact(label,value,valueKey),height)end
+    local when=' · '..tr(r.kind=='EVENT'and'Scheduled'or'Now')
+    fact(r.ownerName..when,K.Paint('text',r.ownerName)..K.Paint('dim',when),32)
     if r.kind=='EVENT'and not r.own then
-        details[#details+1]={text=tr(S.Reach(r.owner)),height=32}
+        local reach=tr(S.Reach(r.owner));fact(reach,K.Paint('textSoft',reach),32)
         local following=S.Follow(r.owner,r.id)
-        if following then details[#details+1]={text=tr('Delivery: ')..S.DeliveryLabel(following.delivery),height=32}end
+        if following then labelled(tr('Delivery: '),S.DeliveryLabel(following.delivery),32)end
     elseif r.kind=='EVENT'and r.own then
-        details[#details+1]={text=tr('Confirming records attendance only. It does not invite anyone to your group.'),height=42}
+        local hint=tr('Confirming records attendance only. It does not invite anyone to your group.');fact(hint,K.Paint('dim',hint),42)
     end
     local party=Z.ActivityParty.Info(r)
     local capacity=r.kind=='EVENT'and(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)or e and e.size
-    details[#details+1]={text=tr('Current party size')..': '..(party and party.total or tr('Unknown'))..(capacity and' / '..capacity or''),height=32}
+    labelled(tr('Current party size')..': ',(party and party.total or tr('Unknown'))..(capacity and' / '..capacity or''),32)
     if r.kind=='EVENT'then
-        details[#details+1]={text=Z.ScheduleTime.Format(e.startsAt),height=42}
-        details[#details+1]={text=S.Participation(r.owner,r.id)..' · '..S.StateLabel(e.status),height=48}
-        local used=party and party.used or e.participants and S.Counts(e)or e.used;local roles={}
-        for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
-        details[#details+1]={text=tr('Free roles: ')..table.concat(roles,' · '),height=40}
+        local starts=Z.ScheduleTime.Format(e.startsAt);fact(starts,K.Paint('text',starts),42)
+        local participation=S.Participation(r.owner,r.id)..' · '..S.StateLabel(e.status);fact(participation,K.Paint('textSoft',participation),48)
+        local used=party and party.used or e.participants and S.Counts(e)or e.used;local roles,parts={},{}
+        for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role];parts[#parts+1]={role,roles[#roles]}end
+        fact(tr('Free roles: ')..table.concat(roles,' · '),K.Paint('dim',tr('Free roles: '))..K.Roles(parts),40)
     elseif e then
-        if e.min then details[#details+1]={text=tr('Level')..' '..e.min..' – '..e.max..(e.size and' · '..tr('Target size')..': '..e.size or''),height=32}end
-        if r.kind=='LIVE'then details[#details+1]={text=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER'),height=36}end
-        details[#details+1]={text=state(r),height=32}
-    else details[#details+1]={text=tr('Saved application; organizer data is unavailable.'),height=42}end
-    if e and e.note and e.note~=''then details[#details+1]={text=e.note,height=math.max(42,math.ceil(#e.note/65)*16+12)}end
+        if e.min then
+            local level,range=tr('Level')..' ',e.min..' – '..e.max
+            local sizeLabel,size=e.size and' · '..tr('Target size')..': 'or'',e.size and tostring(e.size)or''
+            fact(level..range..sizeLabel..size,K.Fact(level,range)..(e.size and K.Fact(sizeLabel,size)or''),32)
+        end
+        if r.kind=='LIVE'then
+            local parts={{'TANK',e.tank..' '..Z.Locale.Role('TANK')},{'HEALER',e.healer..' '..Z.Locale.Role('HEALER')},{'DAMAGER',e.dd..' '..Z.Locale.Role('DAMAGER')}}
+            local needed=tr('Needed')..': '
+            fact(needed..parts[1][2]..' · '..parts[2][2]..' · '..parts[3][2],K.Paint('dim',needed)..K.Roles(parts),36)
+        end
+        local own=state(r);fact(own,K.Paint('textSoft',own),32)
+    else local saved=tr('Saved application; organizer data is unavailable.');fact(saved,K.Paint('warning',saved),42)end
+    if e and e.note and e.note~=''then
+        -- The comment gets a caption so a bare note is not mistaken for another fact.
+        local caption=tr('Comment')
+        fact(e.note,K.Paint('goldDim',K.Upper(caption))..'\n'..K.Paint('text',e.note),math.max(42,math.ceil(#e.note/65)*16+12)+14,caption..'\n'..e.note)
+    end
     local infoHeight=0
     for _,item in ipairs(details)do
-        U.activityInformationMeasure:SetText(item.text)
-        item.height=math.max(28,(A.Call(U.activityInformationMeasure.GetStringHeight,U.activityInformationMeasure)or item.height-14)+14)
+        U.activityInformationMeasure:SetText(item.measure or item.text)
+        item.height=math.max(24,(A.Call(U.activityInformationMeasure.GetStringHeight,U.activityInformationMeasure)or item.height-14)+12)
         infoHeight=infoHeight+item.height
     end
     H.rows(U.activityInformation,details,42)
@@ -277,7 +295,7 @@ function U.CreateActivityDetails(helpers)
     U.activityArchiveAction=H.button(f,tr('Archive activity'),474,-50,160,function()
         local r=current();if r and r.own then U.RequestActivityArchive(r.kind,r.id)end
     end,'danger')
-    U.activityInformation=H.list(f,16,-90,594,180)
+    U.activityInformation=Z.Kit.InfoBlock(H.list(f,16,-90,594,180))
     U.activityInformationMeasure=H.label(f,'',16,0,570);U.activityInformationMeasure:SetWordWrap(true);U.activityInformationMeasure:Hide()
     U.activityDetailRole=H.selector(f,'My role',16,-290,196,{'TANK','HEALER','DAMAGER'})
     U.activityDetailNote=H.edit(f,'Message (optional)',224,-290,410,64)

@@ -17,6 +17,10 @@
 --   K.FilterBar(owner)                            plate behind a page's filter controls
 --   K.Segmented(parent, items, onSelect)          joined switch for 2-4 options; :Select(key), :GetSelected()
 --   K.DialogHeader(dialog, title[, onClose])      head band for a dialog around its existing title; :SetSubtitle(text)
+--   K.Paint(colorKey, text)                       text wrapped in a palette colour code (for item.display)
+--   K.Fact(label, value[, valueKey])              dimmed label followed by a bright value
+--   K.Roles(parts)                                { { role, text }, ... } joined with dots, each in its role colour
+--   K.InfoBlock(list)                             a list that only shows facts: no sunken well, reads as plain text
 local Z = ZenialCommunity
 local T = Z and Z.Theme
 if type(T) ~= "table" or type(T.Font) ~= "function" then return end
@@ -38,6 +42,27 @@ function K.Upper(value)
     value = string.upper(tostring(value or ""))
     for lower, upper in pairs(UPPER) do value = value:gsub(lower, upper) end
     return value
+end
+
+-- Colour codes for list rows (item.display). The words stay those of item.text; only the colour changes.
+function K.Paint(colorKey, value)
+    return "|cff" .. T.PaletteHex(colorKey) .. tostring(value) .. "|r"
+end
+function K.Fact(label, value, valueKey)
+    return K.Paint("dim", label) .. K.Paint(valueKey or "text", value)
+end
+function K.Roles(parts)
+    local shown = {}
+    for index, part in ipairs(parts) do shown[index] = K.Paint(T.roleColors[part[1]] or "text", part[2]) end
+    return table.concat(shown, K.Paint("dim", " · "))
+end
+-- Facts nobody can click are not list cells: the rows are flat (item.flat) and the list loses its well.
+function K.InfoBlock(view)
+    if view then
+        if view.zenialTrack then T.Panel(view.zenialTrack, "canvas") end
+        view.zenialInfoBlock = true
+    end
+    return view
 end
 
 function K.Text(parent, value, role, colorKey)

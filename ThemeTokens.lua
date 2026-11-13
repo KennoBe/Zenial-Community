@@ -81,6 +81,9 @@ T.type = {
     value = { size = 22, color = "text" },      -- large numbers in stat tiles
 }
 
+-- Palette key per group role, wherever a role is written out in colour.
+T.roleColors = { TANK = "accentBlue", HEALER = "success", DAMAGER = "dangerText" }
+
 -- Shell geometry (unscaled window pixels). UXLayout.lua reads these.
 T.metrics = {
     sidebar = 180, sidebarCompact = 150,   -- full-height navigation column

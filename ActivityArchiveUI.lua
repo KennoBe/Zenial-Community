@@ -99,22 +99,36 @@ function U.RefreshActivityArchive()
     H.rows(U.activityArchiveList,items,82)
     U.activityArchiveCount:SetText(tr('Archived activities')..' ('..#entries..') · '..U.activityArchivePage..'/'..maxPage)
     U.activityArchivePrev:SetEnabled(U.activityArchivePage>1);U.activityArchiveNext:SetEnabled(U.activityArchivePage<maxPage)
-    local details={{text=tr(#entries==0 and'No archived activities.'or'Select an archived activity.'),height=48}}
+    -- The right column is a block of facts about the selected entry, not a list: flat rows without cells.
+    -- item.text stays the data contract; display dims the label and brightens the value.
+    local K=Z.Kit;local details={}
+    local function fact(text,display,height)details[#details+1]={text=text,display=display,flat=true,textInset=0,height=height}end
     if selected then
-        local r,e=selected,selected.data;details={{text=Z.Locale.Activity(r.title)..' · '..r.label,height=48}}
-        details[#details+1]={text=tr('Archived on')..': '..T.Format(r.at),height=48}
+        local r,e=selected,selected.data
+        local name,label=Z.Locale.Activity(r.title),' · '..r.label
+        details[1]={text=name..label,display=K.Paint('text',name)..K.Paint('dim',label),section=true,textInset=0,height=34}
+        local archived=tr('Archived on')..': ';fact(archived..T.Format(r.at),K.Fact(archived,T.Format(r.at)),28)
         if e then
             if r.kind=='EVENT'then
-                local c=Z.db.contacts[e.ownerKey];details[#details+1]={text=(e.ownerKey==Z.me.key and Z.me.target or c and c.target or e.ownerTarget or e.ownerKey)..'\n'..T.Format(e.startsAt)..' – '..T.Format(e.endsAt),height=80}
-                local roles={};for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..e.roleSlots[role]end
-                details[#details+1]={text=table.concat(roles,' · '),height=48}
+                local c=Z.db.contacts[e.ownerKey];local owner=e.ownerKey==Z.me.key and Z.me.target or c and c.target or e.ownerTarget or e.ownerKey
+                local span=T.Format(e.startsAt)..' – '..T.Format(e.endsAt)
+                fact(owner..'\n'..span,K.Paint('text',owner)..'\n'..K.Paint('textSoft',span),56)
+                local roles,parts={},{};for _,role in ipairs({'TANK','HEALER','DAMAGER'})do roles[#roles+1]=Z.Locale.Role(role)..': '..e.roleSlots[role];parts[#parts+1]={role,roles[#roles]}end
+                fact(table.concat(roles,' · '),K.Roles(parts),28)
             else
-                details[#details+1]={text=tr('Level')..' '..e.min..' – '..e.max..(e.size and' · '..tr('Target size')..': '..e.size or''),height=40}
-                if r.kind=='LIVE'then details[#details+1]={text=tr('Needed')..': '..e.tank..' '..Z.Locale.Role('TANK')..' · '..e.healer..' '..Z.Locale.Role('HEALER')..' · '..e.dd..' '..Z.Locale.Role('DAMAGER'),height=48}
-                elseif e.zone and e.zone~=''then details[#details+1]={text=e.zone,height=40}end
+                local level,range=tr('Level')..' ',e.min..' – '..e.max
+                local sizeLabel,size=e.size and' · '..tr('Target size')..': 'or'',e.size and tostring(e.size)or''
+                fact(level..range..sizeLabel..size,K.Fact(level,range)..(e.size and K.Fact(sizeLabel,size)or''),28)
+                if r.kind=='LIVE'then
+                    local parts={{'TANK',e.tank..' '..Z.Locale.Role('TANK')},{'HEALER',e.healer..' '..Z.Locale.Role('HEALER')},{'DAMAGER',e.dd..' '..Z.Locale.Role('DAMAGER')}}
+                    local needed=tr('Needed')..': '
+                    fact(needed..parts[1][2]..' · '..parts[2][2]..' · '..parts[3][2],K.Paint('dim',needed)..K.Roles(parts),42)
+                elseif e.zone and e.zone~=''then fact(e.zone,K.Paint('textSoft',e.zone),28)end
             end
-            if e.note and e.note~=''then details[#details+1]={text=e.note,height=80}end
+            if e.note and e.note~=''then fact(e.note,K.Paint('goldDim',K.Upper(tr('Comment')))..'\n'..K.Paint('text',e.note),94)end
         end
+    else
+        local hint=tr(#entries==0 and'No archived activities.'or'Select an archived activity.');fact(hint,K.Paint('muted',hint),48)
     end
     H.rows(U.activityArchiveDetails,details,48)
 end
@@ -125,7 +139,7 @@ function U.CreateActivityArchive(helpers)
     H=helpers
     local f=H.panel(U.frame);U.activityArchive=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,550)
     H.label(f,'Archived activities',16,-18,618,'GameFontNormalLarge');U.activityArchiveCount=H.label(f,'',16,-52,618)
-    U.activityArchiveList=H.list(f,16,-82,252,406);U.activityArchiveDetails=H.list(f,300,-82,310,406)
+    U.activityArchiveList=H.list(f,16,-82,252,406);U.activityArchiveDetails=Z.Kit.InfoBlock(H.list(f,300,-82,310,406))
     U.activityArchivePrev=H.button(f,tr('Previous'),16,-512,102,function()U.activityArchivePage=U.activityArchivePage-1;U.RefreshActivityArchive()end)
     U.activityArchiveNext=H.button(f,tr('Next'),128,-512,102,function()U.activityArchivePage=U.activityArchivePage+1;U.RefreshActivityArchive()end)
     U.activityArchiveRecreate=H.button(f,tr('Create again'),244,-512,196,function()U.RecreateActivity(U.activityArchiveKey)end,'primary')

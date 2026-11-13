@@ -65,7 +65,7 @@ local function measuredHeight(text,width,minimum)
     return math.max(minimum,math.ceil(type(measured)=='number'and measured or minimum-12)+12)
 end
 local DETAIL_FACT_HEIGHT=26
-local DETAIL_ROLE_COLOR={TANK='accentBlue',HEALER='success',DAMAGER='dangerText'}
+local DETAIL_ROLE_COLOR=Z.Theme.roleColors
 -- Plate behind the board's filters, scaled with the page width like the members page.
 function U.LayoutActivityBoard()
     local bar=U.activityFilterBar;if not bar then return end
