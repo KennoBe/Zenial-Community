@@ -18,6 +18,7 @@ WhisperGuard.lua
 CommunityMesh.lua
 CrossFactionCodec.lua
 CrossFactionProtocol.lua
+CrossFactionRegistry.lua
 QuestHelper.lua
 QuestGroups.lua
 UpdateNotice.lua
