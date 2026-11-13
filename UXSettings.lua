@@ -55,7 +55,8 @@ function U.CreateSettings(helpers)
     U.settingsDisplayFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsDisplayFrame:SetSize(856, 414)
     U.profileDisplayFrame = U.settingsDisplayFrame
-    plate(U.profileDisplayFrame, 0, 0, 850, 112)
+    -- The plate also carries the account-wide cross-faction section below the appearance controls.
+    plate(U.profileDisplayFrame, 0, 0, 850, 390)
     heading(U.profileDisplayFrame, 'APPEARANCE', 16, -14, 400)
     label(U.profileDisplayFrame, tr('Fenster: 1060 × 690 Standard · mindestens 900 × 610'), 16, -40, 600, 'GameFontHighlight')
     button(U.profileDisplayFrame, tr('Standardgröße'), 16, -70, 170, function()
@@ -69,6 +70,63 @@ function U.CreateSettings(helpers)
         U.frame:ClearAllPoints()
         U.frame:SetPoint('CENTER')
     end)
+
+    -- Cross-faction: account-wide switches (ZenialCommunityDB.crossFaction), appended below the appearance group.
+    -- Without Z.CrossFaction the section is simply absent.
+    if Z.CrossFaction then
+        local function note(text, y)
+            local line = label(U.profileDisplayFrame, tr(text), 40, y, 790, 'GameFontHighlightSmall')
+            line:SetHeight(28)
+            line:SetWordWrap(true)
+            if T and T.Tint then
+                T.Tint(line, 'SetTextColor', 'dim')
+            end
+            return line
+        end
+        U.crossFactionOptions = {}
+        local function option(name, text, y)
+            local control = checkbox(U.profileDisplayFrame, text, 12, y, 810, function(self)
+                local XF = Z.CrossFaction
+                if XF and XF.SetSetting then
+                    XF.SetSetting(name, self:GetChecked() == true)
+                end
+                local badge = Z.CrossFactionTargetBadge
+                if badge and type(badge.Refresh) == 'function' then
+                    pcall(badge.Refresh)
+                end
+            end)
+            U.crossFactionOptions[name] = control
+            return control
+        end
+        heading(U.profileDisplayFrame, 'Cross-faction', 16, -128, 400)
+        option('enabled', 'Enable cross-faction chat (/z, /zy)', -148)
+        note('Messages sent with /z are visible to everyone nearby as coded words. Only players with ZENIAL Community can read them.', -176)
+        option('discovery', 'Detect ZENIAL players automatically', -208)
+        note('Sends an invisible addon signal to your group, guild, target and nearby players. No chat message is sent.', -236)
+        option('chatIcons', 'Show ZENIAL icons in chat', -268)
+        option('targetIcon', 'Show ZENIAL icon on target', -296)
+        note('No icon does not mean a player has no ZENIAL addon. It only means no signal has been received yet.', -324)
+        -- Only offered once the Battle.net signal is released; evaluated whenever the view is shown.
+        option('bnetDiscovery', 'Detect ZENIAL players through Battle.net', -356)
+        function U.RefreshCrossFactionSettings()
+            local XF = Z.CrossFaction
+            if not (XF and XF.Settings) then
+                return
+            end
+            local values = XF.Settings()
+            local presence = Z.CrossFactionPresence
+            local unlocked = type(presence) == 'table' and presence.BNET_UNLOCKED == true
+            for name, control in pairs(U.crossFactionOptions) do
+                control:SetChecked(values[name] == true)
+                if name == 'bnetDiscovery' then
+                    control:SetShown(unlocked)
+                    control.text:SetShown(unlocked)
+                end
+            end
+        end
+        U.profileDisplayFrame:HookScript('OnShow', U.RefreshCrossFactionSettings)
+        U.RefreshCrossFactionSettings()
+    end
 
     -- Connection and privacy: connection summary on the left, sharing switches on the right.
     U.settingsPrivacyFrame = CreateFrame('Frame', nil, p)
@@ -168,6 +226,9 @@ function U.SetSettingsView(v, skipRoute)
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end
     U.RefreshSettingsCompanionSummary()
+    if U.RefreshCrossFactionSettings then
+        U.RefreshCrossFactionSettings()
+    end
     U.LayoutSettings()
     if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
