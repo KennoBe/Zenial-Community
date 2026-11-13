@@ -31,23 +31,21 @@ local function remember(lineID)
     if old~=nil then known[old]=nil end
     ring[ringPos]=lineID;known[lineID]=true
 end
-local function packed(...)return select('#',...),{...}end
-
 local function run(...)
     -- args: arg1..argN (without frame and event)
-    local n,t=packed(...)
-    local flag,lineID,guid=t[6],t[11],t[12]
+    local flag,lineID,guid=(select(6,...)),(select(11,...)),(select(12,...))
     if not A.Safe(flag,guid)or type(flag)~='string'or type(guid)~='string'then return false end
     local N=Z.CrossFactionPresence
     if type(N)=='table'and type(N.HasPending)=='function'and N.HasPending()then
-        local sender=t[2]
+        local sender=(select(2,...))
         if A.Safe(sender)and type(sender)=='string'then N.Resolve(guid,sender)end
     end
     if B.strategy=='flag'then
         local replaced=FLAGS[flag]
         if replaced and eligible(guid)then
+            local t={...}
             t[6]=replaced
-            return false,unpack(t,1,math.max(n,6))
+            return false,unpack(t,1,math.max(select('#',...),6))
         end
     elseif B.strategy=='addmessage'then
         if A.Safe(lineID)and type(lineID)=='number'and lineID~=0 and eligible(guid)then remember(lineID)end
@@ -73,6 +71,8 @@ end
 local function wrap(frame)
     local original=frame.AddMessage
     frame.AddMessage=function(self,text,...)
+        -- fast path: no readable string with a player link -> straight to the original, no closure, no settings
+        if not A.Safe(text)or type(text)~='string'or not text:find('|Hplayer:',1,true)then return original(self,text,...)end
         local newText=text
         if B.strategy=='addmessage'then
             local ok,res=pcall(function()
@@ -91,7 +91,8 @@ local function installWrappers()
     for i=1,count do
         if not wrapped[i]then
             local frame=_G['ChatFrame'..i]
-            if type(frame)=='table'and type(frame.AddMessage)=='function'then
+            local combatLog=type(_G.COMBATLOG)=='table'and frame==_G.COMBATLOG or(type(_G.COMBATLOG)~='table'and i==2)
+            if type(frame)=='table'and not combatLog and frame.isTemporary~=true and type(frame.AddMessage)=='function'then
                 wrapped[i]=true
                 wrap(frame)
             end

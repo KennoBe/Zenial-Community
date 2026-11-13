@@ -142,8 +142,11 @@ function T.Refresh()
             if guid then
                 local N=Z.CrossFactionPresence
                 if type(N)=='table'and type(N.HasPending)=='function'and N.HasPending()then
-                    local name=A.Call(UnitName,'target')
-                    if type(name)=='string'and name~=''then N.Resolve(guid,name)end
+                    local name,realm=A.Call(UnitFullName,'target')
+                    if type(name)=='string'and name~=''then
+                        if type(realm)=='string'and realm~=''then name=name..'-'..realm end
+                        N.Resolve(guid,name)
+                    end
                 end
                 local status=XF.GetPlayerStatus(guid)
                 show=type(status)=='table'and status.status=='CONFIRMED'

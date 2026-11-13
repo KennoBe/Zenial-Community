@@ -98,7 +98,7 @@ local function attempt(bytes)
     if bytes[total-1]*256+bytes[total]~=P.CRC16(bytes,total-CRC_BYTES)then return nil,'crc'end
     local payload={};for i=HEADER+1,total-CRC_BYTES do payload[#payload+1]=char(bytes[i])end
     local b0,b2=bytes[1],bytes[3]
-    return{version=floor(b0/32),type=floor(b0/4)%8,encoding=b0%4,messageId=bytes[2],index=floor(b2/16),last=b2%16,payload=table.concat(payload)}
+    return{version=floor(b0/32),type=floor(b0/4)%8,encoding=b0%4,messageId=bytes[2],index=floor(b2/16),last=b2%16,crc=bytes[total-1]*256+bytes[total],payload=table.concat(payload)}
 end
 -- Tries every assignment of the (at most 2) unknown bits against the CRC.
 function P.ParseLine(text)
@@ -134,17 +134,23 @@ function Assembler:Accept(senderKey,frame,now)
     if frame.type~=0 then return'rejected','type'end
     if frame.index>frame.last then return'rejected','index'end
     local key=senderKey..':'..frame.messageId
-    local doneUntil=self.done[key]
-    if doneUntil then
-        if now<doneUntil then return'duplicate'end
+    local d=self.done[key]
+    if d then
+        -- same index and CRC inside the timeout: a real duplicate; anything else is a new message that reuses the id
+        if now<d.untilAt and d.crcs[frame.index]==frame.crc then return'duplicate'end
         self.done[key]=nil
     end
     local e=self.open[key]
+    local restarted=false
     if e then
         if e.last~=frame.last then self.open[key]=nil;return'rejected','mismatch'end
-        if e.parts[frame.index]then return'duplicate'end
-    else
-        e={key=key,sender=senderKey,messageId=frame.messageId,last=frame.last,parts={},count=0,first=now}
+        if e.parts[frame.index]then
+            if e.crcs[frame.index]==frame.crc then return'duplicate'end
+            self.open[key]=nil;e=nil;restarted=true
+        end
+    end
+    if not e then
+        e={key=key,sender=senderKey,messageId=frame.messageId,last=frame.last,parts={},crcs={},count=0,first=now}
         if frame.last>0 then
             local perSender,total=0,0
             for _,o in pairs(self.open)do total=total+1;if o.sender==senderKey then perSender=perSender+1 end end
@@ -153,11 +159,12 @@ function Assembler:Accept(senderKey,frame,now)
             self.seq=self.seq+1;e.seq=self.seq;self.open[key]=e
         end
     end
-    e.parts[frame.index]=frame.payload;e.count=e.count+1
+    e.parts[frame.index]=frame.payload;e.crcs[frame.index]=frame.crc;e.count=e.count+1
     if e.count>=e.last+1 then
-        self.open[key]=nil;self.done[key]=now+P.LIMITS.timeout
+        self.open[key]=nil;self.done[key]={untilAt=now+P.LIMITS.timeout,crcs=e.crcs}
         return'complete',table.concat(e.parts,'',0,e.last)
     end
+    if restarted then return'partial','restart'end
     return'partial'
 end
 -- Lists only really incomplete expired messages; also forgets finished-message markers that ran out.
@@ -169,7 +176,7 @@ function Assembler:Expire(now)
     table.sort(expired,function(a,b)return a.seq<b.seq end)
     local list={}
     for i,e in ipairs(expired)do self.open[e.key]=nil;list[i]={senderKey=e.sender,messageId=e.messageId}end
-    for key,t in pairs(self.done)do if now>=t then self.done[key]=nil end end
+    for key,d in pairs(self.done)do if now>=d.untilAt then self.done[key]=nil end end
     return list
 end
 local function utf8Length(s,i)

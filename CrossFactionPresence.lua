@@ -38,6 +38,24 @@ end
 local function within(last,now,window)return last~=nil and now>=last and now-last<window end
 local function namePart(n)return n:match('^([^%-]+)')end
 local function realmPart(n)local r=n:match('^[^%-]+%-(.+)$');return r and r:gsub('[%s%-]','')end
+local function normRealm(r)
+    if type(r)=='string'then r=r:gsub('[%s%-]','');if r~=''then return r end end
+end
+local function ownRealm()
+    local r=normRealm(A.Call(GetNormalizedRealmName))
+    if not r and Z.me and A.Safe(Z.me.realm)then r=normRealm(Z.me.realm)end
+    return r
+end
+-- Realms are always compared; a missing or empty realm means the own realm. Own realm unreadable and one side missing: no match.
+local function realmsMatch(a,b)
+    a,b=normRealm(a),normRealm(b)
+    if not a or not b then
+        local own=ownRealm()
+        if not own then return false end
+        a,b=a or own,b or own
+    end
+    return a==b
+end
 local function cleanSender(sender)
     if A.Safe(sender)and type(sender)=='string'and#sender>0 and#sender<=64 and not sender:find('[|%z\1-\31\127]')then return sender end
 end
@@ -119,8 +137,7 @@ function N.Resolve(guid,name)
     if not p then return false end
     N.pending[guid]=nil
     if namePart(name)~=namePart(p.name)then return false end
-    local r1,r2=realmPart(name),realmPart(p.name)
-    if r1 and r2 and r1~=r2 then return false end
+    if not realmsMatch(realmPart(name),realmPart(p.name))then return false end
     return accept(guid,p.name,p.proto,p.caps,p.channel)
 end
 
@@ -149,8 +166,7 @@ function N.OnAddon(prefix,text,channel,sender)
         return true
     end
     if name~=namePart(sender)then return false end
-    local senderRealm=realmPart(sender)
-    if realm~=''and senderRealm and realm:gsub('[%s%-]','')~=senderRealm then return false end
+    if not realmsMatch(realm,realmPart(sender))then return false end
     if not accept(msg.guid,sender,msg.proto,msg.caps,channel)then return false end
     if(msg.kind=='H'or msg.kind=='P')and msg.proto==N.PROTO and discovery()then
         local now=A.Clock()
@@ -351,13 +367,6 @@ local function beaconFor(chatType)
     if chatType=='SAY'or chatType=='YELL'then N.Beacon(chatType)end
 end
 local function hookSend(_,chatType)pcall(beaconFor,chatType)end
-local function hookEditBox(editBox)
-    pcall(function()
-        if type(editBox)~='table'or type(editBox.GetAttribute)~='function'then return end
-        local ok,chatType=pcall(editBox.GetAttribute,editBox,'chatType')
-        if ok and chatType~=nil then beaconFor(chatType)end
-    end)
-end
 local function installHooks()
     if type(hooksecurefunc)~='function'then return end
     if not hooked.SendChatMessage and type(SendChatMessage)=='function'then
@@ -365,9 +374,6 @@ local function installHooks()
     end
     if not hooked.CSendChatMessage and type(C_ChatInfo)=='table'and type(C_ChatInfo.SendChatMessage)=='function'then
         hooked.CSendChatMessage=pcall(hooksecurefunc,C_ChatInfo,'SendChatMessage',hookSend)
-    end
-    for _,name in ipairs({'ChatEdit_ActivateChat','ChatEdit_UpdateHeader'})do
-        if not hooked[name]and type(_G[name])=='function'then hooked[name]=pcall(hooksecurefunc,name,hookEditBox)end
     end
 end
 

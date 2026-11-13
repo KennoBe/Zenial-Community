@@ -327,11 +327,13 @@ local function languages()
     if ownLanguages then return ownLanguages end
     local n=A.Call(GetNumLanguages)
     if type(n)~='number'then return nil end
+    if n<1 then return nil end -- too early: do not remember an empty set
     local set={}
     for i=1,n do
         local name=A.Call(GetLanguageByIndex,i)
         if type(name)=='string'and name~=''then set[name]=true end
     end
+    if next(set)==nil then return nil end
     ownLanguages=set
     return set
 end
@@ -369,14 +371,19 @@ local function compute(event,text,sender,guid,lineID,language)
     local mine=myGuid()
     pcall(register,frame,guid,sender,language,mine)
     if frame.version~=P.VERSION then result.incompatible=true;return result end
-    result.protocol=true;result.hide=true
+    result.protocol=true
     if mine and guid==mine then confirmEcho(text)end
-    if frame.type==1 then return result end
+    -- hidden only when something can be shown for it: greetings and message fragments; reserved types stay visible
+    if frame.type==1 then result.hide=true;return result end
+    if frame.type~=0 then return result end
     asm=asm or P.NewAssembler()
     local channel=event=='CHAT_MSG_YELL'and'YELL'or'SAY'
     local status,out=asm:Accept(guid,frame,A.Clock())
+    if status=='rejected'and out~='mismatch'then return result end
+    result.hide=true
     local key=guid..':'..frame.messageId
     local p=pending[key]
+    if status=='partial'and out=='restart'then p=nil;pending[key]=nil end
     local name=checkedName(sender)
     if status=='partial'then
         if not p then p={guid=guid,name=name,channel=channel,lineIDs={}};pending[key]=p end
@@ -400,20 +407,22 @@ local function resolvePending(sender,guid)
     if A.Safe(sender,guid)and type(sender)=='string'and type(guid)=='string'and guid:sub(1,7)=='Player-'then pcall(N.Resolve,guid,sender)end
 end
 -- One shared step per lineID, whether the event or a chat filter comes first.
-local function process(event,text,sender,lineID,guid,language)
+local function process(event,text,sender,lineID,guid,language,fromEvent)
     resolvePending(sender,guid)
     if not A.Safe(text,lineID,guid)or type(text)~='string'or type(lineID)~='number'or lineID<=0
         or type(guid)~='string'or guid:sub(1,7)~='Player-'then return nil end
     local r=results[lineID]
     if r then return r end
     r=compute(event,text,sender,guid,lineID,language)
+    -- a negative result from a chat filter may stem from text another filter changed: only the event's text is final
+    if not(r.protocol or r.incompatible or fromEvent)then return r end
     results[lineID]=r;order[#order+1]=lineID
     if#order>MAX_RESULTS then results[table.remove(order,1)]=nil end
     return r
 end
 function XF.OnChat(event,...)
     local text,sender,language,_,_,_,_,_,_,_,lineID,guid=...
-    process(event,text,sender,lineID,guid,language)
+    process(event,text,sender,lineID,guid,language,true)
 end
 local function filterBody(chatFrame,event,...)
     if not XF.IsEnabled()then return false end

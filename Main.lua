@@ -744,7 +744,7 @@ end
 local function tickSecond()
     if Z.Social and Z.Social.GuildTick then Z.Social.GuildTick()end
     if Z.UI and Z.UI.RefreshTimed then Z.UI.RefreshTimed(A.Clock())end
-    if Z.CrossFaction then Z.CrossFaction.Tick()end
+    if Z.CrossFaction then pcall(function()Z.CrossFaction.Tick()end)end
 end
 
 -- Every 5 s: identity, location and expiry housekeeping.
