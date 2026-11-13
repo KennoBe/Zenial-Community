@@ -265,6 +265,29 @@ local function bindPrivateNote(key)
         U.memberPrivateNote:SetText(key and (U.noteDrafts[key] or Z.Social.GetNote(key)) or '')
     end
     U.memberNoteBinding = false
+    if U.memberNoteSaved then
+        U.memberNoteSaved:SetShown(key ~= nil and U.memberPrivateNote:GetText() ~= '' and U.memberPrivateNote:GetText() == Z.Social.GetNote(key))
+    end
+end
+-- Saves the note of the bound member as it is typed. A rejected text (invalid characters, too long)
+-- is kept as a draft and reported once in the status line; nothing is lost.
+function U.AutoSavePrivateNote()
+    local key = U.memberNoteOwner
+    if not key then
+        return nil
+    end
+    local text = U.memberPrivateNote:GetText()
+    local ok, err = Z.Social.Note(key, text)
+    U.noteDrafts = U.noteDrafts or {}
+    U.noteDrafts[key] = not ok and text or nil
+    if U.memberNoteSaved then
+        U.memberNoteSaved:SetShown(ok == true and text ~= '')
+    end
+    if not ok and U.memberNoteError ~= err then
+        U.Message(err)
+    end
+    U.memberNoteError = not ok and err or nil
+    return ok, err
 end
 function U.SavePrivateNote()
     if not U.memberKey or U.memberNoteOwner ~= U.memberKey then
@@ -489,11 +512,8 @@ local function refreshMemberDetail()
         U.memberDetail:SetText(dimText(tr('Select a member.')))
         U.memberWhisper:SetEnabled(false)
         U.memberInvite:SetEnabled(false)
-        if U.memberFavorite then
-            U.memberFavorite:SetEnabled(false)
-            if T then
-                T.SetSelected(U.memberFavorite, false)
-            end
+        if U.UpdateFavoriteStar then
+            U.UpdateFavoriteStar(false, false)
         end
         if U.memberPrivateNote then
             U.memberPrivateNote:SetText('')
@@ -504,13 +524,8 @@ local function refreshMemberDetail()
     local group = linkedGroupOf(m)
     local groupLines = group and groupDetailLines(m, group, target) or {}
     groupLines[#groupLines + 1] = dimText(Z.T('Private for %s', m.target or U.memberKey or m.key))
-    if U.memberFavorite then
-        local favorite = Z.Social.IsFavorite(m.key)
-        U.memberFavorite:SetEnabled(not m.own)
-        U.memberFavorite:SetText(tr('Favorite'))
-        if T then
-            T.SetSelected(U.memberFavorite, favorite)
-        end
+    if U.UpdateFavoriteStar then
+        U.UpdateFavoriteStar(not m.own, Z.Social.IsFavorite(m.key))
     end
     local s = m.data
     if not s then
@@ -550,6 +565,12 @@ local function refreshMemberDetail()
     local main = m.own and Z.PublicLinks().main or Z.ConfirmedMain(m.key)
     if main then
         lines[#lines + 1] = fact(tr('Main') .. ':', main)
+    end
+    -- Private, local only: what the own social diary recorded about this player.
+    local met = not m.own and Z.SocialDiary and Z.SocialDiary.Get and Z.SocialDiary.Get(m.key)
+    if type(met) == 'table' and type(met.count) == 'number' and met.count > 0 then
+        lines[#lines + 1] = fact(tr('Social diary') .. ':', Z.T('%d encounters', met.count)
+            .. (met.last and ' · ' .. tr('Last encounter') .. ' ' .. age(met.last) or ''))
     end
     if not layerText then
         lines[#lines + 1] = '\n|cff' .. paletteHex('muted') .. Z.CommunityLayer.Label(nil) .. '|r'

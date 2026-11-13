@@ -23,9 +23,20 @@ function S.createProfilePage(f)
     end)
     U.profileDisplayTab:Hide()
     U.profileNetworkTab:Hide()
+    -- Public profile: the third tab of "My characters" (head and tabs belong to the characters frame).
+    -- Form on the left plate, preview on the right plate.
     U.profilePublicFrame = CreateFrame('Frame', nil, p)
-    U.profilePublicFrame:SetPoint('TOPLEFT', 0, -42)
+    U.profilePublicFrame:SetPoint('TOPLEFT', 0, -66)
     U.profilePublicFrame:SetSize(856, 414)
+    if Z.Kit and Z.Kit.Plate then
+        U.profilePublicPlates = { { Z.Kit.Plate(U.profilePublicFrame, 'surface'), 0, 0, 482, 290 }, { Z.Kit.Plate(U.profilePublicFrame, 'surface'), 494, 0, 356, 290 } }
+    end
+    function U.LayoutProfilePublic()
+        local horizontal = U.profilePublicFrame:GetWidth() / 856
+        for _, spec in ipairs(U.profilePublicPlates or {}) do
+            spec[1]:Place(spec[2] * horizontal, spec[3], spec[4] * horizontal, spec[5])
+        end
+    end
     label(
         U.profilePublicFrame,
         '|cffffd36b'
@@ -40,18 +51,18 @@ function S.createProfilePage(f)
             .. Z.me.level
             .. ' · '
             .. faction(Z.me.faction),
-        0,
-        0,
-        620,
+        16,
+        -14,
+        450,
         'GameFontNormalLarge'
     )
     U.profileFields = {}
-    U.profileFields.community = edit(U.profilePublicFrame, 'Display name (optional)', 0, -66, 260, 32)
-    U.profileRole = selector(U.profilePublicFrame, 'Preferred role', 280, -66, 190, ROLE_OPTIONS, U.CaptureProfileDraft)
-    U.profileFields.note = edit(U.profilePublicFrame, 'Note (optional)', 0, -126, 470, 64, true)
-    U.profilePreview = label(U.profilePublicFrame, '|cffffd36bPREVIEW|r', 510, -66, 325, 'GameFontHighlight')
-    U.profilePreview:SetHeight(175)
-    U.profileSave = button(U.profilePublicFrame, 'Save profile', 0, -218, 155, function()
+    U.profileFields.community = edit(U.profilePublicFrame, 'Display name (optional)', 16, -70, 250, 32)
+    U.profileRole = selector(U.profilePublicFrame, 'Preferred role', 282, -70, 184, ROLE_OPTIONS, U.CaptureProfileDraft)
+    U.profileFields.note = edit(U.profilePublicFrame, 'Note (optional)', 16, -130, 450, 64, true)
+    U.profilePreview = label(U.profilePublicFrame, '|cffffd36bPREVIEW|r', 510, -14, 325, 'GameFontHighlight')
+    U.profilePreview:SetHeight(262)
+    U.profileSave = button(U.profilePublicFrame, 'Save profile', 16, -222, 155, function()
         local community, note = U.profileFields.community:GetText(), U.profileFields.note:GetText()
         if not L.Text(community, 32, true) or not L.Text(note, 64, true) then
             U.Message('Input is too long.')
@@ -65,7 +76,7 @@ function S.createProfilePage(f)
         U.Publish()
         U.Message('Profile saved.')
     end, 'primary')
-    U.profileShow = button(U.profilePublicFrame, 'Show profile in Members', 170, -218, 220, function()
+    U.profileShow = button(U.profilePublicFrame, 'Show profile in Members', 181, -222, 250, function()
         U.memberKey, U.memberFollowActive = Z.me.key, false
         U.Navigate('members')
     end)

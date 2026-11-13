@@ -424,7 +424,7 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- Left-aligns a button caption `inset` pixels from the left edge (captions are centred by the template).
 function T.AlignButtonText(button, inset, right)
-    button.zenialTextInset = inset
+    button.zenialTextInset, button.zenialTextRight = inset, right or 8
     local fs = button.GetFontString and button:GetFontString()
     if not fs then return end
     fs:ClearAllPoints(); fs:SetPoint("LEFT", button, "LEFT", inset, 0); fs:SetPoint("RIGHT", button, "RIGHT", -(right or 8), 0)

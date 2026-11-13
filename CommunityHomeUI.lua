@@ -151,7 +151,8 @@ function U.LayoutHomeWishes()
         top=HOME_TILE_HEIGHT+HOME_GAP
     end
     -- Caption of the wish block on the left, its edit action on the right.
-    local editWidth=math.min(220,U.homeWishEdit:GetWidth())
+    -- The responsive layout scales the button with the page; use its real width so it never leaves the page.
+    local editWidth=math.min(pageWidth,U.homeWishEdit:GetWidth())
     U.homeWishEdit:ClearAllPoints();U.homeWishEdit:SetPoint('TOPLEFT',pageWidth-editWidth,-top)
     U.homeWishState:ClearAllPoints();U.homeWishState:SetPoint('TOPLEFT',0,-(top+6));U.homeWishState:SetWidth(math.max(120,pageWidth-editWidth-12))
     local cardsTop=top+26+8
@@ -314,30 +315,50 @@ function U.RefreshMemberCategories()
     if U.memberFilterBar then U.memberFilterBar:SetShown(not compact)end
     local showCategories=U.memberKey~=nil and U.memberKey~=Z.me.key and not Z.db.blocked[U.memberKey]
     local headerHeight=U.memberCardHasMember and 82 or 12
-    -- Chips flow left to right and wrap; the chip frame shows at most three rows and scrolls beyond that.
-    local scroll=U.memberCategoryScroll;local chipRow,chipGap=22,6;local flowWidth=math.max(60,inner-24);local flowX,flowY=0,0
-    for _,id in ipairs(Z.SocialCategories.ORDER)do
+    -- Private categories are one multi-select field: a dropdown button on the card and a popup that lists
+    -- every category as a toggle (the same chips as before, stacked; several can be on at once).
+    local C=Z.SocialCategories
+    local scroll=U.memberCategoryScroll;local chipRow,chipGap=22,4;local count=0
+    local popup=U.memberCategoryPopup
+    if not popup and scroll then
+        popup=CreateFrame('Frame',nil,page,BackdropTemplateMixin and'BackdropTemplate'or nil);U.memberCategoryPopup=popup
+        popup:SetFrameStrata('TOOLTIP');popup:SetClampedToScreen(true);popup:EnableMouse(true)
+        if Z.Theme then Z.Theme.Panel(popup,'raised');if Z.Theme.Shadow then Z.Theme.Shadow(popup,8,.5)end end
+        scroll:SetParent(popup);popup:Hide()
+        popup:SetScript('OnHide',function(self)if U.Shared.openPopup==self then U.Shared.openPopup=nil end end)
+    end
+    local chosen={}
+    for _,id in ipairs(C.ORDER)do
         local chip=U.categoryChecks[id]
         if chip then
-            local measured=chip.text.GetStringWidth and chip.text:GetStringWidth()
-            local width=math.min(flowWidth,math.max(44,math.ceil(type(measured)=='number'and measured or #Z.SocialCategories.Label(id)*6)+22))
-            if flowX>0 and flowX+width>flowWidth then flowX=0;flowY=flowY+chipRow+chipGap end
-            chip:SetSize(width,chipRow);chip:ClearAllPoints();chip:SetPoint('TOPLEFT',flowX,-flowY)
-            flowX=flowX+width+chipGap
+            chip:SetSize(math.max(60,inner-8-18),chipRow);chip:ClearAllPoints();chip:SetPoint('TOPLEFT',0,-count*(chipRow+chipGap))
+            count=count+1
         end
+        if showCategories and C.Has(U.memberKey,id)then chosen[#chosen+1]=C.Label(id)end
     end
-    local flowHeight=flowY+chipRow
-    local chipsHeight=showCategories and math.min(chipRow*3+chipGap*2,flowHeight)or 0
-    if scroll then scroll:ClearAllPoints();scroll:SetPoint('TOPLEFT',pad,0);scroll:SetSize(inner,math.max(1,chipsHeight));scroll.height=math.max(1,chipsHeight);scroll.width=inner-24;scroll.child:SetWidth(inner-24);scroll.child:SetHeight(math.max(1,flowHeight))end
-    -- Bottom-up stack: action buttons, note, chips; the fact list takes what remains.
-    local buttonHeight=26;local rowActions=bottom-pad-buttonHeight;local rowPrimary=rowActions-6-buttonHeight
-    local noteTop=rowPrimary-8-46;local noteCaption=noteTop-16
-    local chipsTop=showCategories and(noteCaption-10-chipsHeight)or noteCaption
+    local listHeight=math.max(chipRow,count*(chipRow+chipGap)-chipGap);local visibleHeight=math.min(listHeight,8*(chipRow+chipGap)-chipGap)
+    if popup then
+        popup:ClearAllPoints();popup:SetPoint('TOPLEFT',U.memberCategoryButton,'BOTTOMLEFT',0,-2);popup:SetSize(inner,visibleHeight+8)
+        scroll:ClearAllPoints();scroll:SetPoint('TOPLEFT',4,-4);scroll:SetSize(inner-8,visibleHeight);scroll.height=visibleHeight;scroll.width=inner-8-18
+        scroll.child:SetWidth(inner-8-18);scroll.child:SetHeight(listHeight)
+        -- A popup opened for another member, or for one without categories, closes.
+        if popup:IsShown()and(not showCategories or U.memberCategoryPopupKey~=U.memberKey)then popup:Hide()end
+    end
+    if U.memberCategoryButton then
+        U.memberCategoryButton:SetText(#chosen>0 and table.concat(chosen,', ')or tr('Select'))
+        U.memberCategoryButton:SetEnabled(showCategories and not C.readOnly)
+    end
+    -- Bottom-up stack: whisper / invite, note, category field; the fact list takes what remains.
+    local buttonHeight,fieldHeight=26,24;local rowActions=bottom-pad-buttonHeight
+    local noteTop=rowActions-10-46;local noteCaption=noteTop-16
+    local chipsHeight=showCategories and fieldHeight or 0
+    local chipsTop=showCategories and(noteCaption-12-fieldHeight)or noteCaption
     local factsBottom=(showCategories and chipsTop-18 or noteCaption)-8;local factsTop=top+headerHeight
     local factsHeight=math.max(40,factsBottom-factsTop)
     if card then
         card:ClearAllPoints();card:SetPoint('TOPLEFT',x0,-top);card:SetSize(W,math.max(1,bottom-top))
-        for _,region in ipairs({card.name,card.classLine})do region:SetWidth(math.max(40,W-86))end
+        -- The name leaves room for the favourite star in the top right corner.
+        for _,region in ipairs({card.name,card.classLine})do region:SetWidth(math.max(40,W-86-30))end
         card.status:SetWidth(math.max(40,math.min(120,W-100)))
     end
     local profile=U.memberProfileScroll
@@ -348,7 +369,8 @@ function U.RefreshMemberCategories()
     U.memberDetail:SetHeight(math.max(40,textHeight+8));U.memberProfileChild:SetHeight(math.max(40,textHeight+8))
     local f=U.memberCategoryFrame;f:ClearAllPoints();f:SetPoint('TOPLEFT',x0,-chipsTop);f:SetSize(W,math.max(1,chipsHeight))
     f:SetShown(showCategories);U.memberCategories:Hide()
-    H.showControl(U.memberPrivateNote,true);U.memberFavorite:Show();U.memberNoteSave:Show()
+    if U.memberCategoryButton then U.memberCategoryButton:ClearAllPoints();U.memberCategoryButton:SetPoint('TOPLEFT',pad,0);U.memberCategoryButton:SetSize(inner,fieldHeight)end
+    H.showControl(U.memberPrivateNote,true);U.memberFavorite:SetShown(U.memberCardHasMember==true)
     local function position(control,x,y,width)control:ClearAllPoints();control:SetPoint('TOPLEFT',x,y);if width then control:SetWidth(width)end end
     position(U.memberPrivateNote,x0+pad,-noteTop,inner);position(U.memberPrivateNote.caption,x0+pad,-noteCaption,inner);U.memberPrivateNote.caption:SetHeight(14)
     -- The note caption is a region of the page and the card is a child frame drawn above page regions:
@@ -358,8 +380,12 @@ function U.RefreshMemberCategories()
         noteCaptionText:SetParent(card);noteCaptionText:ClearAllPoints();noteCaptionText:SetPoint('TOPLEFT',page,'TOPLEFT',x0+pad,-noteCaption)
     end
     local buttonWidth=compact and math.min(190,(inner-8)/2)or(inner-8)/2
-    position(U.memberWhisper,x0+pad,-rowPrimary,buttonWidth);position(U.memberInvite,x0+pad+buttonWidth+8,-rowPrimary,buttonWidth)
-    position(U.memberFavorite,x0+pad,-rowActions,buttonWidth);position(U.memberNoteSave,x0+pad+buttonWidth+8,-rowActions,buttonWidth)
+    position(U.memberWhisper,x0+pad,-rowActions,buttonWidth);position(U.memberInvite,x0+pad+buttonWidth+8,-rowActions,buttonWidth)
+    -- Favourite: a star in the top right corner of the card, right of the name.
+    position(U.memberFavorite,x0+W-10-26,-(top+11));U.memberFavorite:SetSize(26,26)
+    if card and U.memberFavorite.SetFrameLevel then U.memberFavorite:SetFrameLevel(card:GetFrameLevel()+2)end
+    -- Saved marker of the private note, at the right end of its caption line.
+    if U.memberNoteSaved then U.memberNoteSaved:ClearAllPoints();U.memberNoteSaved:SetPoint('TOPRIGHT',page,'TOPLEFT',x0+pad+inner,-(noteCaption+1))end
     -- Action symbols: the caption never loses characters to the symbol. Per button: normal layout, then a
     -- tighter one, finally no symbol (the caption is centred again).
     if Z.Theme and Z.Theme.AlignButtonText then
@@ -371,7 +397,7 @@ function U.RefreshMemberCategories()
             local text=button.GetText and button:GetText()or''
             return #text:gsub('[\128-\191]','')*6
         end
-        for _,button in ipairs({U.memberWhisper,U.memberInvite,U.memberFavorite,U.memberNoteSave})do
+        for _,button in ipairs({U.memberWhisper,U.memberInvite})do
             local icon=button.zenialActionIcon
             if icon then
                 local width=textWidth(button)
@@ -479,6 +505,16 @@ function U.CreateCommunityHome(helpers)
     -- Categories belong to the selected contact. No category popup remains in the user flow.
     U.memberCategoryFrame=CreateFrame('Frame',nil,U.pages[1]);U.categoryChecks={}
     U.memberCategoryCaption=label(U.memberCategoryFrame,tr('Private categories'),12,16,256,'GameFontHighlightSmall');U.memberCategoryCaption:SetHeight(12)
+    -- The multi-select field: opens the popup with the category toggles (built in U.RefreshMemberCategories).
+    U.memberCategoryButton=button(U.memberCategoryFrame,'',12,0,256,function()
+        local popup=U.memberCategoryPopup;if not popup then return end
+        local shared=U.Shared
+        if popup:IsShown()then popup:Hide();return end
+        if shared.openPopup and shared.openPopup~=popup then shared.openPopup:Hide()end
+        U.memberCategoryPopupKey=U.memberKey;popup:Show();shared.openPopup=popup
+        if U.memberCategoryScroll and U.memberCategoryScroll.zenialRender then U.memberCategoryScroll.zenialRender()end
+    end)
+    if Z.Theme and Z.Theme.StyleDropdown then Z.Theme.StyleDropdown(U.memberCategoryButton);Z.Theme.AlignButtonText(U.memberCategoryButton,8,28)end
     for _,id in ipairs(Z.SocialCategories.ORDER)do U.categoryChecks[id]=U.NewCategoryChip(U.memberCategoryFrame,id,H)end
     U.memberProfileScroll=CreateFrame('ScrollFrame',nil,U.pages[1],'UIPanelScrollFrameTemplate');U.memberProfileChild=CreateFrame('Frame',nil,U.memberProfileScroll);U.memberProfileScroll:SetScrollChild(U.memberProfileChild);U.memberDetail:SetParent(U.memberProfileChild)
     if Z.Theme and Z.Theme.Font then Z.Theme.Font(U.memberDetail,'body','textSoft')end

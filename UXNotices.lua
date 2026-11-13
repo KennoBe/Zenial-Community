@@ -61,7 +61,7 @@ local function badge(control, count, minimap)
     if font and control:GetParent() == U.sidebar then
         font:ClearAllPoints()
         font:SetPoint('LEFT', control, 'LEFT', control.zenialTextInset or 34, 0)
-        font:SetPoint('RIGHT', control, 'RIGHT', count > 0 and -width - 14 or -8, 0)
+        font:SetPoint('RIGHT', control, 'RIGHT', count > 0 and -width - 14 or -(control.zenialTextRight or 8), 0)
         font:SetJustifyH('LEFT')
         font:SetWordWrap(false)
         local size = control:GetWidth() < 140 and 10 or 12

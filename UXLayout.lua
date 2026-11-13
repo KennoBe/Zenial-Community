@@ -17,8 +17,8 @@ function U.LayoutMainTabs()
         return
     end
     local M = Z.Theme and Z.Theme.metrics or {}
-    local width = U.sidebarWidth or 150
-    local frameWidth = U.sidebarFrameWidth or (width + 30)
+    local width = U.sidebarWidth or M.navWidth or 164
+    local frameWidth = U.sidebarFrameWidth or (width + 16)
     local x = math.floor((frameWidth - width) / 2)
     local entry = M.navEntry or 36
     local pitch = entry + (M.navGap or 2)
@@ -115,11 +115,11 @@ function U.RefreshJoinBanner()
 end
 
 -- Pages that are not scaled proportionally with the window. Only the profile
--- page while its "My characters" view is active: it switches between one and
--- two columns by the real width, which a proportional scale (logical width
--- always about 856) would hide.
+-- page: "My characters" switches between one and two columns by the real
+-- width, which a proportional scale (logical width always about 856) would
+-- hide. The public profile is a tab of the same view and shares that scale.
 function U.PageUsesNativeScale(i)
-    return i == 6 and U.profileView == 'characters'
+    return i == 6
 end
 -- Changing the profile subview can change the page scale; apply the layout then.
 local setProfileView = U.SetProfileView
@@ -161,7 +161,7 @@ function U.Layout(activeOnly, geometryOnly)
     local M = Z.Theme and Z.Theme.metrics or {}
     local width, height = U.frame:GetWidth(), U.frame:GetHeight()
     local compact = width < 1000
-    U.sidebarWidth = compact and 136 or 150
+    U.sidebarWidth = compact and (M.navWidthCompact or 136) or (M.navWidth or 164)
     -- The horizontal page geometry is unchanged from 5.5.0 (pageX 188 / 158); the page gains height
     -- because the old header band is gone.
     local pageX = compact and 158 or 188

@@ -88,6 +88,7 @@ T.metrics = {
     topbar = 58,                           -- page title and global actions
     footer = 30,                           -- status line and resize grip
     navEntry = 36, navGap = 2, navGroupGap = 18,
+    navWidth = 164, navWidthCompact = 136,  -- width of a sidebar entry (sidebar minus 8 px on each side)
     pageTop = 68, pageBottom = 38,         -- page area insets from the window's top / bottom edge
     contentGap = 16,                       -- page area inset from the sidebar and the right edge
     button = 26, buttonLarge = 30, input = 24, row = 48,

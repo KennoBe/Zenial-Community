@@ -465,9 +465,15 @@ function U.CreateMyCharacters(frame,helpers)
     U.myCharactersPrivacyHit=CreateFrame('Frame',nil,frame)
     tooltip(U.myCharactersPrivacyHit,function()return tr('Stored only on this computer. This list itself is not sent to other players. While your public profile is visible, your main character and up to 10 other characters of the same realm and faction are published with it. The optional Companion export is a separate setting.')end)
     -- Tabs.
-    U.myCharactersOverviewTab=S.navButton(frame,'Overview',0,-26,110,function()setTab('overview')end)
-    U.myCharactersItemsTab=S.navButton(frame,'Inventory search',120,-26,150,function()setTab('items')end)
-    U.myCharactersPublicTab=S.navButton(frame,'Public profile: current character',280,-26,260,function()U.SetProfileView('public')end)
+    -- Three tabs of one view. The public profile is the third tab: it keeps this head and tab row and
+    -- shows its form below (U.profilePublicFrame); leaving it returns to the chosen characters tab.
+    local function openTab(tab)
+        if U.profileView=='public'then U.myCharactersTab=nil;U.SetProfileView('characters')end
+        setTab(tab)
+    end
+    U.myCharactersOverviewTab=S.navButton(frame,'Overview',0,-26,110,function()openTab('overview')end)
+    U.myCharactersItemsTab=S.navButton(frame,'Inventory search',120,-26,150,function()openTab('items')end)
+    U.myCharactersPublicTab=S.navButton(frame,'Public profile: current character',280,-26,260,function()U.CloseDropdowns();U.SetProfileView('public')end)
     -- Overview filters.
     U.myCharactersSummary=label(frame,'',0,-108,800)
     U.myCharactersSummary:SetHeight(30)
@@ -586,7 +592,9 @@ function U.LayoutProfileCharacters()
     for _,tab in ipairs({U.myCharactersOverviewTab,U.myCharactersItemsTab,U.myCharactersPublicTab})do
         local tabWidth=fitButton(tab,96);place(tab,x,-26);x=x+tabWidth+6
     end
-    S.selectNav(U.myCharactersOverviewTab,not items);S.selectNav(U.myCharactersItemsTab,items)
+    local public=U.profileView=='public'
+    S.selectNav(U.myCharactersOverviewTab,not items and not public);S.selectNav(U.myCharactersItemsTab,items and not public);S.selectNav(U.myCharactersPublicTab,public)
+    for _,control in ipairs({U.myCharactersPrivacy,U.myCharactersPrivacyHit,U.myCharactersRecordButton,U.myCharactersRecordStatus})do shown(control,not public)end
     -- Filter row (head, tabs and filters end at y=104, within 120).
     shown(U.accountOverviewSearch,not items);shown(U.accountOverviewSearch.caption,not items)
     U.accountOverviewRealm:SetShown(not items);U.accountOverviewFaction:SetShown(not items)
@@ -653,6 +661,13 @@ function U.LayoutProfileCharacters()
     place(U.myCharactersRecordStatus,0,-(height-BUTTON_HEIGHT+6),math.max(120,width-recordWidth-12),18)
     U.myCharactersMenu:ClearAllPoints();U.myCharactersMenu:SetPoint('TOPRIGHT',U.myCharactersMore,'BOTTOMRIGHT',0,-2)
     U.myCharactersRecordMenu:ClearAllPoints();U.myCharactersRecordMenu:SetPoint('BOTTOMRIGHT',U.myCharactersRecordButton,'TOPRIGHT',0,2)
+    -- Public profile tab: only the head and the tab row of this frame stay; the profile form follows below.
+    if public then
+        for _,control in ipairs({U.accountOverviewSearch,U.accountOverviewSearch.caption,U.accountOverviewRealm,U.accountOverviewFaction,U.myCharactersShowHidden,U.myCharactersShowHidden.text,
+            U.myCharactersSummary,U.myCharactersSummaryHit,U.itemSearch,U.itemSearch.caption,U.itemScope,U.itemsNote,U.characterList,U.myCharactersIcon,U.myCharactersHeader,U.setMainButton,
+            U.myCharactersMore,U.accountOverviewDetails,U.myCharactersBack,U.itemHitList,U.itemHolderList,U.itemsBack,U.myCharactersMenu,U.myCharactersRecordMenu})do shown(control,false)end
+    end
+    if U.LayoutProfilePublic then U.LayoutProfilePublic()end
 end
 
 -- One entry point for the own characters, also used by /zenial alts|twinks|account.

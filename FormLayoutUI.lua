@@ -219,9 +219,9 @@ function U.ApplyFormLayouts(helpers)
     -- Keep the price-filter footer clear of the results table.
     place(U.offerCount,675,-80,165,20);place(U.offerList,0,-112,455,260);U.offerList.height=260
     place(U.offerDetail,480,-112,360,230)
-    field(U.profileFields.community,0,-66,260);field(U.profileRole,280,-66,190)
-    field(U.profileFields.note,0,-140,470,true)
-    place(U.profileSave,0,-248,196);place(U.profileShow,212,-248,258)
+    field(U.profileFields.community,16,-66,250);field(U.profileRole,282,-66,184)
+    field(U.profileFields.note,16,-140,450,true)
+    place(U.profileSave,16,-248,190);place(U.profileShow,216,-248,250)
     tabOrder({U.scheduledActivity,U.scheduledDay,U.scheduledTime,U.scheduledDuration,U.scheduledSlots.TANK,U.scheduledSlots.HEALER,U.scheduledSlots.DAMAGER,U.scheduledNote})
     tabOrder({U.groupCustom,U.groupActivitySearch,U.groupFields.min,U.groupFields.max,U.groupFields.size,U.groupFields.tank,U.groupFields.healer,U.groupFields.dd,U.groupFields.note,U.groupTemplateDuration,U.groupTemplateName})
     tabOrder({U.questPickerSearch,U.questFields.title,U.questFields.zone,U.questFields.min,U.questFields.max,U.questDuration,U.questFields.note})

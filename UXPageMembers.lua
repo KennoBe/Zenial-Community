@@ -127,7 +127,8 @@ function S.createMembersPage(f)
     end)
     U.memberPrivateNote = edit(p, tr('Private Notiz'), 570, -282, 280, 500, true)
     U.memberPrivateNote:SetHeight(46)
-    U.memberFavorite = button(p, 'Favorite', 570, -349, 125, function()
+    -- Favourite: an icon-only star in the card's top right corner (placed by U.RefreshMemberCategories).
+    U.memberFavorite = button(p, '', 820, -81, 26, function()
         if U.memberKey then
             local value, err = Z.Social.ToggleFavorite(U.memberKey)
             if value == nil then
@@ -136,10 +137,31 @@ function S.createMembersPage(f)
                 refreshMembers()
             end
         end
-    end)
-    U.memberNoteSave = button(p, tr('Notiz speichern'), 705, -349, 145, function()
-        U.SavePrivateNote()
-    end)
+    end, 'ghost')
+    U.memberFavorite:SetHeight(26)
+    if Z.Kit and T then
+        U.memberFavorite.zenialStar = Z.Kit.Icon(U.memberFavorite, 'star', 16, 'muted')
+        U.memberFavorite.zenialStar:SetPoint('CENTER')
+    end
+    if GameTooltip and U.memberFavorite.HookScript then
+        U.memberFavorite:HookScript('OnEnter', function(self)
+            GameTooltip:SetOwner(self, 'ANCHOR_LEFT')
+            GameTooltip:SetText(tr(self.zenialSelected and 'Remove favorite' or 'Favorite'))
+            GameTooltip:Show()
+        end)
+        U.memberFavorite:HookScript('OnLeave', function()
+            GameTooltip:Hide()
+        end)
+    end
+    -- Draws the star for the current state; zenialSelected keeps carrying the favourite flag.
+    function U.UpdateFavoriteStar(enabled, favorite)
+        local star = U.memberFavorite
+        star:SetEnabled(enabled == true)
+        star.zenialSelected = favorite == true
+        if star.zenialStar and T then
+            T.Tint(star.zenialStar, 'SetVertexColor', favorite and 'gold' or enabled and 'dim' or 'disabledText')
+        end
+    end
     U.memberWhisper = button(p, 'Whisper', 570, -382, 125, function()
         -- Real, reachable character (active twink of a group), never an offline main or a group anchor.
         local c = S.memberContactTarget(memberFor(U.memberKey))
@@ -162,7 +184,7 @@ function S.createMembersPage(f)
     end)
     -- Action symbols on the left of the four secondary buttons.
     if Z.Kit and T then
-        for button, name in pairs({ [U.memberWhisper] = 'whisper', [U.memberInvite] = 'invite', [U.memberFavorite] = 'star', [U.memberNoteSave] = 'note' }) do
+        for button, name in pairs({ [U.memberWhisper] = 'whisper', [U.memberInvite] = 'invite' }) do
             local icon = Z.Kit.Icon(button, name, 14, 'textSoft')
             icon:SetPoint('LEFT', 8, 0)
             button.zenialActionIcon = icon
@@ -188,10 +210,14 @@ function S.createMembersPage(f)
     end)
     U.memberBack:Hide()
 
+    -- The private note saves itself while typing. Only text the note store rejects stays a draft.
+    if Z.Kit and T and U.memberCard then
+        U.memberNoteSaved = Z.Kit.Icon(U.memberCard, 'check', 12, 'success')
+        U.memberNoteSaved:Hide()
+    end
     U.memberPrivateNote:SetScript('OnTextChanged', function(self)
         if U.memberNoteOwner and not U.memberNoteBinding then
-            U.noteDrafts = U.noteDrafts or {}
-            U.noteDrafts[U.memberNoteOwner] = self:GetText()
+            U.AutoSavePrivateNote()
         end
     end)
     local categoryOptions = { 'ALL', 'RECONTACT' }
