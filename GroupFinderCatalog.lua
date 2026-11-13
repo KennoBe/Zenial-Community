@@ -251,6 +251,11 @@ end
 -- which means nothing for a search, as "+Second;Third". Clients that do not know this show the search under
 -- its first activity only. Creating a group stays limited to one.
 C.MAX_SEARCH = 3
+-- A search runs until the player goes offline: its end time is far away (inside the day a live record may
+-- last, with room for clock differences between clients), other members only see it while the player is
+-- online, and C.Resume ends it after a break longer than SEARCH_GRACE.
+C.SEARCH_MINUTES = 1200
+C.SEARCH_GRACE = 600
 function C.SearchActivities(g)
     local out, seen = {}, {}
     if type(g) ~= 'table' then
@@ -319,7 +324,7 @@ function C.StartSearch(activities, roles, note, minutes)
         max = level,
         have = have,
         start = current and current.start or now,
-        expires = now + math.max(1, math.min(1440, tonumber(minutes) or 120)) * 60,
+        expires = now + math.max(1, math.min(C.SEARCH_MINUTES, tonumber(minutes) or C.SEARCH_MINUTES)) * 60,
         note = note or '',
         size = e and e.size or 5,
         tank = tank,
@@ -383,6 +388,30 @@ function C.StopSearch()
     end
     return Z.CloseGroup(g.id)
 end
+-- Logging out (also /reload) notes the moment on the search itself; the note stays local, the wire does not
+-- carry it. Logging in within SEARCH_GRACE continues the search, a longer break ends it. After a client crash
+-- the saved data is that of the last login or /reload, so only a search that existed then can continue.
+function C.Resume()
+    local g = Z.db and Z.db.lfg[1]
+    if not g or not C.IsSearch(g) then
+        return false
+    end
+    local seen = g.seen
+    g.seen = nil
+    if type(seen) == 'number' and A.Now() - seen <= C.SEARCH_GRACE and A.Now() >= seen then
+        return true
+    end
+    L.CloseGroup(Z.db, g.id)
+    return false
+end
+local watcher = CreateFrame('Frame')
+watcher:RegisterEvent('PLAYER_LOGOUT')
+watcher:SetScript('OnEvent', function()
+    local g = Z.db and Z.db.lfg and Z.db.lfg[1]
+    if g and C.IsSearch(g) then
+        g.seen = A.Now()
+    end
+end)
 -- Roles a seeker offers, in display order.
 function C.SearchRoles(g)
     local out = {}

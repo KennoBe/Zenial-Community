@@ -524,6 +524,7 @@ local function initializeGameplayModules(d)
     if Z.Network3 then Z.Network3.Initialize()end
     if Z.TradeManager then Z.TradeManager.Initialize()end
     if Z.GroupFinder then Z.GroupFinder.Initialize()end
+    if Z.GroupFinderCatalog then Z.GroupFinderCatalog.Resume()end
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
     if Z.SocialDiary then Z.SocialDiary.Initialize()end
