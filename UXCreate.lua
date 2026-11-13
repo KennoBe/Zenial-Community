@@ -38,6 +38,7 @@ function U.Create()
     if f.SetResizeBounds then
         f:SetResizeBounds(900, 610, maxWidth, maxHeight)
     end
+    U.resizeBounds = { 900, 610, maxWidth, maxHeight }
     f:EnableMouse(true)
     f:RegisterForDrag('LeftButton')
     f:SetScale(Z.db.scale or 1)
@@ -291,7 +292,26 @@ function U.Create()
         U.resizeElapsed = 0
         U.resizePending = false
         U.resizeDriver:SetScript('OnUpdate', U.ResizeUpdate)
-        f:StartSizing('BOTTOMRIGHT')
+        -- The size follows the cursor here (U.ResizeUpdate) instead of the client's StartSizing, which now and
+        -- then jumped to the maximum size when the corner was grabbed again (scaled window, lost mouse-up).
+        -- The top left corner stays where it is while dragging.
+        local cursorX, cursorY
+        if type(GetCursorPosition) == 'function' then
+            cursorX, cursorY = GetCursorPosition()
+        end
+        if type(cursorX) == 'number' and type(cursorY) == 'number' then
+            local left, top = f.GetLeft and f:GetLeft(), f.GetTop and f:GetTop()
+            if type(left) == 'number' and type(top) == 'number' then
+                f:ClearAllPoints()
+                f:SetPoint('TOPLEFT', UIParent, 'BOTTOMLEFT', left, top)
+            end
+            local scale = f.GetEffectiveScale and f:GetEffectiveScale()
+            U.resizeStart = { x = cursorX, y = cursorY, width = f:GetWidth(), height = f:GetHeight(),
+                scale = type(scale) == 'number' and scale > 0 and scale or 1 }
+        else
+            U.resizeStart = nil
+            f:StartSizing('BOTTOMRIGHT')
+        end
     end)
     resize:SetScript('OnMouseUp', function()
         U.FinishResize()
@@ -309,6 +329,28 @@ function U.Create()
         end
     end)
     U.resizeHandle = resize
+    -- While the character is moving the window turns slightly transparent so the world stays visible, and
+    -- returns to normal as soon as you stand still. Flight paths do not count as moving.
+    U.MOVING_ALPHA = 0.55
+    U.frameAlpha = 1
+    local fader, sinceCheck = CreateFrame('Frame', nil, f), 0
+    U.moveFader = fader
+    fader:SetScript('OnUpdate', function(_, elapsed)
+        sinceCheck = sinceCheck + (elapsed or 0)
+        if sinceCheck < 0.05 then
+            return
+        end
+        sinceCheck = 0
+        local speed = type(GetUnitSpeed) == 'function' and GetUnitSpeed('player') or 0
+        local taxi = type(UnitOnTaxi) == 'function' and UnitOnTaxi('player') == true
+        local target = type(speed) == 'number' and speed > 0 and not taxi and U.MOVING_ALPHA or 1
+        if U.frameAlpha ~= target then
+            -- Short fade instead of a hard switch.
+            local step = math.max(-0.12, math.min(0.12, target - U.frameAlpha))
+            U.frameAlpha = math.abs(target - U.frameAlpha) <= 0.12 and target or U.frameAlpha + step
+            f:SetAlpha(U.frameAlpha)
+        end
+    end)
     U.versionLabel = label(U.sidebar, Z.ADDON_VERSION, 0, 0, 120, 'GameFontHighlightSmall')
     U.versionLabel:ClearAllPoints()
     U.versionLabel:SetPoint('BOTTOMLEFT', U.sidebar, 'BOTTOMLEFT', 16, 12)

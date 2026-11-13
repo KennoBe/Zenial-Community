@@ -280,7 +280,7 @@ function U.RefreshCommunityHome()
     for i,m in ipairs(home.people)do if i>3 then break end;local member=m
         local text=tr('Matching player')..': '..m.target..' · '..tr(m.status)
         items[#items+1]={text=text,display=paint('dim',tr('Matching player')..': ')..paint('text',m.target)..paint('dim',' · '..tr(m.status)),icon=T.IconSpec('members'),iconColor='accentBlue',iconSize=18,textInset=40,height=34,click=function()
-        if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh();U.OpenCompactArea('members')end
+        if U.Navigate('members')then U.memberKey=member.key;U.memberFollowActive=false;U.Refresh()end
     end}end
     section('Next appointments',appointments,'No upcoming appointments today.','textSoft')
     H.rows(U.homeList,items,48)

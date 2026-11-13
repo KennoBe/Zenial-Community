@@ -259,6 +259,22 @@ end
 -- Mouse release (or hiding the window) finishes every page and saves once.
 function U.ResizeUpdate(_, elapsed)
     U.resizeElapsed = (U.resizeElapsed or 0) + elapsed
+    local start = U.resizeStart
+    if start then
+        -- A mouse-up that never reached the grip ends the drag here.
+        if type(IsMouseButtonDown) == 'function' and not IsMouseButtonDown('LeftButton') then
+            U.FinishResize()
+            return
+        end
+        local cursorX, cursorY = GetCursorPosition()
+        local bounds = U.resizeBounds or { 900, 610, 1280, 860 }
+        local width = math.max(bounds[1], math.min(bounds[3], start.width + (cursorX - start.x) / start.scale))
+        local height = math.max(bounds[2], math.min(bounds[4], start.height - (cursorY - start.y) / start.scale))
+        if width ~= U.frame:GetWidth() or height ~= U.frame:GetHeight() then
+            U.frame:SetSize(width, height)
+            U.resizePending = true
+        end
+    end
     if not U.resizePending then
         return
     end
@@ -273,7 +289,21 @@ function U.FinishResize()
     if not U.resizing then
         return
     end
-    U.frame:StopMovingOrSizing()
+    if U.resizeStart then
+        -- Back to the centre anchor every other place expects, at the position the window has now.
+        U.resizeStart = nil
+        local f = U.frame
+        local x, y = f:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        local sc = f:GetScale()
+        if type(x) == 'number' and type(y) == 'number' and type(ux) == 'number' and type(uy) == 'number' and type(sc) == 'number' and sc > 0 then
+            Z.db.position = { x = math.floor(x - ux / sc), y = math.floor(y - uy / sc) }
+            f:ClearAllPoints()
+            f:SetPoint('CENTER', UIParent, 'CENTER', Z.db.position.x, Z.db.position.y)
+        end
+    else
+        U.frame:StopMovingOrSizing()
+    end
     U.resizing = false
     U.resizePending = false
     U.resizeElapsed = 0

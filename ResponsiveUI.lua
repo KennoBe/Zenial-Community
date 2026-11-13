@@ -125,6 +125,16 @@ function U.ApplyResponsiveLayout(activePage)
         else
             for index,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do f:ClearAllPoints();f:SetPoint('TOPLEFT',({0,105,220})[index]*hz,-(h-57))end
         end
+        -- The footer actions sit at h-57 on this page (not at the generic footer position), so the result list
+        -- has to end above them; with the generic height it ran underneath the buttons.
+        if not compact then
+            local _,_,_,_,listY=U.professionList:GetPoint(1)
+            local listHeight=math.max(120,math.floor((h-57-8)+(type(listY)=='number'and listY or-102)))
+            if U.professionList:GetHeight()~=listHeight then
+                U.professionList:SetHeight(listHeight);U.professionList.height=listHeight
+                if U.professionList.zenialRender then U.professionList.zenialRender()end
+            end
+        end
         if U.professionRecipeList.zenialRender then U.professionRecipeList.zenialRender()end
         if U.craftDetailMaterials.zenialRender then U.craftDetailMaterials.zenialRender()end
     end

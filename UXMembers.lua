@@ -664,7 +664,7 @@ local function selectMember(memberKey, m, follow)
     end
     refreshMembers()
     refreshMemberDetail()
-    U.OpenCompactArea('members')
+    -- No compact detail on top: the card beside the list shows the selected player at every window size.
 end
 local function locationLine(m)
     return m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where)

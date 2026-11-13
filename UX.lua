@@ -283,6 +283,23 @@ local function button(parent, text, x, y, w, fn, variant)
         b:SetScript('OnClick', fn or function() end)
     end
     b:SetPoint('TOPLEFT', x, y)
+    -- "← Back …" captions: the client font has no arrow glyph (it showed an empty box). The caption loses
+    -- the character and the button gets a mirrored chevron from the icon atlas instead.
+    local caption = text:match('^\226\134\144%s*(.+)$')
+    if caption and T and T.iconCells and T.iconCells.chevronRight and Z.Kit then
+        b:SetText(caption)
+        local icon = Z.Kit.Icon(b, 'chevronRight', 12, 'textSoft')
+        icon:SetPoint('LEFT', 10, 0)
+        local cell = T.iconCells.chevronRight
+        local column, row = cell % 8, math.floor(cell / 8)
+        if icon.SetTexCoord then
+            icon:SetTexCoord((column + 1) / 8, column / 8, row / 4, (row + 1) / 4)
+        end
+        b.zenialBackIcon = icon
+        if T.AlignButtonText then
+            T.AlignButtonText(b, 26, 8)
+        end
+    end
     return remember(b, parent, 'button')
 end
 S.button = button

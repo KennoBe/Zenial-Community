@@ -66,6 +66,8 @@ function S.createCraftPage(f)
     end)
     U.craftProfessionFilter = selector(U.craftSearchFrame, tr('Beruf'), 10, -52, 220, { 'ALL_PROFESSIONS' }, U.RecipeSearchChanged)
     U.craftOnlineFilter = selector(U.craftSearchFrame, tr('Spieler'), 242, -52, 145, { 'ALL', 'ONLINE' }, refreshProfessions)
+    -- Starts on players who are online: an offline crafter cannot take a request right now.
+    U.craftOnlineFilter:SetText('ONLINE')
     U.professionCount = label(U.craftSearchFrame, tr('0 Ergebnisse'), 399, -70, 105, 'GameFontNormal')
     U.craftSearchState = label(U.craftSearchFrame, '', 504, -70, 336, 'GameFontHighlightSmall')
     U.craftSearchState:SetJustifyH('RIGHT')
