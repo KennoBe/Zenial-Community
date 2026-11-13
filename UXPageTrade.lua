@@ -2,6 +2,7 @@ local Z = ZenialCommunity
 local U = Z.UI
 local L = Z.Logic
 local A = Z.Adapter
+local T = Z.Theme
 local S = U.Shared
 local tr = S.tr
 local TRADE_CATEGORIES, TRADE_SORTS, label, button, navButton = S.TRADE_CATEGORIES, S.TRADE_SORTS, S.label, S.button, S.navButton
@@ -27,14 +28,16 @@ function S.createTradePage(f)
     U.tradeBrowseFrame = CreateFrame('Frame', nil, p)
     U.tradeBrowseFrame:SetPoint('TOPLEFT', 0, -40)
     U.tradeBrowseFrame:SetSize(856, 414)
-    U.offerSearch = edit(U.tradeBrowseFrame, tr('Gegenstand, Dienstleistung oder Spieler'), 0, 0, 280, 96)
-    U.tradeKindFilter = selector(U.tradeBrowseFrame, tr('Art'), 292, 0, 125, { 'ALL', 'SELL', 'BUY', 'SERVICE' }, refreshOffers)
+    -- Plate of frame textures behind the filter line (placed by U.LayoutTradeVisual).
+    U.tradeFilterBar = Z.Kit and Z.Kit.FilterBar(U.tradeBrowseFrame)
+    U.offerSearch = edit(U.tradeBrowseFrame, tr('Gegenstand, Dienstleistung oder Spieler'), 8, 0, 280, 96)
+    U.tradeKindFilter = selector(U.tradeBrowseFrame, tr('Art'), 300, 0, 125, { 'ALL', 'SELL', 'BUY', 'SERVICE' }, refreshOffers)
     U.tradeAdvancedOpen = false
-    U.tradeAdvancedToggle = button(U.tradeBrowseFrame, tr('Advanced'), 429, -17, 100, function()
+    U.tradeAdvancedToggle = button(U.tradeBrowseFrame, tr('Advanced'), 437, -17, 100, function()
         U.tradeAdvancedOpen = not U.tradeAdvancedOpen
         U.RefreshTradeAdvanced()
     end)
-    U.tradeResetButton = button(U.tradeBrowseFrame, tr('Reset'), 535, -17, 100, function()
+    U.tradeResetButton = button(U.tradeBrowseFrame, tr('Reset'), 543, -17, 100, function()
         U.offerSearchItemID = nil
         U.offerSearch:SetText('')
         U.tradeKindFilter:SetText('ALL')
@@ -44,7 +47,7 @@ function S.createTradePage(f)
         U.tradeSort:SetText('TRADE_NAME')
         refreshOffers()
     end)
-    U.tradeSaveSearch = button(U.tradeBrowseFrame, tr('Save search'), 641, -17, 205, function()
+    U.tradeSaveSearch = button(U.tradeBrowseFrame, tr('Save search'), 649, -17, 197, function()
         local minPrice, minOK = goldFilter(U.tradeMinPrice:GetText())
         local maxPrice, maxOK = goldFilter(U.tradeMaxPrice:GetText())
         if not minOK or not maxOK or minPrice and maxPrice and minPrice > maxPrice then
@@ -66,11 +69,11 @@ function S.createTradePage(f)
     end)
     U.tradeAdvancedFrame=CreateFrame('Frame',nil,U.tradeBrowseFrame)
     U.tradeAdvancedFrame:SetAllPoints(U.tradeBrowseFrame)
-    U.tradeCategoryFilter = selector(U.tradeAdvancedFrame, tr('Kategorie'), 0, -48, 190, TRADE_CATEGORIES, refreshOffers)
-    U.tradeMinPrice = edit(U.tradeAdvancedFrame, 'Minimum unit price (gold)', 200, -48, 120, 12)
-    U.tradeMaxPrice = edit(U.tradeAdvancedFrame, 'Maximum unit price (gold)', 330, -48, 120, 12)
-    U.tradeSort = selector(U.tradeAdvancedFrame, 'Sort', 460, -48, 205, TRADE_SORTS, refreshOffers)
-    U.tradeFilterSummary = label(U.tradeBrowseFrame, '', 0, -48, 840, 'GameFontHighlight')
+    U.tradeCategoryFilter = selector(U.tradeAdvancedFrame, tr('Kategorie'), 8, -48, 190, TRADE_CATEGORIES, refreshOffers)
+    U.tradeMinPrice = edit(U.tradeAdvancedFrame, 'Minimum unit price (gold)', 208, -48, 120, 12)
+    U.tradeMaxPrice = edit(U.tradeAdvancedFrame, 'Maximum unit price (gold)', 338, -48, 120, 12)
+    U.tradeSort = selector(U.tradeAdvancedFrame, 'Sort', 468, -48, 205, TRADE_SORTS, refreshOffers)
+    U.tradeFilterSummary = label(U.tradeBrowseFrame, '', 8, -48, 832, 'GameFontHighlight')
     U.tradeFilterSummary:SetHeight(28)
     U.tradeCategoryFilter:SetShown(false)
     U.tradeMinPrice:Hide();U.tradeMinPrice.caption:Hide()
@@ -116,6 +119,7 @@ function S.createTradePage(f)
     U.tradeMineFrame = CreateFrame('Frame', nil, p)
     U.tradeMineFrame:SetPoint('TOPLEFT', 0, -40)
     U.tradeMineFrame:SetSize(856, 414)
+    U.offerPreviewCard = Z.Kit and Z.Kit.Plate(U.tradeMineFrame, 'surface')
     U.tradeEditorTitle = label(U.tradeMineFrame, tr('Create offer'), 0, 0, 420, 'GameFontNormalLarge')
     U.tradeEditorBack = button(U.tradeMineFrame, tr('← My Offers'), 650, 0, 190, function()
         U.SetTradeView('manage')
@@ -134,7 +138,7 @@ function S.createTradePage(f)
     U.offerFields.copper = edit(U.tradeMineFrame, 'Copper', 355, -96, 90, 2)
     U.offerDuration = edit(U.tradeMineFrame, 'Duration in minutes (max. 1440)', 460, -96, 170, 4)
     U.offerFields.note = edit(U.tradeMineFrame, 'Note (optional)', 0, -158, 630, 96, true)
-    U.offerPreview = label(U.tradeMineFrame, '|cffffd36bPREVIEW|r', 655, -38, 190, 'GameFontHighlight')
+    U.offerPreview = label(U.tradeMineFrame, Z.Kit and Z.Kit.Paint('warning', 'PREVIEW') or 'PREVIEW', 655, -38, 190, 'GameFontHighlight')
     U.offerPreview:SetHeight(210)
     U.offerSave = button(U.tradeMineFrame, 'Publish offer', 0, -263, 190, function()
         if not U.ValidateOfferForm() then
@@ -276,7 +280,7 @@ function S.createTradePage(f)
             U.offerSave:SetText(tr('Publish offer'))
         end
         U.SetTradeView('mine')
-    end, 'primary')
+    end)
     local function clearInactiveOfferEditor(id)
         if U.offerEditID ~= id then return end
         U.offerEditID = nil
@@ -361,7 +365,7 @@ function S.createTradePage(f)
         U.tradeMinPrice:SetText(r.minPrice and tostring(r.minPrice / 10000) or '')
         U.tradeMaxPrice:SetText(r.maxPrice and tostring(r.maxPrice / 10000) or '')
         U.SetTradeView('browse')
-    end, 'primary')
+    end)
     U.tradeRuleDelete = button(U.tradeRulesFrame, tr('Suchalarm löschen'), 655, -200, 165, function()
         if U.tradeRuleID then
             Z.TradeManager.DeleteRule(U.tradeRuleID)
@@ -371,4 +375,52 @@ function S.createTradePage(f)
     end, 'danger')
     U.tradeRulesFrame:Hide()
     U.tradeView = 'browse'
+    -- Information lines recede behind the content they describe.
+    if T then
+        for _, info in ipairs({ U.tradeFilterSummary, U.tradeLimitInfo, U.tradeEditorLimitInfo, U.tradeRuleLimitInfo }) do
+            T.Tint(info, 'SetTextColor', 'textSoft')
+        end
+    end
+    U.LayoutTradeVisual()
+end
+
+-- Plates behind the browse filters and the editor preview, plus the one gold primary of the
+-- current view. Called after creation, on every trade refresh (U.RefreshTradeAdvanced) and from the responsive layout.
+function U.LayoutTradeVisual()
+    local browse, mine = U.tradeBrowseFrame, U.tradeMineFrame
+    if not browse or not mine then
+        return
+    end
+    local function factor(frame)
+        local width = frame:GetWidth()
+        return (type(width) == 'number' and width > 0 and width or 856) / 856
+    end
+    local compact = U.compactArea == 'trade'
+    local horizontal = factor(browse)
+    local open = U.tradeAdvancedOpen == true
+    if not compact then
+        -- The advanced filters are placed by FormLayoutUI at x = 0; here they get the plate's inner padding.
+        for _, spec in ipairs({ { 'tradeCategoryFilter', 8 }, { 'tradeMinPrice', 208 }, { 'tradeMaxPrice', 338 }, { 'tradeSort', 468 } }) do
+            local control = U[spec[1]]
+            if control then
+                control.caption:ClearAllPoints()
+                control.caption:SetPoint('TOPLEFT', spec[2] * horizontal, -48)
+                local target = control.button or control
+                target:ClearAllPoints()
+                target:SetPoint('TOPLEFT', spec[2] * horizontal, -80)
+            end
+        end
+    end
+    if U.tradeFilterBar then
+        U.tradeFilterBar:Place(0, -4, 850 * horizontal, open and 112 or 70)
+        U.tradeFilterBar:SetShown(not compact)
+    end
+    if U.offerPreviewCard then
+        local previewScale = factor(mine)
+        U.offerPreviewCard:Place(647 * previewScale, 32, 206 * previewScale, 222)
+    end
+    -- One primary action per view: the editor's Publish button, otherwise Create offer.
+    if T and T.StyleButton and U.tradeMineTab then
+        T.StyleButton(U.tradeMineTab, U.tradeView == 'mine' and 'secondary' or 'primary')
+    end
 end

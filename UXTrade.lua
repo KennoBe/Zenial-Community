@@ -8,6 +8,36 @@ local tr = S.tr
 local NAV_ICONS, displayValue, rows, itemIcon, keys = S.NAV_ICONS, S.displayValue, S.rows, S.itemIcon, S.keys
 local peerOnline, faction = S.peerOnline, S.faction
 
+-- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays the
+-- data contract. With priceTail the last ' · ' part of the final line (a price) is painted gold. The colour only
+-- changes at that ' · ' boundary, never inside a phrase.
+local function weighted(text, priceTail)
+    local K = Z.Kit
+    if not K then
+        return nil
+    end
+    local plain = tostring(text or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', '')
+    local lines = {}
+    for line in (plain .. '\n'):gmatch('(.-)\n') do
+        lines[#lines + 1] = line
+    end
+    local out = {}
+    for index, line in ipairs(lines) do
+        if line == '' then
+            out[index] = ''
+        elseif index == 1 then
+            out[index] = K.Paint('text', line)
+        else
+            local head, tail = line:match('^(.*) · (.-)$')
+            if priceTail and index == #lines and head then
+                out[index] = K.Paint('dim', head .. ' · ') .. K.Paint('gold', tail)
+            else
+                out[index] = K.Paint('dim', line)
+            end
+        end
+    end
+    return table.concat(out, '\n')
+end
 local function offers()
     local all = {}
     local now = A.Now()
@@ -75,9 +105,8 @@ function U.CaptureOfferDraft()
         local quantity = tonumber(draft.quantity) or 1
         local price = (tonumber(draft.gold) or 0) * 10000 + (tonumber(draft.silver) or 0) * 100 + (tonumber(draft.copper) or 0)
         U.offerPreview:SetText(
-            '|cffffd36b'
-                .. tr('PREVIEW')
-                .. '|r\n'
+            (Z.Kit and Z.Kit.Paint('warning', tr('PREVIEW')) or tr('PREVIEW'))
+                .. '\n'
                 .. displayValue(draft.kind or '')
                 .. ': '
                 .. ((draft.name or '') ~= '' and draft.name or tr('Item or service'))
@@ -336,6 +365,7 @@ local function refreshOffers()
             selected = key == U.offerKey and id == U.offerID,
             icon = itemIcon(o.itemID) or NAV_ICONS.trade,
             text = value,
+            display = weighted(value, true),
             click = function()
                 if key ~= Z.me.key and not peerOnline(key) then
                     U.offerKey, U.offerID = nil, nil
@@ -378,6 +408,7 @@ function U.RefreshTradeAdvanced()
         U.tradeAdvancedToggle:Hide()
         U.tradeSaveSearch:Hide()
         refreshOffers()
+        if U.LayoutTradeVisual then U.LayoutTradeVisual() end
         return
     end
     U.tradeAdvancedToggle:Show()
@@ -391,6 +422,7 @@ function U.RefreshTradeAdvanced()
         U.tradeFilterSummary:Hide()
     end
     refreshOffers()
+    if U.LayoutTradeVisual then U.LayoutTradeVisual() end
 end
 function U.RefreshTradeContext()
     if not U.tradeContextText then return end
@@ -493,8 +525,10 @@ local function refreshTradeRules()
             break
         end
         local row = entry
+        local described = Z.Notifications.Describe(row) .. '\n' .. date('%d.%m. %H:%M', row.at)
         notices[#notices + 1] = {
-            text = (row.unread and '|cffff5555!|r ' or '') .. Z.Notifications.Describe(row) .. '\n' .. date('%d.%m. %H:%M', row.at),
+            text = (row.unread and '|cffff5555!|r ' or '') .. described,
+            display = Z.Kit and ((row.unread and Z.Kit.Paint('dangerText', '!') .. ' ' or '') .. weighted(described)) or nil,
             click = function()
                 Z.Notifications.Read(row.token)
                 U.OpenTradeAlert(row)
@@ -503,7 +537,7 @@ local function refreshTradeRules()
         }
     end
     if U.tradeAlertList then
-        U.SetEmptyHint(U.tradeAlertList, 'No updates yet. A saved search alerts you here when a matching offer appears.')
+        U.SetEmptyHint(U.tradeAlertList, 'No updates yet. A saved search alerts you here when a matching offer appears.', 'bell')
         rows(U.tradeAlertList, notices, 54)
     end
     for id, rule in pairs(Z.TradeManager.store.rules) do
@@ -511,17 +545,19 @@ local function refreshTradeRules()
         if token == U.tradeRuleID then
             selected = rule
         end
+        local ruleText = '|cffffd36b'
+            .. (rule.name ~= '' and rule.name or tr('Gespeicherte Suche'))
+            .. '|r\n'
+            .. (rule.query ~= '' and rule.query or tr('Alle Angebote'))
+            .. ' · '
+            .. displayValue(rule.kind)
+            .. ' · '
+            .. displayValue(rule.category)
         items[#items + 1] = {
             selected = token == U.tradeRuleID,
             icon = NAV_ICONS.trade,
-            text = '|cffffd36b'
-                .. (rule.name ~= '' and rule.name or tr('Gespeicherte Suche'))
-                .. '|r\n'
-                .. (rule.query ~= '' and rule.query or tr('Alle Angebote'))
-                .. ' · '
-                .. displayValue(rule.kind)
-                .. ' · '
-                .. displayValue(rule.category),
+            text = ruleText,
+            display = weighted(ruleText),
             click = function()
                 U.tradeRuleID = token
                 U.tradeAlertStatus:SetText('')
@@ -532,7 +568,7 @@ local function refreshTradeRules()
     table.sort(items, function(a, b)
         return a.text < b.text
     end)
-    U.SetEmptyHint(U.tradeRuleList, 'No saved searches. Filter offers under Find Offers and press Save search.')
+    U.SetEmptyHint(U.tradeRuleList, 'No saved searches. Filter offers under Find Offers and press Save search.', 'search')
     rows(U.tradeRuleList, items, 58)
     U.tradeRuleCount:SetText(#items .. tr(' gespeicherte Suchen'))
     if U.tradeRuleLimitInfo then
@@ -635,12 +671,14 @@ local function refreshTradeManage()
         if token == U.tradeManageID then
             selected = entry
         end
+        local entryText = '|cffffd36b' .. entry.row.name .. '|r · ' .. tr(TRADE_STATES[entry.state] or entry.state) .. '\n' .. displayValue(
+            entry.row.kind
+        ) .. ' · ' .. A.MoneyText(entry.row.price or 0)
         if U.tradeOfferFilter == 'all' or U.tradeOfferFilter == entry.state then items[#items + 1] = {
             selected = token == U.tradeManageID,
             icon = itemIcon(entry.row.itemID) or NAV_ICONS.trade,
-            text = '|cffffd36b' .. entry.row.name .. '|r · ' .. tr(TRADE_STATES[entry.state] or entry.state) .. '\n' .. displayValue(
-                entry.row.kind
-            ) .. ' · ' .. A.MoneyText(entry.row.price or 0),
+            text = entryText,
+            display = weighted(entryText, true),
             click = function()
                 U.tradeManageID = token
                 refreshTradeManage()
@@ -648,7 +686,7 @@ local function refreshTradeManage()
         } end
     end
     local empty = U.tradeOfferFilter == 'all' and 'Nothing stored locally. Drafts, templates and finished offers appear after you create an offer.' or ({active='No active offers.',draft='No drafts.',paused='No paused offers.',expired='No expired offers.',completed='No completed offers.',template='No templates.'})[U.tradeOfferFilter]
-    U.SetEmptyHint(U.tradeManageList, empty)
+    U.SetEmptyHint(U.tradeManageList, empty, 'trade')
     rows(U.tradeManageList, items, 58)
     U.tradeManageCount:SetText(#items .. tr(' lokale Einträge'))
     U.tradeManageSelected = selected
