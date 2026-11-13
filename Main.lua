@@ -557,6 +557,7 @@ local function initializeNetworkModules()
     Z.ScheduledGroups.Initialize()
     Z.ActivityParty.Initialize()
     Z.ScheduledMesh.Initialize()
+    if Z.CrossFaction then Z.CrossFaction.Initialize()end
 end
 
 -- Step 7: companion, account preferences, minimap button and badges.
@@ -645,6 +646,7 @@ register("SHARD_TRANSFER");register("SHARD_TRANSFER_IMMINENT")
 register("BAG_UPDATE_DELAYED")
 register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
+register("ADDON_ACTION_BLOCKED");register("ADDON_ACTION_FORBIDDEN")
 frame:SetScript("OnEvent",function(_,event,...)
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
@@ -674,6 +676,7 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end
         A.DiscoveryTick(true)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
+    elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
 end)
 local elapsed,refresh,timed=0,0,0
@@ -721,6 +724,7 @@ end
 local function tickSecond()
     if Z.Social and Z.Social.GuildTick then Z.Social.GuildTick()end
     if Z.UI and Z.UI.RefreshTimed then Z.UI.RefreshTimed(A.Clock())end
+    if Z.CrossFaction then Z.CrossFaction.Tick()end
 end
 
 -- Every 5 s: identity, location and expiry housekeeping.
