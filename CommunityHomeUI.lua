@@ -574,6 +574,6 @@ function U.CreateCommunityHome(helpers)
         if order and order.key then U.craftOrderID=order.key;U.craftOrderFilter='all' end
         U.SetCraftView('orders')
     end);U.materialBackOrders:Hide()
-    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
+    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);if U.StyleGroupForm then U.StyleGroupForm()end;U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

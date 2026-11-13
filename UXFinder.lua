@@ -1749,4 +1749,7 @@ function U.CreateFinder()
     return frame
 end
 
+-- Shared with the group form (GroupFormUI.lua).
+F.CreatePicture, F.SetRoleIcon = createPicture, setRoleIcon
+
 return F

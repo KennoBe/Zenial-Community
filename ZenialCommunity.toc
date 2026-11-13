@@ -96,6 +96,7 @@ UXNavigation.lua
 ScheduledGroupsUI.lua
 CommunityHomeUI.lua
 UXFinder.lua
+GroupFormUI.lua
 FormLayoutUI.lua
 SchedulePickersUI.lua
 CategorySettingsUI.lua

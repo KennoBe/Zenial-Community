@@ -1254,6 +1254,10 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["Open for (minutes)"]="Offen für (Minuten)"
+DE["Wanted roles"]="Gesuchte Rollen"
+DE["%d of %d places wanted"]="%d von %d Plätzen gesucht"
+DE["you are alone"]="du bist allein"
 DE["1 quest in common"]="1 gemeinsame Quest"
 DE["Players with quests in common"]="Spieler mit gemeinsamen Quests"
 DE["Switch it on under Settings, Privacy, to see who has the same quests."]="Schalte sie unter Einstellungen, Datenschutz, ein, um zu sehen, wer dieselben Quests hat."
