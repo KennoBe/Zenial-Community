@@ -629,6 +629,21 @@ function T.StyleEditBox(edit)
     return edit
 end
 
+-- Field drawn with the edit box's own textures: dark well, 1px edge, gold-dim edge while focused. For edit
+-- boxes whose template can draw neither a backdrop nor usable art in the client (multi-line boxes).
+function T.FieldBackground(edit)
+    if not edit or edit.zenialField or not edit.CreateTexture then return edit end
+    hideTemplateArt(edit)
+    local field = {}
+    field.fill = edit:CreateTexture(nil, "BACKGROUND")
+    field.fill:SetAllPoints(); tint(field.fill, "SetColorTexture", "inset")
+    field.edges = edges(edit, "BORDER"); tintEdges(field.edges, "fieldEdge")
+    edit.zenialField = field
+    hook(edit, "OnEditFocusGained", function(self) tintEdges(self.zenialField.edges, "goldDim") end)
+    hook(edit, "OnEditFocusLost", function(self) tintEdges(self.zenialField.edges, "fieldEdge") end)
+    return edit
+end
+
 function T.CreateScrollBar(parent, onValue)
     local bar = CreateFrame("Slider", nil, parent); bar:SetOrientation("VERTICAL"); bar:SetSize(12, 100); bar:SetValueStep(1)
     if bar.SetObeyStepOnDrag then bar:SetObeyStepOnDrag(false) end

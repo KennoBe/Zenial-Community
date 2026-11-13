@@ -127,6 +127,10 @@ function S.createMembersPage(f)
     end)
     U.memberPrivateNote = edit(p, tr('Private Notiz'), 570, -282, 280, 500, true)
     U.memberPrivateNote:SetHeight(46)
+    -- The multi-line box has no visible field of its own in the client: draw one.
+    if T and T.FieldBackground then
+        T.FieldBackground(U.memberPrivateNote)
+    end
     -- Favourite: an icon-only star in the card's top right corner (placed by U.RefreshMemberCategories).
     U.memberFavorite = button(p, '', 820, -81, 26, function()
         if U.memberKey then
