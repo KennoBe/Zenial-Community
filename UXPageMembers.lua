@@ -69,28 +69,48 @@ function S.createMembersPage(f)
     local p = U.pages[1]
     local C = Z.SocialCategories
     createMemberCard(p)
-    U.memberSearch = edit(p, 'Search', 0, 0, 205, 64)
-    U.memberStatus = selector(p, tr('Status'), 215, 0, 100, { 'ALL', 'ONLINE' }, refreshMembers)
+    -- Filter bar: a plate of page textures behind the filter controls (placed in U.RefreshMembersPageLayout).
+    U.memberFilterBar = Z.Kit and Z.Kit.FilterBar(p)
+    U.memberSearch = edit(p, 'Search', 10, -6, 230, 64)
+    if Z.Kit and T then
+        local icon = Z.Kit.Icon(U.memberSearch, 'search', 14, 'muted')
+        icon:SetPoint('LEFT', 8, 0)
+        U.memberSearchIcon = icon
+        if U.memberSearch.SetTextInsets then
+            U.memberSearch:SetTextInsets(26, 8, 4, 4)
+        end
+    end
+    U.memberStatus = selector(p, tr('Status'), 250, -6, 100, { 'ALL', 'ONLINE' }, refreshMembers)
     U.memberStatus:SetText(Z.uiCharacter and Z.uiCharacter.memberStatus == 'ONLINE' and 'ONLINE' or 'ALL')
-    U.memberFavoriteFilter = selector(p, tr('Quick filter'), 325, 0, 145, { 'ALL', 'FAVORITES', 'MY_GUILD' }, refreshMembers, function(id)
+    U.memberFavoriteFilter = selector(p, tr('Quick filter'), 360, -6, 145, { 'ALL', 'FAVORITES', 'MY_GUILD' }, refreshMembers, function(id)
         return id == 'ALL' and tr('All') or id == 'FAVORITES' and tr('Favorites') or id == 'MY_GUILD' and tr('My guild') or C.Label(id)
     end)
     U.memberFavoriteFilter:SetPopupWidth(270)
-    U.memberAdvanced = button(p, tr('Advanced'), 480, 0, 120, function()
+    U.memberAdvanced = button(p, tr('Advanced'), 515, -22, 120, function()
         U.memberAdvancedOpen = not U.memberAdvancedOpen
         U.RefreshMembersPageLayout()
-    end)
-    U.memberClass = selector(p, 'Class', 0, -54, 105, CLASSES, refreshMembers)
-    U.memberProfession = selector(p, 'Profession', 115, -54, 130, { 'ALL_PROFESSIONS' }, refreshMembers)
-    U.memberSort = selector(p, 'Sort', 255, -54, 175, { 'ONLINE_FIRST', 'LAST_SEEN', 'NAME', 'LEVEL_ASC', 'LEVEL_DESC' }, refreshMembers)
-    U.memberCategoryFilter = selector(p, tr('Private category'), 440, -54, 330, { 'ALL', 'RECONTACT' }, refreshMembers, function(id)
+    end, 'ghost')
+    U.memberClass = selector(p, 'Class', 10, -56, 105, CLASSES, refreshMembers)
+    U.memberProfession = selector(p, 'Profession', 125, -56, 130, { 'ALL_PROFESSIONS' }, refreshMembers)
+    U.memberSort = selector(p, 'Sort', 265, -56, 175, { 'ONLINE_FIRST', 'LAST_SEEN', 'NAME', 'LEVEL_ASC', 'LEVEL_DESC' }, refreshMembers)
+    U.memberCategoryFilter = selector(p, tr('Private category'), 450, -56, 330, { 'ALL', 'RECONTACT' }, refreshMembers, function(id)
         return id == 'ALL' and tr('All private categories') or id == 'RECONTACT' and tr('Recontact suggestions') or C.Label(id)
     end)
     U.memberSearch:SetScript('OnTextChanged', refreshMembers)
-    U.memberDiary = button(p, tr('Social diary'), 615, 0, 180, function() U.OpenSocialDiary(nil, nil) end)
-    U.memberCount = label(p, '', 0, -52, 300)
+    U.memberDiary = button(p, tr('Social diary'), 645, -22, 195, function() U.OpenSocialDiary(nil, nil) end, 'ghost')
+    if Z.Kit and T then
+        for button, name in pairs({ [U.memberAdvanced] = 'filter', [U.memberDiary] = 'history' }) do
+            local icon = Z.Kit.Icon(button, name, 14, 'textSoft')
+            icon:SetPoint('LEFT', 10, 0)
+            T.AlignButtonText(button, 30)
+        end
+    end
+    U.memberCount = label(p, '', 10, -62, 300)
+    if T and T.Font then
+        T.Font(U.memberCount, 'caption', 'dim')
+    end
     -- Local view preference only; it changes neither contacts nor published data.
-    U.memberGrouping = checkbox(p, tr('Group by main character'), 310, -47, 235, function(self)
+    U.memberGrouping = checkbox(p, tr('Group by main character'), 320, -57, 225, function(self)
         U.SetMemberGrouping(self:GetChecked() == true)
     end)
     U.memberGrouping:SetChecked(not Z.ui or Z.ui.memberGrouping ~= false)
@@ -173,8 +193,15 @@ function S.createMembersPage(f)
         end
         -- Category choices remain in the quick filter; the legacy category control is intentionally unreachable.
         U.memberCategoryFilter:SetShown(false)
-        U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 0, advanced and -100 or -52)
-        U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 310, advanced and -95 or -47)
+        U.memberCount:ClearAllPoints(); U.memberCount:SetPoint('TOPLEFT', 10, advanced and -110 or -62)
+        U.memberGrouping:ClearAllPoints(); U.memberGrouping:SetPoint('TOPLEFT', 320, advanced and -105 or -57)
+        local bar = U.memberFilterBar
+        if bar then
+            local pageWidth = U.pages[1]:GetWidth()
+            local horizontal = (type(pageWidth) == 'number' and pageWidth > 0 and pageWidth or 856) / 856
+            bar:Place(0, 0, 850 * horizontal, advanced and 102 or 54)
+            bar:SetShown(U.compactArea ~= 'members')
+        end
         U.memberList:ClearAllPoints(); U.memberList:SetPoint('TOPLEFT', 0, advanced and -128 or -80)
         local offset = advanced and 48 or 0
         local previousOffset = U.memberLayoutOffset or 0

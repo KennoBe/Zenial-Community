@@ -50,7 +50,10 @@ local function badge(control, count, minimap)
     f.text:SetSize(width - 4, 14)
     f.text:SetText(count > 0 and (count > 99 and '99+' or tostring(count)) or '')
     f:ClearAllPoints()
-    f:SetPoint(minimap and 'TOPRIGHT' or 'RIGHT', control, minimap and 'TOPRIGHT' or 'RIGHT', minimap and 4 or -8, minimap and 4 or 0)
+    -- Sidebar entries and buttons carry the counter inside, on the right; the minimap icon and the
+    -- centred sub-view tabs carry it on their top right corner so it never covers the caption.
+    local corner = minimap or control.zenialVariant == 'tab'
+    f:SetPoint(corner and 'TOPRIGHT' or 'RIGHT', control, corner and 'TOPRIGHT' or 'RIGHT', corner and 4 or -8, corner and 4 or 0)
     f:SetShown(count > 0)
     control.unreadCount = count
     -- Keep the main-navigation caption beside its icon and inside the badge.

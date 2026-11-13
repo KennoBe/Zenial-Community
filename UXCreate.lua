@@ -83,6 +83,19 @@ function U.Create()
         U.ShowDiscord()
     end, 'ghost')
     U.discordButton:SetHeight(30)
+    -- Below 1000 px the button shows only its icon (U.LayoutChrome); the name moves into a tooltip.
+    U.discordButton:HookScript('OnEnter', function(self)
+        if self:GetText() == '' and GameTooltip and GameTooltip.SetOwner then
+            GameTooltip:SetOwner(self, 'ANCHOR_BOTTOM')
+            GameTooltip:SetText('Discord')
+            GameTooltip:Show()
+        end
+    end)
+    U.discordButton:HookScript('OnLeave', function()
+        if GameTooltip and GameTooltip.Hide then
+            GameTooltip:Hide()
+        end
+    end)
     if K then
         for control, name in pairs({ [U.pvpHeaderButton] = 'pvp', [U.discordButton] = 'discord' }) do
             control.zenialGlyph = K.Icon(control, name, 16, name == 'pvp' and 'dangerText' or 'textSoft')
@@ -181,8 +194,13 @@ function U.Create()
     U.joinBanner:SetHeight(U.JOIN_BANNER_HEIGHT - 2)
     if T then
         T.Panel(U.joinBanner, 'parchment')
-        T.Tint(U.joinBanner, 'SetBackdropColor', 'noticeBg')
-        T.Tint(U.joinBanner, 'SetBackdropBorderColor', 'gold')
+        T.Tint(U.joinBanner, 'SetBackdropColor', 'warningBg')
+        T.Tint(U.joinBanner, 'SetBackdropBorderColor', 'warningEdge')
+    end
+    if K then
+        K.Accent(U.joinBanner, 'warning')
+        U.joinBannerIcon = K.Icon(U.joinBanner, 'info', 16, 'warning')
+        U.joinBannerIcon:SetPoint('LEFT', 12, 0)
     end
     U.joinBannerButton = button(U.joinBanner, tr('Join now'), 0, 0, 130, function()
         f:Hide()
@@ -195,7 +213,7 @@ function U.Create()
     end
     U.joinBannerText = label(U.joinBanner, tr('You are not in ZENIAL Community yet. Join to find members and offers.'), 0, 0, 500, 'GameFontHighlightSmall')
     U.joinBannerText:ClearAllPoints()
-    U.joinBannerText:SetPoint('LEFT', 10, 0)
+    U.joinBannerText:SetPoint('LEFT', K and 36 or 10, 0)
     U.joinBannerText:SetPoint('RIGHT', U.joinBannerButton, 'LEFT', -10, 0)
     tone(U.joinBannerText, 'goldText', 1, 0.95, 0.8)
     U.joinBanner:Hide()

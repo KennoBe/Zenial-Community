@@ -2,8 +2,40 @@ local Z = ZenialCommunity
 local U = Z.UI
 local tr = U.Shared.tr
 
+-- Card plates behind the groups of each settings view: { plate, x, y, width, height } in the logical
+-- 856-wide coordinates the controls are created in. U.LayoutSettings scales them with the page width.
+local PLATES = {}
+U.settingsPlates = PLATES
+local function plate(frame, x, y, width, height)
+    local K = Z.Kit
+    if not (K and K.Plate) then
+        return
+    end
+    PLATES[frame] = PLATES[frame] or {}
+    table.insert(PLATES[frame], { K.Plate(frame, 'surface'), x, y, width, height })
+end
+function U.LayoutSettings()
+    for frame, list in pairs(PLATES) do
+        local horizontal = frame:GetWidth() / 856
+        for _, spec in ipairs(list) do
+            spec[1]:Place(spec[2] * horizontal, spec[3], spec[4] * horizontal, spec[5])
+        end
+    end
+end
+
 function U.CreateSettings(helpers)
     local label, button, checkbox = helpers.label, helpers.button, helpers.checkbox
+    local T, K = Z.Theme, Z.Kit
+    -- Group heading inside a plate: small upper-case label in the dim gold.
+    local function heading(parent, key, x, y, width)
+        local text = tr(key)
+        local caption = label(parent, K and K.Upper(text) or text, x, y, width, 'GameFontHighlightSmall')
+        caption:SetHeight(12)
+        if T and T.Font then
+            T.Font(caption, 'overline', 'goldDim')
+        end
+        return caption
+    end
     local p = U.pages[11]
     local tabs = {
         { 'display', 'Display settings', 0, 140 },
@@ -17,17 +49,20 @@ function U.CreateSettings(helpers)
             U.SetSettingsView(spec[1])
         end)
     end
+
+    -- Display: window size and position.
     U.settingsDisplayFrame = CreateFrame('Frame', nil, p)
     U.settingsDisplayFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsDisplayFrame:SetSize(856, 414)
     U.profileDisplayFrame = U.settingsDisplayFrame
-    label(U.profileDisplayFrame, '|cffffd36b' .. tr('APPEARANCE') .. '|r', 0, 0, 400, 'GameFontNormalLarge')
-    label(U.profileDisplayFrame, tr('Fenster: 1060 × 690 Standard · mindestens 900 × 610'), 0, -88, 600, 'GameFontHighlight')
-    button(U.profileDisplayFrame, tr('Standardgröße'), 0, -125, 170, function()
+    plate(U.profileDisplayFrame, 0, 0, 850, 112)
+    heading(U.profileDisplayFrame, 'APPEARANCE', 16, -14, 400)
+    label(U.profileDisplayFrame, tr('Fenster: 1060 × 690 Standard · mindestens 900 × 610'), 16, -40, 600, 'GameFontHighlight')
+    button(U.profileDisplayFrame, tr('Standardgröße'), 16, -70, 170, function()
         U.frame:SetSize(1060, 690)
         U.Layout()
     end)
-    button(U.profileDisplayFrame, tr('Position zurücksetzen'), 182, -125, 190, function()
+    button(U.profileDisplayFrame, tr('Position zurücksetzen'), 198, -70, 190, function()
         Z.db.position = nil
         Z.db.scale = 1
         U.frame:SetScale(1)
@@ -35,62 +70,78 @@ function U.CreateSettings(helpers)
         U.frame:SetPoint('CENTER')
     end)
 
+    -- Connection and privacy: connection summary on the left, sharing switches on the right.
     U.settingsPrivacyFrame = CreateFrame('Frame', nil, p)
     U.settingsPrivacyFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsPrivacyFrame:SetSize(856, 414)
     U.profileNetworkFrame = U.settingsPrivacyFrame
-    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Connection') .. '|r', 0, 0, 650, 'GameFontNormalLarge')
-    U.networkSetupButton = button(U.profileNetworkFrame, 'Community connection', 335, 0, 210, function()
+    plate(U.profileNetworkFrame, 0, 0, 548, 268)
+    plate(U.profileNetworkFrame, 562, 0, 288, 348)
+    plate(U.profileNetworkFrame, 0, 280, 548, 68)
+    heading(U.profileNetworkFrame, 'Connection', 16, -14, 290)
+    U.networkSetupButton = button(U.profileNetworkFrame, 'Community connection', 322, -8, 210, function()
         Z.NetworkSetup.Show()
     end)
-    U.profileNetworkText = label(U.profileNetworkFrame, '', 0, -30, 535, 'GameFontHighlight')
+    U.profileNetworkText = label(U.profileNetworkFrame, '', 16, -44, 516, 'GameFontHighlight')
     U.profileNetworkText:SetFontObject('GameFontHighlightSmall')
-    U.profileNetworkText:SetHeight(240)
+    U.profileNetworkText:SetHeight(214)
     U.preferences = {}
     for index, spec in ipairs({ { 'visible', 'Visible profile' }, { 'shareProfessions', 'Share professions and recipes' } }) do
         local name = spec[1]
-        local control = checkbox(U.profileNetworkFrame, spec[2], 570, -42 - (index - 1) * 44, 270, function(self)
+        local control = checkbox(U.profileNetworkFrame, spec[2], 574, -36 - (index - 1) * 40, 262, function(self)
             Z.SetPreference(name, self:GetChecked())
             U.Refresh()
         end)
         control:SetChecked(Z.db[name])
         U.preferences[name] = control
     end
-    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 570, -132, 270, 'GameFontHighlightSmall')
-    U.settingsVisibleNote:SetHeight(190)
+    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 578, -124, 256, 'GameFontHighlightSmall')
+    U.settingsVisibleNote:SetHeight(212)
     U.settingsVisibleNote:SetWordWrap(true)
-    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Privacy') .. '|r', 570, 0, 270, 'GameFontNormal')
-    label(U.profileNetworkFrame, '|cffffd36b' .. tr('Diagnostics and backups') .. '|r', 0, -285, 380, 'GameFontNormal')
-    button(U.profileNetworkFrame, tr('Aktualisieren'), 0, -312, 140, function()
+    if T and T.Tint then
+        T.Tint(U.settingsVisibleNote, 'SetTextColor', 'dim')
+    end
+    heading(U.profileNetworkFrame, 'Privacy', 578, -14, 256)
+    heading(U.profileNetworkFrame, 'Diagnostics and backups', 16, -292, 380)
+    button(U.profileNetworkFrame, tr('Aktualisieren'), 16, -314, 140, function()
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end)
-    U.profileDiagnosticButton = button(U.profileNetworkFrame, 'Technical details', 150, -312, 175, U.ShowDiagnostics)
+    U.profileDiagnosticButton = button(U.profileNetworkFrame, 'Technical details', 166, -314, 175, U.ShowDiagnostics)
 
+    -- Integrations: Addon Manager, Companion, navigation shortcut, notification hints.
     U.settingsToolsFrame = CreateFrame('Frame', nil, p)
     U.settingsToolsFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsToolsFrame:SetSize(856, 414)
-    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Integrations') .. '|r', 0, 0, 400, 'GameFontNormalLarge')
-    label(U.settingsToolsFrame, tr('Addon Manager'), 0, -28, 260, 'GameFontNormal')
-    U.settingsAddon = button(U.settingsToolsFrame, tr('Open Addon Manager'), 0, -52, 240, function() U.Navigate('addons') end)
+    plate(U.settingsToolsFrame, 0, 0, 270, 112)
+    plate(U.settingsToolsFrame, 282, 0, 568, 112)
+    plate(U.settingsToolsFrame, 0, 124, 850, 44)
+    plate(U.settingsToolsFrame, 0, 180, 850, 96)
+    heading(U.settingsToolsFrame, 'Addon Manager', 16, -14, 240)
+    U.settingsAddon = button(U.settingsToolsFrame, tr('Open Addon Manager'), 16, -40, 238, function() U.Navigate('addons') end)
     U.settingsAddon:SetEnabled((U.addonAvailableCount or 0) > 0)
-    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Companion') .. '|r', 270, -28, 350, 'GameFontNormal')
-    button(U.settingsToolsFrame, tr('Open Companion'), 270, -52, 240, function() Z.Companion.Show() end)
-    U.settingsCompanionSummary = label(U.settingsToolsFrame, '', 270, -82, 580, 'GameFontHighlightSmall')
+    heading(U.settingsToolsFrame, 'Companion', 298, -14, 350)
+    button(U.settingsToolsFrame, tr('Open Companion'), 298, -40, 240, function() Z.Companion.Show() end)
+    U.settingsCompanionSummary = label(U.settingsToolsFrame, '', 298, -76, 536, 'GameFontHighlightSmall')
+    U.settingsCompanionSummary:SetHeight(28)
     U.settingsToolsFrame:HookScript('OnShow', U.RefreshSettingsCompanionSummary)
-    U.homeAddonNavigationOption = checkbox(U.settingsToolsFrame, tr('Show Addon Manager in the left navigation'), 0, -112, 520, function(self)
+    U.homeAddonNavigationOption = checkbox(U.settingsToolsFrame, tr('Show Addon Manager in the left navigation'), 12, -134, 520, function(self)
         U.SetAddonManagerNavigation(self:GetChecked() == true)
     end)
-    label(U.settingsToolsFrame, '|cffffd36b' .. tr('Notifications') .. '|r', 0, -160, 300, 'GameFontNormal')
-    label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 0, -184, 760, 'GameFontHighlightSmall')
-    label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 0, -220, 760, 'GameFontHighlightSmall')
+    heading(U.settingsToolsFrame, 'Notifications', 16, -194, 300)
+    label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 16, -216, 800, 'GameFontHighlightSmall')
+    label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 16, -246, 800, 'GameFontHighlightSmall')
 
+    -- History and categories (the categories button is added by CategorySettingsUI.lua at 430, -52).
     U.settingsDataFrame = CreateFrame('Frame', nil, p)
     U.settingsDataFrame:SetPoint('TOPLEFT', 0, -42)
     U.settingsDataFrame:SetSize(856, 414)
-    button(U.settingsDataFrame, tr('History'), 0, 0, 240, function() U.OpenHistory() end)
+    plate(U.settingsDataFrame, 0, 0, 850, 96)
+    heading(U.settingsDataFrame, 'History and categories', 16, -14, 400)
+    button(U.settingsDataFrame, tr('History'), 16, -52, 240, function() U.OpenHistory() end)
     U.profileDisplayFrame:SetParent(p)
     U.profileNetworkFrame:SetParent(p)
     U.SetSettingsView('display', true)
+    U.LayoutSettings()
 end
 
 function U.RefreshSettingsCompanionSummary()
@@ -117,6 +168,7 @@ function U.SetSettingsView(v, skipRoute)
         U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
     end
     U.RefreshSettingsCompanionSummary()
+    U.LayoutSettings()
     if not skipRoute and Z.UIState then
         Z.UIState.Route('settings', U.settingsView)
     end

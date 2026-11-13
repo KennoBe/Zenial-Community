@@ -633,23 +633,48 @@ local function updateEmptyHint(view, count)
         if view.zenialEmpty then
             view.zenialEmpty:Hide()
         end
+        if view.zenialEmptyIconTexture then
+            view.zenialEmptyIconTexture:Hide()
+        end
         return
     end
     if not view.zenialEmpty then
         local fs = view:CreateFontString(nil, 'OVERLAY', 'GameFontDisable')
-        fs:SetPoint('LEFT', view, 'LEFT', 16, 0)
-        fs:SetPoint('RIGHT', view, 'RIGHT', -16, 0)
         fs:SetJustifyH('CENTER')
         fs:SetJustifyV('MIDDLE')
+        if T and T.Font then
+            T.Font(fs, 'caption', 'dim')
+        end
         view.zenialEmpty = fs
     end
-    view.zenialEmpty:SetText(tr(text))
-    view.zenialEmpty:Show()
+    -- An optional atlas symbol (view.zenialEmptyIcon = icon name) sits above the text.
+    local fs, iconName = view.zenialEmpty, view.zenialEmptyIcon
+    local hasIcon = false
+    if type(iconName) == 'string' and T and T.SetIcon then
+        if not view.zenialEmptyIconTexture then
+            view.zenialEmptyIconTexture = view:CreateTexture(nil, 'ARTWORK')
+            view.zenialEmptyIconTexture:SetSize(28, 28)
+        end
+        local icon = view.zenialEmptyIconTexture
+        hasIcon = T.SetIcon(icon, iconName, 'muted') ~= false
+        icon:ClearAllPoints()
+        icon:SetPoint('CENTER', view, 'CENTER', 0, 24)
+        icon:SetShown(hasIcon)
+    elseif view.zenialEmptyIconTexture then
+        view.zenialEmptyIconTexture:Hide()
+    end
+    fs:ClearAllPoints()
+    fs:SetPoint('LEFT', view, 'LEFT', 16, hasIcon and -14 or 0)
+    fs:SetPoint('RIGHT', view, 'RIGHT', -16, hasIcon and -14 or 0)
+    fs:SetText(tr(text))
+    fs:Show()
 end
--- Sets (or clears, with nil) the empty-state hint of a list; call before rows().
-function U.SetEmptyHint(view, text)
+-- Sets (or clears, with nil) the empty-state hint of a list; call before rows(). `iconName` (optional, a
+-- name from Theme.iconCells) draws a symbol above the text.
+function U.SetEmptyHint(view, text, iconName)
     if view then
         view.zenialEmptyHint = text
+        view.zenialEmptyIcon = iconName
     end
 end
 local function rows(view, items, height)
@@ -767,7 +792,7 @@ local function rows(view, items, height)
                 b.subtitle:SetWidth(view.width - textLeft - 8)
                 b.subtitle:SetHeight(14)
                 b.subtitle:SetWordWrap(false)
-                b.subtitle:SetText(item.subtitle)
+                b.subtitle:SetText(item.subtitleDisplay or item.subtitle)
                 b.subtitle:Show()
             elseif b.subtitle then
                 b.subtitle:Hide()

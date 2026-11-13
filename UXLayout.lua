@@ -132,6 +132,17 @@ end
 
 -- Places the top-bar actions from the right edge: close, Discord, PvP help, bell.
 function U.LayoutChrome(width)
+    -- A narrow window keeps the room for the page title: Discord shrinks to its icon.
+    local discord = U.discordButton
+    if discord then
+        local narrow = width < 1000
+        discord:SetWidth(narrow and 34 or 96)
+        discord:SetText(narrow and '' or 'Discord')
+        if discord.zenialGlyph then
+            discord.zenialGlyph:ClearAllPoints()
+            discord.zenialGlyph:SetPoint(narrow and 'CENTER' or 'LEFT', narrow and 0 or 10, 0)
+        end
+    end
     local right = 44
     for _, control in ipairs({ U.discordButton, U.pvpHeaderButton, U.notificationBell }) do
         if control then

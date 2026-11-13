@@ -120,6 +120,7 @@ function U.ApplyResponsiveLayout(activePage)
     if U.LayoutHomeWishes and(not activePage or activePage==U.pages[9])then U.LayoutHomeWishes()end
     if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
     if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end
+    if U.LayoutSettings and(not activePage or activePage==U.pages[11])then U.LayoutSettings()end
     U.responsiveUpdating=false
 end
 return U

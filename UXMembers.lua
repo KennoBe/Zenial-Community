@@ -320,6 +320,9 @@ end
 local function dimText(value)
     return '|cff' .. paletteHex('dim') .. value .. '|r'
 end
+local function paint(key, value)
+    return '|cff' .. paletteHex(key) .. value .. '|r'
+end
 local function stripColors(value)
     return (tostring(value or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''))
 end
@@ -668,6 +671,15 @@ local function characterItem(m, ctx)
             info = info .. ' · ' .. tr('Main') .. ': ' .. m.main
         end
     end
+    -- Visual weighting only (item.display): class-coloured name first, community and meta recede.
+    local display = '|cff'
+        .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
+        .. m.target
+        .. '|r'
+        .. (s and s.community and s.community ~= '' and dimText(' (' .. s.community .. ')') or '')
+        .. (m.own and ' ' .. paint('gold', '[' .. tr('You') .. ']') or '')
+        .. '    '
+        .. (m.online and paint('online', tr('Online')) or dimText(age(m.seen)))
     local tooltip = title .. '\n' .. info .. (location ~= '' and '\n' .. location or '')
     if Z.Social.IsFavorite(m.key) then
         tooltip = tooltip .. '\n' .. tr('Favorite')
@@ -699,8 +711,12 @@ local function characterItem(m, ctx)
         ageText = not m.online and age(m.seen) or nil,
         selected = memberKey == U.memberKey,
         icon = T and T.ClassIcon(s and s.classFile, s and s.class),
+        iconSize = 28,
+        textInset = 46,
         text = title,
+        display = display,
         subtitle = tr('Level') .. ' ' .. level .. ' · ' .. chip .. locationLine(m),
+        subtitleDisplay = paint('textSoft', tr('Level') .. ' ' .. level) .. ' · ' .. chip .. locationLine(m),
         tooltip = tooltip,
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
@@ -781,6 +797,16 @@ local function groupItem(g, hits, ctx)
     if ctx.filtering and not hitMain then
         subtitle = subtitle .. ' · ' .. tr('Match') .. ': ' .. table.concat(names, ', ')
     end
+    -- No subtitleDisplay here: the rendered subtitle of a group head is read as plain text elsewhere.
+    local display = mark
+        .. '|cff'
+        .. (classHex or (g.isOwn and 'ffd36b' or 'ffffff'))
+        .. g.mainName
+        .. '|r '
+        .. dimText('(' .. tr('Main') .. ')')
+        .. (g.isOwn and ' ' .. paint('gold', '[' .. tr('You') .. ']') or '')
+        .. '    '
+        .. status
     local favorite, sameGuild = false, false
     local lines = { title, subtitle, '' }
     for _, m in ipairs(g.members) do
@@ -810,7 +836,10 @@ local function groupItem(g, hits, ctx)
         ageText = not g.online and g.lastSeen > 0 and age(g.lastSeen) or nil,
         selected = not expanded and containsKey(g, U.memberKey),
         icon = T and (ms and T.ClassIcon(ms.classFile, ms.class) or neutralIcon()),
+        iconSize = 28,
+        textInset = 46,
         text = title,
+        display = display,
         subtitle = subtitle,
         tooltip = table.concat(lines, '\n'),
         favorite = favorite,
@@ -845,6 +874,15 @@ local function groupMemberItem(g, m, hit, ctx)
         .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
     local chip = layerChip(m)
     local memberKey = m.key
+    local display = '|cff'
+        .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
+        .. m.target
+        .. '|r '
+        .. dimText('· ' .. roleLabel(g, m))
+        .. (m.own and ' ' .. paint('gold', '[' .. tr('You') .. ']') or '')
+        .. (ctx.filtering and hit and dimText(' · ' .. tr('Match')) or '')
+        .. '    '
+        .. (m.online and paint('online', tr('Online')) or dimText(age(m.seen)))
     return {
         iconTop = true,
         noWrap = true,
@@ -855,7 +893,9 @@ local function groupMemberItem(g, m, hit, ctx)
         selected = memberKey == U.memberKey,
         icon = T and (T.ClassIcon(s and s.classFile, s and s.class) or neutralIcon()),
         text = title,
+        display = display,
         subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
+        subtitleDisplay = paint('textSoft', classLevel(m)) .. ' · ' .. chip .. locationLine(m),
         tooltip = Z.Social.IsGuildMember(m.key) and tr('Same guild') .. ': ' .. Z.Social.GuildName() or nil,
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
@@ -1002,7 +1042,8 @@ function refreshMembers()
     U.SetEmptyHint(
         U.memberList,
         filtering and 'No members match your filters. Reset the filters or press Refresh.'
-            or 'No community members found yet. Press Refresh to search again.'
+            or 'No community members found yet. Press Refresh to search again.',
+        filtering and 'search' or 'members'
     )
     rows(U.memberList, items, 48)
     U.memberCount:SetText(count)

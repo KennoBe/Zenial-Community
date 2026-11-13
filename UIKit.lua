@@ -13,6 +13,9 @@
 --   K.StatTile(parent, opts)                      clickable number + label (+ icon)
 --   K.EmptyState(parent, opts)                    icon, title, hint for empty / loading / error
 --   K.Dot(parent[, colorKey, size])               status dot
+--   K.Plate(owner[, kind])                        card surface made of owner textures only; :Place(x, y, w, h), :SetShown
+--   K.FilterBar(owner)                            plate behind a page's filter controls
+--   K.Segmented(parent, items, onSelect)          joined switch for 2-4 options; :Select(key), :GetSelected()
 local Z = ZenialCommunity
 local T = Z and Z.Theme
 if type(T) ~= "table" or type(T.Font) ~= "function" then return end
@@ -228,6 +231,115 @@ function K.EmptyState(parent, opts)
         if icon then T.SetIcon(self.icon, icon, colorKey or "muted") end
     end
     return state
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- Plate: a card surface drawn only with textures of `owner` (no frame). On absolutely positioned pages the
+-- labels are regions of the page; a child frame would be drawn over them in the client, textures are not.
+-- plate:Place(x, y, width, height) -- offset from the owner's top left, y positive downwards.
+-- ---------------------------------------------------------------------------------------------
+local PLATE_COLORS = { surface = { "panel", "line" }, raised = { "panelRaised", "highlight" }, inset = { "inset", "lineSoft" } }
+function K.Plate(owner, kind)
+    local colors = PLATE_COLORS[kind or "surface"] or PLATE_COLORS.surface
+    local plate = { owner = owner, kind = kind or "surface", edges = {} }
+    plate.fill = owner:CreateTexture(nil, "BACKGROUND")
+    T.Tint(plate.fill, "SetColorTexture", colors[1])
+    for _, side in ipairs({ "top", "bottom", "left", "right" }) do
+        local edge = owner:CreateTexture(nil, "BORDER")
+        T.Tint(edge, "SetColorTexture", colors[2])
+        plate.edges[side] = edge
+    end
+    plate.bevel = owner:CreateTexture(nil, "BORDER")
+    T.Tint(plate.bevel, "SetColorTexture", "highlight", .28)
+    local e = plate.edges
+    e.top:SetPoint("TOPLEFT", plate.fill, "TOPLEFT"); e.top:SetPoint("TOPRIGHT", plate.fill, "TOPRIGHT"); e.top:SetHeight(1)
+    e.bottom:SetPoint("BOTTOMLEFT", plate.fill, "BOTTOMLEFT"); e.bottom:SetPoint("BOTTOMRIGHT", plate.fill, "BOTTOMRIGHT"); e.bottom:SetHeight(1)
+    e.left:SetPoint("TOPLEFT", plate.fill, "TOPLEFT"); e.left:SetPoint("BOTTOMLEFT", plate.fill, "BOTTOMLEFT"); e.left:SetWidth(1)
+    e.right:SetPoint("TOPRIGHT", plate.fill, "TOPRIGHT"); e.right:SetPoint("BOTTOMRIGHT", plate.fill, "BOTTOMRIGHT"); e.right:SetWidth(1)
+    plate.bevel:SetPoint("TOPLEFT", plate.fill, "TOPLEFT", 1, -1); plate.bevel:SetPoint("TOPRIGHT", plate.fill, "TOPRIGHT", -1, -1)
+    plate.bevel:SetHeight(1)
+    if kind == "inset" then plate.bevel:Hide() end
+    function plate:Place(x, y, width, height)
+        self.x, self.y, self.width, self.height = x, y, width, height
+        self.fill:ClearAllPoints()
+        self.fill:SetPoint("TOPLEFT", self.owner, "TOPLEFT", x, -y)
+        self.fill:SetSize(width, height)
+    end
+    function plate:SetShown(shown)
+        shown = shown and true or false
+        self.fill:SetShown(shown)
+        for _, edge in pairs(self.edges) do edge:SetShown(shown) end
+        self.bevel:SetShown(shown and self.kind ~= "inset")
+        self.shown = shown
+    end
+    plate.shown = true
+    return plate
+end
+
+-- Filter bar: the plate behind a page's filter controls (the controls stay children of the page).
+function K.FilterBar(owner)
+    return K.Plate(owner, "surface")
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- Segmented switch. items = { { key = "x", label = "Text" }, ... }. A click selects the segment and calls
+-- onSelect(key); :Select(key) only redraws.
+-- ---------------------------------------------------------------------------------------------
+function K.Segmented(parent, items, onSelect)
+    local seg = CreateFrame("Frame", nil, parent)
+    local height = T.metrics and T.metrics.button or 26
+    seg.zenialSegmentWidth = 90
+    seg.segments = {}
+    seg.frame = seg
+    seg.edges = T.Edges(seg, "BORDER")
+    T.TintEdges(seg.edges, "line")
+    seg:SetSize(#items * seg.zenialSegmentWidth, height)
+    local function paint(button)
+        local on = seg.selected == button.zenialKey
+        button.zenialSegmentOn = on
+        button.zenialFill:SetShown(on)
+        local fs = button.GetFontString and button:GetFontString()
+        if fs then T.Tint(fs, "SetTextColor", on and "goldBright" or "textSoft") end
+    end
+    local function layout()
+        local width = seg.zenialSegmentWidth
+        for index, button in ipairs(seg.segments) do
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", seg, "TOPLEFT", (index - 1) * width, 0)
+            button:SetSize(width, height)
+            button.divider:SetShown(index > 1)
+        end
+        seg:SetSize(#seg.segments * width, height)
+    end
+    for index, item in ipairs(items or {}) do
+        local button = T.Button(seg, item.label or tostring(item.key), seg.zenialSegmentWidth, height, nil, "ghost")
+        button.zenialKey = item.key
+        button.zenialFill = button:CreateTexture(nil, "BACKGROUND")
+        button.zenialFill:SetPoint("TOPLEFT", 1, -1); button.zenialFill:SetPoint("BOTTOMRIGHT", -1, 1)
+        T.Tint(button.zenialFill, "SetColorTexture", "panelRaised")
+        button.divider = button:CreateTexture(nil, "BORDER")
+        button.divider:SetPoint("TOPLEFT", 0, -1); button.divider:SetPoint("BOTTOMLEFT", 0, 1); button.divider:SetWidth(1)
+        T.Tint(button.divider, "SetColorTexture", "line")
+        button:SetScript("OnClick", function(self)
+            seg:Select(self.zenialKey)
+            if onSelect then onSelect(self.zenialKey) end
+        end)
+        -- Hover / leave restyle the caption; draw the selected colour again afterwards.
+        if button.HookScript then
+            button:HookScript("OnLeave", paint)
+            button:HookScript("OnEnable", paint)
+        end
+        seg.segments[index] = button
+    end
+    function seg:SetSegmentWidth(width) self.zenialSegmentWidth = width; layout() end
+    function seg:Select(key)
+        self.selected = key
+        for _, button in ipairs(self.segments) do paint(button) end
+    end
+    function seg:GetSelected() return self.selected end
+    layout()
+    if items and items[1] then seg:Select(items[1].key) end
+    return seg
 end
 
 return K
