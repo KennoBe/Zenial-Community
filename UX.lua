@@ -921,7 +921,9 @@ local function itemSuggestions(edit, parent, width, changed, selected)
     popup:SetPoint('TOPLEFT', edit, 'BOTTOMLEFT', 0, -3)
     popup:SetSize(width, 226)
     popup:SetFrameStrata('TOOLTIP')
-    if T then
+    if T and T.StylePopup then
+        T.StylePopup(popup)
+    elseif T then
         T.Panel(popup, 'inset')
     end
     local view = list(popup, 5, -5, width - 10, 216)

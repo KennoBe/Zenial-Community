@@ -39,7 +39,11 @@ local function badge(control, count, minimap)
         f.text:SetPoint('CENTER')
         f.text:SetJustifyH('CENTER')
         f.text:SetJustifyV('MIDDLE')
-        f.text:SetTextColor(1, 0.96, 0.82, 1)
+        if T and T.Tint then
+            T.Tint(f.text, 'SetTextColor', 'white')
+        else
+            f.text:SetTextColor(1, 0.96, 0.82, 1)
+        end
         if minimap then
             U.minimapBadge = f.text
         end

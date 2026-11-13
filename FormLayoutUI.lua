@@ -110,7 +110,7 @@ function U.ApplyFormLayouts(helpers)
     U.groupTemplateHint:Hide();U.groupFormPreview:Hide()
     place(U.groupFormBack,16,-396,196);place(U.groupTemplateSave,224,-396,196);place(U.groupSave,432,-396,202)
     U.templateNameDialog=H.panel(U.activityCreator);local naming=U.templateNameDialog;naming:ClearAllPoints();naming:SetPoint('CENTER');naming:SetSize(650,210)
-    H.label(naming,'Save template',16,-18,618,'GameFontNormalLarge')
+    local namingTitle=H.label(naming,'Save template',16,-18,618,'GameFontNormalLarge')
     U.groupTemplateName:SetParent(naming);U.groupTemplateName.caption:SetParent(naming);field(U.groupTemplateName,16,-66,618)
     H.button(naming,tr('Save template'),16,-164,294,function()if U.SaveGroupTemplate()then naming:Hide()end end,'primary')
     H.button(naming,tr('Cancel'),324,-164,310,function()naming:Hide()end)
@@ -185,6 +185,14 @@ function U.ApplyFormLayouts(helpers)
     U.sessionSave:SetText(tr('Save wishes'));U.sessionEnd:SetText(tr('Clear wishes'))
     place(U.sessionSave,0,-302,294);place(U.sessionEnd,308,-302,310);place(U.sessionEditStatus,0,-338,618,28)
     place(U.homeWishClose,16,-392,618)
+    -- Dialog heads. Set here, after every place() above, so the head positions the titles last. The three
+    -- detail editors cover the creator, so each carries the same head around its own title.
+    local K=Z.Kit
+    local function closeCreator()U.activityCreator:Hide()end
+    K.DialogHeader(U.activityCreator,U.creatorTitle,closeCreator)
+    for _,form in ipairs({U.groupForm,U.questForm,U.scheduledEditor})do K.DialogHeader(form,form.formTitle,closeCreator)end
+    K.DialogHeader(naming,namingTitle,function()naming:Hide()end)
+    K.DialogHeader(U.scheduledSeries,U.scheduledSeriesTitle,function()U.scheduledSeries:Hide()end)
     -- Crafting and material forms keep the same field baselines and footer.
     U.LayoutCraftOrderForm()
     place(U.professionDetail,495,-102,345,34)

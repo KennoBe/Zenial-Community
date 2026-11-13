@@ -25,7 +25,7 @@ function U.CreateSchedulePickers(H)
         if not U.groupLoading and not U.groupAutofilling then U.AutofillGroupNeeds()end;U.CaptureGroupDraft()
     end)
     for _,search in ipairs({U.groupActivitySearch,U.scheduledSearch})do
-        local hint=H.label(search,'Search',6,-6,search:GetWidth()-12);hint:SetTextColor(.6,.55,.45)
+        local hint=H.label(search,'Search',6,-6,search:GetWidth()-12);Z.Theme.Tint(hint,'SetTextColor','muted')
         search:HookScript('OnTextChanged',function(self)hint:SetShown(self:GetText()=='')end)
     end
     local f=H.panel(U.scheduledEditor);U.calendarPicker=f;f:ClearAllPoints();f:SetPoint('TOPLEFT',U.scheduledDay,'BOTTOMLEFT',0,-5);f:SetSize(310,310)

@@ -394,7 +394,7 @@ local function updateMemberHeader(m, s, layerText)
     if r then
         card.name:SetTextColor(r, g, b)
     else
-        card.name:SetTextColor(1, 0.827, 0.42)
+        T.Tint(card.name, 'SetTextColor', 'goldBright')
     end
     card.name:SetText(m.target)
     local icon = T and (s and T.ClassIcon(s.classFile, s.class) or { file = T.assets.neutralIcon })

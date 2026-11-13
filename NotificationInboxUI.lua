@@ -8,14 +8,15 @@ function U.RefreshNotificationInbox()
     for _,item in ipairs(N.Recent())do local stored=item
         local civil=Z.ScheduleTime.Local(item.at)or Z.ScheduleTime.UTC(item.at)
         local stamp=civil and string.format('%02d:%02d',civil.hour,civil.min)or''
-        rows[#rows+1]={text=stamp..' · '..item.text,noWrap=true,height=30,click=function()
+        -- Time recedes, the message is bright; the words stay those of text.
+        rows[#rows+1]={text=stamp..' · '..item.text,display=Z.Kit.Paint('dim',stamp..' · ')..Z.Kit.Paint('text',item.text),noWrap=true,height=30,click=function()
             U.notificationInbox:Hide()
             if stored.entry then U.OpenUpdate(stored.entry)
             elseif N.cardActions and N.cardActions[stored.logID]then N.cardActions[stored.logID]()end
         end}
     end
     U.notificationInboxCount:SetText(Z.T('Last %d notifications',#rows))
-    if #rows==0 then rows={{text=Z.T('No notifications yet.'),height=30}}end
+    if #rows==0 then local none=Z.T('No notifications yet.');rows={{text=none,display=Z.Kit.Paint('muted',none),flat=true,height=30}}end
     H.rows(U.notificationInboxList,rows,30)
 end
 function U.CreateNotificationInbox(helpers)
@@ -33,8 +34,9 @@ function U.CreateNotificationInbox(helpers)
     bell:SetScript('OnEnter',function()if GameTooltip then GameTooltip:SetOwner(bell,'ANCHOR_BOTTOM');GameTooltip:AddLine(Z.T('Notifications'));GameTooltip:Show()end end)
     bell:SetScript('OnLeave',function()if GameTooltip then GameTooltip:Hide()end end)
     local popup=H.panel(U.frame);U.notificationInbox=popup;popup:ClearAllPoints();popup:SetPoint('TOPRIGHT',U.frame,'TOPRIGHT',-30,-65);popup:SetSize(650,350)
-    H.label(popup,'Notifications',16,-16,450,'GameFontNormalLarge')
-    H.button(popup,Z.T('Close'),524,-12,110,function()popup:Hide()end)
+    -- Dialog head; the existing Close button stays in the band's right end, so the head adds no second one.
+    Z.Kit.DialogHeader(popup,H.label(popup,'Notifications',16,-16,450,'GameFontNormalLarge'))
+    H.button(popup,Z.T('Close'),524,-9,110,function()popup:Hide()end)
     U.notificationInboxList=H.list(popup,16,-52,618,260);U.notificationInboxCount=H.label(popup,'',16,-326,618)
     H.makeModal(popup);popup:Hide();U.RefreshNotificationInbox()
 end

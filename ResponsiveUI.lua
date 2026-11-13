@@ -135,6 +135,9 @@ function U.ApplyResponsiveLayout(activePage)
     if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
     if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end
     if U.LayoutActivityBoard and(not activePage or activePage==U.pages[10])then U.LayoutActivityBoard()end
+    if U.LayoutQuestsVisual and(not activePage or activePage==U.pages[4])then U.LayoutQuestsVisual()end
+    if U.LayoutTradeVisual and(not activePage or activePage==U.pages[5])then U.LayoutTradeVisual()end
+    if U.LayoutCraftVisual and(not activePage or activePage==U.pages[2])then U.LayoutCraftVisual()end
     if U.LayoutSettings and(not activePage or activePage==U.pages[11])then U.LayoutSettings()end
     U.responsiveUpdating=false
 end

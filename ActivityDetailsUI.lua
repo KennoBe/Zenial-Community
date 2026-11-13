@@ -186,7 +186,8 @@ function U.RefreshActivityDetails()
             local needed=tr('Needed')..': '
             fact(needed..parts[1][2]..' · '..parts[2][2]..' · '..parts[3][2],K.Paint('dim',needed)..K.Roles(parts),36)
         end
-        local own=state(r);fact(own,K.Paint('textSoft',own),32)
+        -- The line about your own application only makes sense on someone else's activity.
+        if not r.own then local applied=state(r);fact(applied,K.Paint('textSoft',applied),32)end
     else local saved=tr('Saved application; organizer data is unavailable.');fact(saved,K.Paint('warning',saved),42)end
     if e and e.note and e.note~=''then
         -- The comment gets a caption so a bare note is not mistaken for another fact.
@@ -287,12 +288,14 @@ end
 function U.CreateActivityDetails(helpers)
     H=helpers;local f=H.panel(U.frame);U.activityDetails=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,550)
     U.activityDetailTitle=H.label(f,'',16,-18,442,'GameFontNormalLarge');U.activityDetailTitle:SetHeight(40)
-    U.activityWhisper=H.button(f,tr('Whisper'),474,-18,160,function()
+    -- Dialog head with the title; the two actions sit in their own row below it.
+    Z.Kit.DialogHeader(f,U.activityDetailTitle,function()f:Hide()end)
+    U.activityWhisper=H.button(f,tr('Whisper'),304,-54,160,function()
         -- Release the modal's keyboard capture before focusing native chat.
         U.CloseDialogs()
         U.ActivityWhisper(U.activityDetailKey)
     end)
-    U.activityArchiveAction=H.button(f,tr('Archive activity'),474,-50,160,function()
+    U.activityArchiveAction=H.button(f,tr('Archive activity'),474,-54,160,function()
         local r=current();if r and r.own then U.RequestActivityArchive(r.kind,r.id)end
     end,'danger')
     U.activityInformation=Z.Kit.InfoBlock(H.list(f,16,-90,594,180))

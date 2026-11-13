@@ -47,7 +47,9 @@ function U.ShowDiscord()
         U.discord = frame; frame:SetSize(470, 165); frame:SetPoint("CENTER"); frame:SetFrameStrata("FULLSCREEN_DIALOG")
         if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityDiscord"end
         if T then T.Shell(frame) end
-        label(frame, "WoW Forever Discord", 24, -24, 350, "GameFontNormalLarge")
+        local heading = label(frame, "WoW Forever Discord", 24, -24, 350, "GameFontNormalLarge")
+        -- Dialog head around the title; the native close button stays (family convention).
+        if Z.Kit and Z.Kit.DialogHeader then Z.Kit.DialogHeader(frame, heading) end
         local close = U.CloseButton(frame, -5, -5, function() frame:Hide() end)
         local edit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate"); U.discordEdit = edit
         edit:SetSize(416, 28); edit:SetPoint("TOPLEFT", 26, -70); edit:SetAutoFocus(false); edit:SetFontObject("GameFontHighlight")
@@ -90,7 +92,8 @@ function U.ShowDiagnostics()
         f:SetScript("OnDragStart",function(self)self:StartMoving()end);f:SetScript("OnDragStop",function(self)self:StopMovingOrSizing()end)
         f:SetScript("OnHide",function()U.diagnosticEdit:ClearFocus()end)
         if T then T.Shell(f)end
-        label(f,Z.T("Diagnostic report"),24,-20,650,"GameFontNormalLarge")
+        local heading=label(f,Z.T("Diagnostic report"),24,-20,650,"GameFontNormalLarge")
+        if Z.Kit and Z.Kit.DialogHeader then Z.Kit.DialogHeader(f,heading)end
         label(f,Z.T("Click the text field, then press Ctrl+A and Ctrl+C."),24,-53,800)
         local close=U.CloseButton(f,-5,-5,function()f:Hide()end)
         local function action(value,x,fn)

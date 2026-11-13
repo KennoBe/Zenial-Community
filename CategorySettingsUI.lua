@@ -53,7 +53,7 @@ function U.CreateCategorySettings(helpers)
     if Z.Theme then Z.Theme.AttachScrollWheel(U.memberCategoryScroll,32)end
     U.SyncCategoryControls()
     local f=H.panel(U.frame);U.categorySettings=f;f:ClearAllPoints();f:SetPoint('CENTER',U.frame,'CENTER',90,0);f:SetSize(650,450)
-    H.label(f,'Private contact categories',16,-18,618,'GameFontNormalLarge')
+    Z.Kit.DialogHeader(f,H.label(f,'Private contact categories',16,-18,618,'GameFontNormalLarge'),function()f:Hide()end)
     U.categorySettingsList=H.list(f,16,-62,594,202)
     U.categoryName=H.edit(f,'Category name',16,-284,618,32)
     U.categoryRename=H.button(f,tr('Rename'),16,-350,196,function()

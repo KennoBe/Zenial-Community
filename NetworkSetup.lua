@@ -24,7 +24,7 @@ function S.ShowBetaNotice()
         local de=Z.Adapter.Call(GetLocale)=="deDE"
         local f=CreateFrame("Frame","ZenialCommunityBetaNotice",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.betaFrame=f
         f:SetSize(520,245);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
-        if Z.Theme then Z.Theme.Panel(f,"stone")end
+        if Z.Theme then Z.Theme.Shell(f)end
         label(f,de and"Bis bald im Release!"or"See you at release!",20,-18,460,24)
         label(f,de and"Die BETA wird nicht mehr unterstützt. ZenialCommunity und der Companion funktionieren nur noch mit der Release-Version.\n\nWir freuen uns auf euch am 05.11.! Kommt bis dahin auf unseren Discord:"or"The BETA is no longer supported. ZenialCommunity and the companion now work only with the release version.\n\nSee you on 5 November! Join our Discord until then:",20,-53,480,105)
         S.betaEdit=edit(f,22,-166,476,180,false);S.betaEdit:SetText(S.DISCORD_URL)
@@ -115,7 +115,7 @@ function S.CreateOverview()
     if S.overviewFrame then return end
     local f=CreateFrame("Frame","ZenialCommunityConnectionOverview",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.overviewFrame=f
     f:SetSize(560,315);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
-    if Z.Theme then Z.Theme.Panel(f,"stone")end
+    if Z.Theme then Z.Theme.Shell(f)end
     label(f,"Community connection",24,-24,500,32)
     S.overviewStatus=label(f,"",24,-82,500,56)
     label(f,"Connect with other players to find members and community activity.",24,-145,500,48)
@@ -144,7 +144,7 @@ end
 function S.ShowCatalog()
     if not S.catalogFrame then
         local f=CreateFrame("Frame","ZenialCommunityCatalogImport",S.frame,BackdropTemplateMixin and"BackdropTemplate"or nil);S.catalogFrame=f;f:SetSize(760,300);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true)
-        if Z.Theme then Z.Theme.Panel(f,"stone")end
+        if Z.Theme then Z.Theme.Shell(f)end
         label(f,"Group catalog: copy this text or paste the operator's catalog.",15,-15,720,35)
         local scroll=CreateFrame("ScrollFrame",nil,f,"UIPanelScrollFrameTemplate");scroll:SetPoint("TOPLEFT",15,-55);scroll:SetSize(705,170)
         if Z.Theme then Z.Theme.StyleScroll(scroll);Z.Theme.AttachScrollWheel(scroll,42)end
@@ -167,7 +167,7 @@ function S.RefreshInvite()
 end
 function S.ShowInvite()
     if not S.linkFrame then
-        local f=CreateFrame("Frame","ZenialCommunityInvite",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Panel(f,"stone")end
+        local f=CreateFrame("Frame","ZenialCommunityInvite",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.linkFrame=f;f:SetSize(760,200);f:SetPoint("CENTER");f:SetFrameStrata("FULLSCREEN_DIALOG");f:EnableMouse(true);if Z.Theme then Z.Theme.Shell(f)end
         label(f,"Click the text field, then press Ctrl+A and Ctrl+C.",15,-15,720,35)
         S.linkName=label(f,"",15,-52,620,24)
         S.linkPrevious=button(f,"<",655,-49,32,function()S.linkGroupIndex=(S.linkGroupIndex-2)%#S.invitationRows+1;S.RefreshInvite()end)
@@ -190,7 +190,7 @@ end
 function S.Create()
     if S.frame then return end
     local f=CreateFrame("Frame","ZenialCommunityNetworkSetup",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.frame=f;f:SetSize(810,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag("LeftButton");f:SetScript("OnDragStart",f.StartMoving);f:SetScript("OnDragStop",f.StopMovingOrSizing)
-    if Z.Theme then Z.Theme.Panel(f,"stone")end
+    if Z.Theme then Z.Theme.Shell(f)end
     label(f,"Battle.net network · 4.0",15,-15,740,24)
     label(f,"Set up ZENIAL Community to find members and offers. Public entries are shared; private requests go directly to their owner.",15,-44,775,48)
     S.assignment=label(f,"",15,-98,555,64);button(f,"Invitation links",590,-100,190,S.ShowInvite)
@@ -241,7 +241,7 @@ function S.ShowJoin(row)
     if not S.joinFrame then
         local f=CreateFrame("Frame","ZenialCommunityJoin",UIParent,BackdropTemplateMixin and"BackdropTemplate"or nil);S.joinFrame=f
         f:SetSize(520,580);f:SetPoint("CENTER");f:SetFrameStrata("DIALOG");f:SetClampedToScreen(true);f:EnableMouse(true)
-        if Z.Theme then Z.Theme.Panel(f,"stone")end
+        if Z.Theme then Z.Theme.Shell(f)end
         local function gold(region)if Z.Theme then Z.Theme.Tint(region,"SetTextColor","gold")end;return region end
         S.joinTitle=gold(label(f,"Welcome to ZENIAL Community",20,-18,440,24));S.joinTitle:SetFontObject("GameFontNormalLarge")
         S.joinReason=label(f,"To see members, groups and offers, join ZENIAL Community once.",20,-50,480,34)

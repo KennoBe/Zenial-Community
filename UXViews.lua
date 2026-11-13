@@ -168,6 +168,14 @@ local function place(frame, x, y, width, height)
     end
 end
 S.place = place
+-- Page plates (filter bars) are hidden while a compact detail is open and return with the list.
+local function visualLayouts()
+    for _, name in ipairs({ 'LayoutQuestsVisual', 'LayoutTradeVisual', 'LayoutCraftVisual' }) do
+        if U[name] then
+            U[name]()
+        end
+    end
+end
 function U.OpenCompactArea(area)
     if not U.compactContent then
         return
@@ -264,6 +272,7 @@ function U.OpenCompactArea(area)
     if area == 'members' and U.RefreshMemberCategories then
         U.RefreshMemberCategories()
     end
+    visualLayouts()
 end
 function U.CloseCompactArea(area)
     area = area or U.compactArea
@@ -364,6 +373,7 @@ function U.CloseCompactArea(area)
     if U.ApplyResponsiveLayout then
         U.ApplyResponsiveLayout()
     end
+    visualLayouts()
 end
 
 local function historyTime(at)
@@ -414,6 +424,7 @@ function U.RefreshHistory()
         items[#items + 1] = {
             selected = entryID == U.historyEntryID,
             icon = e.kind == 'quest' and NAV_ICONS.quests or e.kind == 'craft' and NAV_ICONS.crafting or NAV_ICONS.groups,
+            kind = e.kind,
             text = '|cffffd36b'
                 .. historyTime(e.at)
                 .. '|r · '
@@ -433,6 +444,17 @@ function U.RefreshHistory()
     if not valid then
         U.historyEntryID = nil
     end
+    -- Visual weighting: item.text stays the data contract; the first line is bright, the rest recedes, and a
+    -- small atlas symbol names the kind of event.
+    local K, T = Z.Kit, Z.Theme
+    if K and T and T.IconSpec then
+        local symbols = { quest = 'quests', craft = 'craft' }
+        for _, item in ipairs(items) do
+            item.display = K.Lines(item.text)
+            item.icon, item.iconColor, item.iconSize, item.textInset =
+                T.IconSpec(symbols[item.kind] or 'activities'), item.selected and 'gold' or 'dim', 18, 40
+        end
+    end
     U.SetEmptyHint(U.historyList, 'No events in this period. Widen the period or reset the filters.')
     rows(U.historyList, items, 58)
     U.historyCount:SetText(#items == 1 and tr('1 Ereignis') or #items .. tr(' Ereignisse'))
@@ -443,22 +465,26 @@ function U.RefreshHistory()
         U.historyDeletePlayer:SetEnabled(false)
         return
     end
-    U.historyDetail:SetText(
-        '|cffffd36b'
-            .. entry.content
-            .. '|r\n'
-            .. (entry.kind == 'group' and tr('Gruppe') or entry.kind == 'craft' and tr('Crafting') or tr('Quest Help'))
-            .. ' · '
-            .. entry.ownTarget
-            .. '\n'
-            .. (entry.peerTarget ~= '' and entry.peerTarget or tr('Kein Spieler'))
-    )
+    local kindLine = (entry.kind == 'group' and tr('Gruppe') or entry.kind == 'craft' and tr('Crafting') or tr('Quest Help'))
+        .. ' · '
+        .. entry.ownTarget
+    local peerLine = entry.peerTarget ~= '' and entry.peerTarget or tr('Kein Spieler')
+    if K and T and T.PaletteHex then
+        U.historyDetail:SetText(K.Paint('goldBright', entry.content) .. '\n' .. K.Paint('textSoft', kindLine) .. '\n' .. K.Paint('text', peerLine))
+    else
+        U.historyDetail:SetText('|cffffd36b' .. entry.content .. '|r\n' .. kindLine .. '\n' .. peerLine)
+    end
+    -- Timeline: facts, not cells. Flat rows flush left, time dim and who/what bright; nothing is clickable.
     local related = {}
     for _, e in ipairs(H.Related(entry)) do
-        related[#related + 1] = {
-            icon = e.kind == 'quest' and NAV_ICONS.quests or e.kind == 'craft' and NAV_ICONS.crafting or NAV_ICONS.groups,
-            text = historyTime(e.at) .. ' · ' .. (e.peerTarget ~= '' and e.peerTarget or e.ownTarget) .. '\n' .. H.EventLabel(e.event),
-        }
+        local when = historyTime(e.at)
+        local who = e.peerTarget ~= '' and e.peerTarget or e.ownTarget
+        local event = H.EventLabel(e.event)
+        local item = { text = when .. ' · ' .. who .. '\n' .. event, flat = true, textInset = 0 }
+        if K and T and T.PaletteHex then
+            item.display = K.Paint('dim', when .. ' · ') .. K.Paint('text', who) .. '\n' .. K.Paint('textSoft', event)
+        end
+        related[#related + 1] = item
     end
     rows(U.historyRelatedList, related, 42)
     U.historyDeletePlayer:SetEnabled(entry.peerKey ~= '')

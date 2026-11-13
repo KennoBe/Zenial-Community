@@ -62,7 +62,9 @@ end
 function U.PreviewScheduledSeries()
     local preview,why=S.Preview(U.scheduledTemplateID,tonumber(U.scheduledSeriesCount:GetText()));U.scheduledProposal=preview;U.scheduledSeriesCreate:SetEnabled(preview~=nil)
     local rows={};for _,instance in ipairs(preview or{})do rows[#rows+1]={text=T.Format(instance.startsAt),height=66}end
-    if not preview then rows={{text=tr(why),height=76}}end;H.rows(U.scheduledSeriesPreview,rows,66)
+    if not preview then rows={{text=tr(why),height=76}}end
+    for _,row in ipairs(rows)do row.flat,row.textInset,row.height=true,0,preview and 26 or row.height;row.display=Z.Kit.Paint(preview and'text'or'warning',row.text)end
+    H.rows(U.scheduledSeriesPreview,rows,66)
 end
 function U.LayoutScheduledDetails(infoHeight,peopleHeight,own)
     -- Fill the right column up to its action row. Reserve participant space
@@ -94,6 +96,7 @@ function U.RefreshScheduledGroups()
         for _,view in ipairs({U.scheduledDetails,U.scheduledParticipants})do view.zenialOffset=0;view:SetVerticalScroll(0)end
         U.scheduledDisplayedOwner,U.scheduledDisplayedID=U.scheduledOwner,U.scheduledID
     end
+    for _,item in ipairs(items)do item.display=Z.Kit.Lines(item.text);item.icon,item.iconColor,item.iconSize,item.textInset=Z.Theme.IconSpec('calendar'),item.selected and'gold'or'dim',18,36 end
     H.rows(U.scheduledList,items,82);U.scheduledCount:SetText(Z.T('%d events · page %d/%d',#data,U.scheduledPage,maxPage)..(S.Loading()and' · '..tr('Loading')or''))
     U.scheduledPrev:SetEnabled(U.scheduledPage>1);U.scheduledNext:SetEnabled(U.scheduledPage<maxPage)
     U.scheduledStoreState:SetText(tr(not S.store and'Saved scheduled groups are unavailable. Data was preserved.'or S.loadError and'Invalid scheduled data was rejected.'or''))
@@ -109,7 +112,7 @@ function U.RefreshScheduledGroups()
     H.showControl(U.scheduledRole,e~=nil and not own);U.scheduledApply:SetShown(e~=nil and not own);U.scheduledWithdraw:SetShown(e~=nil and not own)
     for _,button in ipairs({U.scheduledConfirm,U.scheduledWaitlist,U.scheduledDecline})do button:SetShown(own==true)end
     for _,button in ipairs({U.scheduledEdit,U.scheduledPublish,U.scheduledCancel,U.scheduledRepeat})do button:SetShown(own==true)end
-    if not e then U.LayoutScheduledDetails(48,0,false);H.rows(U.scheduledDetails,{{text=tr('Select a scheduled event.'),height=48}},48);H.rows(U.scheduledParticipants,{},56);return end
+    if not e then local hint=tr('Select a scheduled event.');U.LayoutScheduledDetails(48,0,false);H.rows(U.scheduledDetails,{{text=hint,display=Z.Kit.Paint('muted',hint),flat=true,textInset=0,height=48}},48);H.rows(U.scheduledParticipants,{},56);return end
     local following=S.Follow(e.ownerKey,e.id);local used=e.participants and S.Counts(e)or e.used
     local details={{text=U.ActivityName(e.activity)..' · '..S.StateLabel(e.status),height=40},{text=T.Format(e.startsAt)..' – '..T.Format(e.endsAt),height=56},
         {text=tr(S.Reach(e.ownerKey))..'\n'..S.Participation(e.ownerKey,e.id),height=48}}
@@ -118,10 +121,11 @@ function U.RefreshScheduledGroups()
     local free={};for _,role in ipairs({'TANK','HEALER','DAMAGER'})do free[#free+1]=Z.Locale.Role(role)..': '..(used and tostring(math.max(0,e.roleSlots[role]-used[role]))or tr('Unknown'))..'/'..e.roleSlots[role]end
     details[#details+1]={text=tr('Free roles: ')..table.concat(free,' · '),height=40}
     if following then details[#details+1]={text=tr('Delivery: ')..S.DeliveryLabel(following.delivery),height=40}end
-    if e.note~=''then details[#details+1]={text=e.note,height=96}end
+    -- The comment gets a caption so a bare note is not mistaken for another fact.
+    if e.note~=''then local caption=tr('Comment');details[#details+1]={text=e.note,measure=caption..'\n'..e.note,display=Z.Kit.Paint('goldDim',Z.Kit.Upper(caption))..'\n'..Z.Kit.Paint('text',e.note),height=96}end
     local infoHeight=0
     for _,row in ipairs(details)do
-        U.scheduledMeasure:SetText(row.text);row.height=math.max(28,U.scheduledMeasure:GetStringHeight()+10);infoHeight=infoHeight+row.height
+        U.scheduledMeasure:SetText(row.measure or row.text);row.height=math.max(26,U.scheduledMeasure:GetStringHeight()+10);infoHeight=infoHeight+row.height
     end
     local people={};if own then
         if e.organizerRole~=''then people[#people+1]={text=Z.me.target..' · '..Z.Locale.Role(e.organizerRole)..' · '..tr('Organizer'),height=48}end
@@ -140,6 +144,8 @@ function U.RefreshScheduledGroups()
     end
     local peopleHeight=0;for _,row in ipairs(people)do peopleHeight=peopleHeight+row.height end
     U.LayoutScheduledDetails(infoHeight,peopleHeight,own)
+    -- The details are facts (a block, no cells); participants stay a list where they can be chosen.
+    Z.Kit.FactRows(details,true);Z.Kit.FactRows(people)
     H.rows(U.scheduledDetails,details,48);H.rows(U.scheduledParticipants,people,56)
 end
 function U.CreateScheduledGroups(parent,helpers)
@@ -153,7 +159,7 @@ function U.CreateScheduledGroups(parent,helpers)
     U.scheduledNew=button(f,tr('New event'),0,-374,118,function()U.OpenActivityCreator();U.creatorWhen:SetText('PLANNED');U.ConfigureActivityCreator()end)
     U.scheduledDelete=button(f,tr('Remove from my list'),132,-374,118,function()local e=selected();if e and e.ownerKey~=Z.me.key then message(S.Forget(e.ownerKey,e.id))end end,'danger')
     U.scheduledStoreState=label(f,'',284,-335,548);U.scheduledStoreState:SetHeight(30)
-    U.scheduledDetails=list(f,284,-4,548,134);U.scheduledParticipants=list(f,284,-148,548,124)
+    U.scheduledDetails=Z.Kit.InfoBlock(list(f,284,-4,548,134));U.scheduledParticipants=list(f,284,-148,548,124)
     U.scheduledMeasure=label(f,'',0,0,500);U.scheduledMeasure:SetWordWrap(true);U.scheduledMeasure:Hide()
     U.scheduledRole=selector(f,'My role',284,-278,140,{'TANK','HEALER','DAMAGER'})
     U.scheduledApply=button(f,tr('Apply'),438,-295,126,function()local e=selected();if e then message(S.Apply(e.ownerKey,e.id,U.scheduledRole:GetText()))end end,'primary')
@@ -190,7 +196,7 @@ function U.CreateScheduledGroups(parent,helpers)
     U.scheduledSeriesCount=edit(series,'Number of instances',16,-132,200,1);U.scheduledSeriesCount:SetScript('OnTextChanged',function()U.scheduledProposal=nil;if U.scheduledSeriesCreate then U.scheduledSeriesCreate:SetEnabled(false)end end)
     U.scheduledSeriesPreviewButton=button(series,tr('Preview dates'),240,-149,184,U.PreviewScheduledSeries)
     U.scheduledTemplateDelete=button(series,tr('Delete template'),434,-149,184,function()if S.DeleteTemplate(U.scheduledTemplateID)then U.scheduledProposal=nil;series:Hide();U.RefreshScheduledGroups()end end,'danger')
-    U.scheduledSeriesPreview=list(series,16,-194,594,168)
+    U.scheduledSeriesPreview=Z.Kit.InfoBlock(list(series,16,-194,594,168))
     U.scheduledSeriesCreate=button(series,tr('Create events'),16,-400,294,function()
         local keys,why=S.GenerateAndPublish(U.scheduledTemplateID,U.scheduledProposal);if keys then U.scheduledOwner,U.scheduledID=Z.me.key,keys[1];series:Hide();U.RefreshScheduledGroups()else U.Message(tr(why))end
     end,'primary');U.scheduledSeriesCreate:SetEnabled(false)

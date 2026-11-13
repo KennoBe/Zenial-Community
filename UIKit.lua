@@ -22,6 +22,7 @@
 --   K.Roles(parts)                                { { role, text }, ... } joined with dots, each in its role colour
 --   K.InfoBlock(list)                             a list that only shows facts: no sunken well, reads as plain text
 --   K.Lines(text[, firstKey, restKey])            multi-line row text: first line bright, the lines below receding
+--   K.Facts(text)                                 multi-line facts: "Label: value" lines get a dimmed label
 local Z = ZenialCommunity
 local T = Z and Z.Theme
 if type(T) ~= "table" or type(T.Font) ~= "function" then return end
@@ -67,6 +68,35 @@ function K.Lines(value, firstKey, restKey)
         out[index] = line == "" and "" or K.Paint(index == 1 and (firstKey or "text") or (restKey or "dim"), line)
     end
     return table.concat(out, "\n")
+end
+-- Facts text for an info block: every line that reads "Label: value" gets a dimmed label and a bright value,
+-- any other line is soft text. The words stay those of the data text.
+function K.Facts(value)
+    local plain = tostring(value or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    local out, index = {}, 0
+    for line in (plain .. "\n"):gmatch("(.-)\n") do
+        index = index + 1
+        local label, rest = line:match("^(.-: )(.+)$")
+        out[index] = line == "" and "" or label and K.Fact(label, rest) or K.Paint("textSoft", line)
+    end
+    return table.concat(out, "\n")
+end
+-- Turns the items of a list into an info block (D-23): flat rows flush with the left margin; the first may be
+-- a head line. Items with a click stay cells and only get their weighting.
+function K.FactRows(items, head)
+    for index, item in ipairs(items) do
+        if item.click then
+            item.display = item.display or K.Lines(item.text)
+        else
+            item.textInset = 0
+            if head and index == 1 then
+                item.section, item.display = true, item.display or K.Lines(item.text, "text", "dim")
+            else
+                item.flat, item.display = true, item.display or K.Facts(item.text)
+            end
+        end
+    end
+    return items
 end
 -- Facts nobody can click are not list cells: the rows are flat (item.flat) and the list loses its well.
 function K.InfoBlock(view)
@@ -411,15 +441,19 @@ function K.DialogHeader(dialog, title, onClose)
         header.height = sub and DIALOG_HEADER_SUB or DIALOG_HEADER
         header.band:SetHeight(header.height - 1)
         local top = sub and -11 or -13
+        -- One plain anchor on the dialog plus a width, like every other control of these dialogs.
+        local width = dialog.GetWidth and dialog:GetWidth()
+        header.width = math.max(40, (type(width) == "number" and width > 0 and width or 650) - left - right)
         title:ClearAllPoints()
-        title:SetPoint("TOPLEFT", dialog, "TOPLEFT", left, top); title:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -right, top)
+        title:SetPoint("TOPLEFT", left, top); title:SetWidth(header.width)
         title:SetHeight(18)
+        if header.subtitle then header.subtitle:SetWidth(header.width) end
     end
     function header:SetSubtitle(value)
         value = value or ""
         if value ~= "" and not self.subtitle then
             self.subtitle = K.Text(dialog, "", "caption", "dim")
-            self.subtitle:SetPoint("TOPLEFT", dialog, "TOPLEFT", left, -33); self.subtitle:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -right, -33)
+            self.subtitle:SetPoint("TOPLEFT", left, -33)
             self.subtitle:SetHeight(14); call(self.subtitle, "SetWordWrap", false)
         end
         if self.subtitle then self.subtitle:SetText(value); self.subtitle:SetShown(value ~= "") end

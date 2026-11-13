@@ -21,15 +21,16 @@ function U.NewNotice(name,width,height)
     local f=CreateFrame('Button',name,UIParent,BackdropTemplateMixin and'BackdropTemplate'or nil)
     width=340;f.noticeMinHeight=math.max(96,height)
     f:SetSize(width,f.noticeMinHeight);f:SetFrameStrata('DIALOG');f:SetClampedToScreen(true);f:RegisterForClicks('LeftButtonUp')
-    if T then T.Panel(f,'inset')elseif f.SetBackdrop then
+    -- Raised card with a shadow and a gold marker on the left (palette only).
+    if T then T.Panel(f,'raised');if T.Shadow then T.Shadow(f,10,.5)end;if Z.Kit then Z.Kit.Accent(f,'gold')end elseif f.SetBackdrop then
         f:SetBackdrop({bgFile='Interface\\Tooltips\\UI-Tooltip-Background',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',tile=true,tileSize=16,edgeSize=12,insets={left=4,right=4,top=4,bottom=4}})
         f:SetBackdropColor(.045,.031,.021,.99);f:SetBackdropBorderColor(.72,.49,.18,1)
     end
     local function text(font,x,y,w)
         local t=f:CreateFontString(nil,'OVERLAY',font);t:SetPoint('TOPLEFT',x,y);t:SetWidth(w);t:SetJustifyH('LEFT');t:SetJustifyV('TOP');t:SetWordWrap(true);return t
     end
-    f.heading=text('GameFontNormal',16,-12,width-60);f.heading:SetHeight(18);f.heading:SetTextColor(1,.8,.27,1);f.heading:SetText(Z.T('New update'))
-    f.text=text('GameFontHighlightSmall',16,-38,width-32);f.text:SetHeight(f.noticeMinHeight-54);f.text:SetTextColor(.96,.9,.76,1)
+    f.heading=text('GameFontNormal',16,-12,width-60);f.heading:SetHeight(18);if T then T.Tint(f.heading,'SetTextColor','goldBright')else f.heading:SetTextColor(1,.8,.27,1)end;f.heading:SetText(Z.T('New update'))
+    f.text=text('GameFontHighlightSmall',16,-38,width-32);f.text:SetHeight(f.noticeMinHeight-54);if T then T.Tint(f.text,'SetTextColor','text')else f.text:SetTextColor(.96,.9,.76,1)end
     local close=Z.UI.CloseButton(f,-6,-6,function()f:Hide()end,24);f.closeButton=close
     f:SetScript('OnShow',function(self)
         sequence=sequence+1;self.noticeSequence=sequence

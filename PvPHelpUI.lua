@@ -65,6 +65,8 @@ function U.RefreshPvPPage()
             accent=active and{.3,.75,.3,1}or{.5,.5,.5,1},click=function()U.SelectPvpCall(key,id)end}
     end
     if not selected then U.pvpCallKey,U.pvpCallID=nil,nil end
+    -- Calls are a clickable list (weighted rows, alarm symbol); the selected call's details are facts.
+    for _,item in ipairs(items)do item.display=Z.Kit.Lines(item.text);item.icon,item.iconColor,item.iconSize,item.textInset=Z.Theme.IconSpec('pvp'),'dangerText',18,40 end
     H.rows(U.pvpCallList,items,72);U.pvpRecentTitle:SetText(tr('Help requests in the last 2 hours (%d)',#items))
     local r=U.pvpCallKey and P.GetCall(U.pvpCallKey,U.pvpCallID);local details={}
     if r then
@@ -77,10 +79,11 @@ function U.RefreshPvPPage()
         U.pvpCome:SetText(tr(r.response=='coming'and'Withdraw commitment'or"I'm coming"));U.pvpCome:SetEnabled(active and not own)
         U.pvpMap:SetEnabled(r.mapID>0);U.pvpWaypoint:SetEnabled(active and not own and r.hasPos);U.pvpWhisper:SetEnabled(not own and c~=nil);U.pvpBlock:SetEnabled(not own)
     else
-        details={{text=tr('Select a help request.'),height=40}}
+        local hint=tr('Select a help request.');details={{text=hint,display=Z.Kit.Paint('muted',hint),height=40}}
         for _,b in ipairs({U.pvpCome,U.pvpMap,U.pvpWaypoint,U.pvpWhisper,U.pvpBlock})do b:SetEnabled(false)end
     end
     for _,b in ipairs({U.pvpCome,U.pvpMap,U.pvpWaypoint,U.pvpWhisper,U.pvpBlock})do b:Show()end
+    Z.Kit.FactRows(details,r~=nil);Z.Kit.InfoBlock(U.pvpCallDetailList)
     H.rows(U.pvpCallDetailList,details,40);U.pvpCallDetail:Hide();U.UpdateBadges()
 end
 function U.CreatePvPHelpPage(helpers)
@@ -94,6 +97,8 @@ function U.CreatePvPHelpPage(helpers)
     U.pvpOwnActionButtons={};for _,w in ipairs(U.layoutWidgets)do if w.parent==U.pvpOwnControls and w.kind=='button'then U.pvpOwnActionButtons[#U.pvpOwnActionButtons+1]=w.frame end end
     U.pvpHelpers=H.panel(U.frame);U.pvpHelpers:SetSize(600,330);U.pvpHelpers:ClearAllPoints();U.pvpHelpers:SetPoint('CENTER',U.frame,'CENTER',90,0);H.makeModal(U.pvpHelpers);U.pvpHelpers:Hide()
     U.pvpHelperCount:SetParent(U.pvpHelpers);place(U.pvpHelperCount,16,-16,568,22)
+    -- The helper count is this dialog's title.
+    Z.Kit.DialogHeader(U.pvpHelpers,U.pvpHelperCount,function()U.pvpHelpers:Hide()end)
     U.pvpHelperList:SetParent(U.pvpHelpers);sizeList(U.pvpHelperList,16,-50,568,208)
     U.pvpInvite:SetParent(U.pvpHelpers);place(U.pvpInvite,16,-280,174,26)
     U.pvpHelperWhisper:SetParent(U.pvpHelpers);place(U.pvpHelperWhisper,206,-280,174,26)
