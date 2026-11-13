@@ -1045,9 +1045,9 @@ function refreshMembers()
     if grouped then
         local identities, characters
         items, identities, characters = groupedItems(ctx)
-        count = Z.T(identities == 1 and '%d player identity' or '%d player identities', identities)
+        count = Z.T(identities == 1 and '%d player' or '%d players', identities)
             .. ' · '
-            .. Z.T(characters == 1 and '%d known character' or '%d known characters', characters)
+            .. Z.T(characters == 1 and '%d character' or '%d characters', characters)
     else
         local records = {}
         for _, m in ipairs(memberEntries()) do
