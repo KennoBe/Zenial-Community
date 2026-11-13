@@ -98,28 +98,32 @@ function U.ApplyResponsiveLayout(activePage)
     if not activePage or activePage==U.pages[2]then
         if U.LayoutCraftOrderForm then U.LayoutCraftOrderForm()end
         local parent=U.craftSearchFrame;local h=parent:GetHeight();local compact=U.compactArea=='craft'
-        local recipeHeight=math.max(220,math.min(340,h-(compact and 220 or 240)))
-        local recipeX,recipeTop,recipeWidth=compact and 0 or 495,compact and 140 or 160,compact and 820 or 345
-        local titleX,titleY,titleWidth=compact and 0 or 495,compact and 110 or 130,compact and 620 or 190
-        U.professionDetail:ClearAllPoints();U.professionDetail:SetPoint('TOPLEFT',compact and 0 or 495,compact and -46 or -92)
-        U.professionDetail:SetSize(compact and 820 or 345,compact and 60 or 34)
+        local recipeHeight=math.max(220,math.min(340,h-(compact and 220 or 250)))
+        -- The right column follows the page width like every other control. A wide, low window stretches the
+        -- page beyond its base width of 856; with fixed x values the result list covered this column.
+        local hz=compact and 1 or width(parent)/856;if type(hz)~='number'or hz<=0 then hz=1 end
+        local columnX=495*hz
+        local recipeX,recipeTop,recipeWidth=compact and 0 or columnX,compact and 140 or 170,compact and 820 or 345*hz
+        local titleX,titleY,titleWidth=compact and 0 or columnX,compact and 110 or 140,compact and 620 or 190*hz
+        U.professionDetail:ClearAllPoints();U.professionDetail:SetPoint('TOPLEFT',compact and 0 or columnX,compact and -46 or -104)
+        U.professionDetail:SetSize(compact and 820 or 345*hz,compact and 60 or 34)
         U.professionRecipeTitle:ClearAllPoints();U.professionRecipeTitle:SetPoint('TOPLEFT',titleX,-titleY);U.professionRecipeTitle:SetWidth(titleWidth)
         U.professionRecipeList:ClearAllPoints();U.professionRecipeList:SetPoint('TOPLEFT',recipeX,-recipeTop);U.professionRecipeList:SetWidth(recipeWidth)
         U.professionRecipeList:SetHeight(recipeHeight);U.professionRecipeList.height=recipeHeight;U.professionRecipeList.width=recipeWidth-24
         U.professionRecipeList.child:SetWidth(recipeWidth-24)
-        U.craftDetailMaterialsToggle:ClearAllPoints();U.craftDetailMaterialsToggle:SetPoint('TOPLEFT',compact and 665 or 695,-titleY);U.craftDetailMaterialsToggle:SetSize(150,26)
+        U.craftDetailMaterialsToggle:ClearAllPoints();U.craftDetailMaterialsToggle:SetPoint('TOPLEFT',compact and 665 or columnX+recipeWidth-150,-titleY);U.craftDetailMaterialsToggle:SetSize(150,26)
         U.craftDetailMaterialsTitle:Hide()
         U.craftDetailMaterials:ClearAllPoints();U.craftDetailMaterials:SetPoint('TOPLEFT',recipeX,-recipeTop);U.craftDetailMaterials:SetSize(recipeWidth,recipeHeight-52)
         U.craftDetailMaterials.height=recipeHeight-52;U.craftDetailMaterials.width=recipeWidth-24;U.craftDetailMaterials.child:SetWidth(recipeWidth-24)
         U.craftDetailMaterialState:ClearAllPoints();U.craftDetailMaterialState:SetPoint('TOPLEFT',recipeX,-(recipeTop+recipeHeight-52+4));U.craftDetailMaterialState:SetSize(recipeWidth,30)
-        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',compact and 0 or 495,-(h-74));U.craftDetailCrafts.caption:SetSize(90,16)
-        U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',compact and 0 or 495,-(h-57));U.craftDetailCrafts:SetSize(90,26)
-        U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',compact and 100 or 595,-(h-57));U.craftDetailSaveList:SetSize(130,26)
-        U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',compact and 236 or 730,-(h-57));U.craftDetailOffers:SetSize(120,26)
+        U.craftDetailCrafts.caption:ClearAllPoints();U.craftDetailCrafts.caption:SetPoint('TOPLEFT',compact and 0 or columnX,-(h-74));U.craftDetailCrafts.caption:SetSize(90,16)
+        U.craftDetailCrafts:ClearAllPoints();U.craftDetailCrafts:SetPoint('TOPLEFT',compact and 0 or columnX,-(h-57));U.craftDetailCrafts:SetSize(90,26)
+        U.craftDetailSaveList:ClearAllPoints();U.craftDetailSaveList:SetPoint('TOPLEFT',compact and 100 or columnX+100,-(h-57));U.craftDetailSaveList:SetSize(130,26)
+        U.craftDetailOffers:ClearAllPoints();U.craftDetailOffers:SetPoint('TOPLEFT',compact and 236 or columnX+235,-(h-57));U.craftDetailOffers:SetSize(120,26)
         if compact then
             for _,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do local _,_,_,x=f:GetPoint(1);f:ClearAllPoints();f:SetPoint('TOPLEFT',x,-(h-28))end
         else
-            for index,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do f:ClearAllPoints();f:SetPoint('TOPLEFT',({0,105,220})[index],-(h-57))end
+            for index,f in ipairs({U.craftFavorite,U.professionWhisper,U.craftOrderRequest})do f:ClearAllPoints();f:SetPoint('TOPLEFT',({0,105,220})[index]*hz,-(h-57))end
         end
         if U.professionRecipeList.zenialRender then U.professionRecipeList.zenialRender()end
         if U.craftDetailMaterials.zenialRender then U.craftDetailMaterials.zenialRender()end
