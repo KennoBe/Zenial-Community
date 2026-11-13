@@ -615,22 +615,17 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- Inputs and scroll bars
 -- ---------------------------------------------------------------------------------------------
+-- Field drawn with the edit box's own textures: dark well, 1px edge, gold-dim edge while focused. Template
+-- edit boxes cannot draw a backdrop in the client (single-line boxes showed the Blizzard art, multi-line
+-- boxes nothing at all), so every field is built this way.
+local FieldBackground
 function T.StyleEditBox(edit)
     if not edit then return edit end
-    -- The template art is only replaced when the flat backdrop can actually be drawn.
-    if edit.SetBackdrop then hideTemplateArt(edit) end
-    flatBackdrop(edit, "inset", .99, "fieldEdge")
+    FieldBackground(edit)
     if edit.SetTextInsets then edit:SetTextInsets(8, 8, 4, 4) end
-    if not edit.zenialFocusHooks then
-        edit.zenialFocusHooks = true
-        hook(edit, "OnEditFocusGained", function(self) tint(self, "SetBackdropBorderColor", "goldDim") end)
-        hook(edit, "OnEditFocusLost", function(self) tint(self, "SetBackdropBorderColor", "fieldEdge") end)
-    end
     return edit
 end
 
--- Field drawn with the edit box's own textures: dark well, 1px edge, gold-dim edge while focused. For edit
--- boxes whose template can draw neither a backdrop nor usable art in the client (multi-line boxes).
 function T.FieldBackground(edit)
     if not edit or edit.zenialField or not edit.CreateTexture then return edit end
     hideTemplateArt(edit)
@@ -642,6 +637,60 @@ function T.FieldBackground(edit)
     hook(edit, "OnEditFocusGained", function(self) tintEdges(self.zenialField.edges, "goldDim") end)
     hook(edit, "OnEditFocusLost", function(self) tintEdges(self.zenialField.edges, "fieldEdge") end)
     return edit
+end
+FieldBackground = T.FieldBackground
+
+-- Checkbox: flat 16px box in the field colours with a gold tick from the icon atlas. The template's own
+-- textures are made invisible; the box is redrawn after every state change.
+local function paintCheckbox(check)
+    local box = check.zenialBox
+    if not box then return end
+    local enabled = not check.IsEnabled or check:IsEnabled()
+    local on = check:GetChecked() and true or false
+    box.tick:SetShown(on)
+    tint(box.tick, "SetVertexColor", enabled and "gold" or "disabledText")
+    tintEdges(box.edges, not enabled and "lineSoft" or (check.zenialHover or on) and "goldDim" or "fieldEdge")
+end
+function T.StyleCheckbox(check)
+    if not check or check.zenialBox or not check.CreateTexture then return check end
+    hideTemplateArt(check)
+    for _, getter in ipairs({ "GetCheckedTexture", "GetDisabledCheckedTexture" }) do
+        if type(check[getter]) == "function" then
+            local ok, region = pcall(check[getter], check)
+            if ok and type(region) == "table" and region.SetAlpha then region:SetAlpha(0) end
+        end
+    end
+    local box = {}
+    box.fill = check:CreateTexture(nil, "BACKGROUND")
+    box.fill:SetSize(16, 16); box.fill:SetPoint("LEFT", 2, 0); tint(box.fill, "SetColorTexture", "inset")
+    box.edges = {}
+    for _, side in ipairs({ "top", "bottom", "left", "right" }) do box.edges[side] = check:CreateTexture(nil, "BORDER") end
+    box.edges.top:SetPoint("TOPLEFT", box.fill, "TOPLEFT"); box.edges.top:SetPoint("TOPRIGHT", box.fill, "TOPRIGHT"); box.edges.top:SetHeight(1)
+    box.edges.bottom:SetPoint("BOTTOMLEFT", box.fill, "BOTTOMLEFT"); box.edges.bottom:SetPoint("BOTTOMRIGHT", box.fill, "BOTTOMRIGHT"); box.edges.bottom:SetHeight(1)
+    box.edges.left:SetPoint("TOPLEFT", box.fill, "TOPLEFT"); box.edges.left:SetPoint("BOTTOMLEFT", box.fill, "BOTTOMLEFT"); box.edges.left:SetWidth(1)
+    box.edges.right:SetPoint("TOPRIGHT", box.fill, "TOPRIGHT"); box.edges.right:SetPoint("BOTTOMRIGHT", box.fill, "BOTTOMRIGHT"); box.edges.right:SetWidth(1)
+    box.tick = check:CreateTexture(nil, "OVERLAY")
+    box.tick:SetSize(12, 12); box.tick:SetPoint("CENTER", box.fill, "CENTER", 0, 0); T.SetIcon(box.tick, "check", "gold")
+    check.zenialBox = box
+    local setChecked, setEnabled = check.SetChecked, check.SetEnabled
+    check.SetChecked = function(self, checked) setChecked(self, checked); paintCheckbox(self) end
+    if setEnabled then check.SetEnabled = function(self, enabled) setEnabled(self, enabled); paintCheckbox(self) end end
+    hook(check, "OnClick", paintCheckbox)
+    -- A page may replace OnClick later; PostClick keeps the box in step with the state either way.
+    call(check, "SetScript", "PostClick", paintCheckbox)
+    hook(check, "OnEnter", function(self) self.zenialHover = true; paintCheckbox(self) end)
+    hook(check, "OnLeave", function(self) self.zenialHover = false; paintCheckbox(self) end)
+    hook(check, "OnEnable", paintCheckbox); hook(check, "OnDisable", paintCheckbox)
+    paintCheckbox(check)
+    return check
+end
+
+-- Popup of a dropdown: a raised card with a soft shadow, above the page it opens over.
+function T.StylePopup(frame)
+    if not frame then return frame end
+    T.Panel(frame, "raised")
+    T.Shadow(frame, 8, .5)
+    return frame
 end
 
 function T.CreateScrollBar(parent, onValue)

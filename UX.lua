@@ -355,6 +355,9 @@ end
 S.updateNavPath = updateNavPath
 local function edit(parent, caption, x, y, w, max, multi)
     local c = label(parent, caption, x, y, w)
+    if T and T.Font then
+        T.Font(c, 'caption', 'dim')
+    end
     local e = CreateFrame('EditBox', nil, parent, 'InputBoxTemplate')
     e.caption = c
     e:SetAutoFocus(false)
@@ -400,6 +403,9 @@ local function selector(parent, caption, x, y, w, options, changed, formatter)
     end
     local popupWidth
     local c = label(parent, caption, x, y, w)
+    if T and T.Font then
+        T.Font(c, 'caption', 'dim')
+    end
     local s = { caption = c, options = normalized, value = '', offset = 1 }
     local b = button(parent, '', x, y - 17, w)
     s.button = b
@@ -409,7 +415,9 @@ local function selector(parent, caption, x, y, w, options, changed, formatter)
     p:SetClampedToScreen(true)
     p:SetPoint('TOPLEFT', b, 'BOTTOMLEFT', 0, -2)
     p.rows = {}
-    if T then
+    if T and T.StylePopup then
+        T.StylePopup(p)
+    elseif T then
         T.Panel(p, 'inset')
     elseif p.SetBackdrop then
         p:SetBackdrop({
@@ -434,6 +442,10 @@ local function selector(parent, caption, x, y, w, options, changed, formatter)
             if v and i <= n then
                 r.value = v
                 r:SetText(optionText(v))
+                -- The current choice carries the selection marker.
+                if T and T.SetSelected then
+                    T.SetSelected(r, v == s.value)
+                end
                 r:Show()
             else
                 r:Hide()
@@ -466,8 +478,12 @@ local function selector(parent, caption, x, y, w, options, changed, formatter)
             if changed then
                 changed(self.value)
             end
-        end)
+        end, 'ghost')
         r:SetHeight(20)
+        -- Entries of a list, not a row of actions: no frame, caption on the left.
+        if T and T.AlignButtonText then
+            T.AlignButtonText(r, 8)
+        end
         p.rows[i] = r
     end
     function s:SetOptions(values, selected)
