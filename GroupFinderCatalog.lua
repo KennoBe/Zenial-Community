@@ -185,10 +185,10 @@ function C.Snapshot()
         -- planned for later and its organizer may simply be offline.
         if not r.saved or r.kind == 'EVENT' then
             local id = L.ActivityID(r.title)
-            local application = r.application
+            local application = type(r.application) == 'table' and r.application or nil
             local applied = application ~= nil and (application.state == 'applied' or application.state == 'invited' or application.state == 'REQUESTED' or application.state == 'CONFIRMED')
             if r.kind == 'LIVE' and r.data then
-                local b, t = bucket(id), total(r.category)
+                local b, t = bucket(id), total(r.category or 'CUSTOM')
                 if C.IsSearch(r.data) then
                     -- One player, up to three activities: counted under each of them, once per category.
                     local counted = {}
@@ -199,7 +199,7 @@ function C.Snapshot()
                         if r.own then
                             sb.ownSearch = true
                         end
-                        local category = index == 1 and r.category or ENTRIES[activity].kind
+                        local category = index == 1 and (r.category or 'CUSTOM') or ENTRIES[activity].kind
                         if not counted[category] then
                             counted[category] = true
                             local st = total(category)
@@ -228,7 +228,7 @@ function C.Snapshot()
                     end
                 end
             elseif r.kind == 'EVENT' then
-                local b, t = bucket(id), total(r.category)
+                local b, t = bucket(id), total(r.category or 'CUSTOM')
                 b.planned = b.planned + 1
                 t.planned = t.planned + 1
                 b.rows.planned[#b.rows.planned + 1] = r

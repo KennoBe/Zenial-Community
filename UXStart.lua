@@ -63,7 +63,7 @@ function S.Figures()
                     end
                 end
             elseif not r.own then
-                local state = r.application and r.application.state
+                local state = type(r.application) == 'table' and r.application.state
                 if state == 'applied' or state == 'invited' or state == 'REQUESTED' then
                     out.waiting = out.waiting + 1
                 end

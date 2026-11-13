@@ -336,7 +336,7 @@ local function wantedRoles(g)
     return paint('dim', tr('Needed') .. ': ') .. K.Roles(parts)
 end
 local function applicationBadge(r)
-    local state = r.application and r.application.state
+    local state = type(r.application) == 'table' and r.application.state
     if state == 'applied' or state == 'REQUESTED' then
         return tr('Request pending'), 'info'
     elseif state == 'invited' then
@@ -1268,7 +1268,7 @@ local function renderStatus(snap, width)
     local requests = 0
     for _, rows in ipairs({ snap.groups, snap.planned }) do
         for _, r in ipairs(rows) do
-            local state = not r.own and r.application and r.application.state
+            local state = not r.own and type(r.application) == 'table' and r.application.state
             if state == 'applied' or state == 'invited' or state == 'REQUESTED' then
                 requests = requests + 1
             end
