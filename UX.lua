@@ -25,7 +25,7 @@ local MAIN_TAB_NAMES = {
     tr('My characters'),
     tr('History'),
     tr('Addon Manager'),
-    tr('Today'),
+    tr('Start'),
     tr('Activities'),
     tr('Settings'),
 }
@@ -45,7 +45,7 @@ local PAGE_SUBTITLES = {
     'Your characters, public profile and item search',
     'Past contacts and requests',
     'Settings of your installed ZENIAL addons',
-    'Your wishes, open tasks and next appointments',
+    'Who is online and what is open in the community right now',
     'Groups, events and PvP help from the community',
     'Display, privacy, tools and data',
 }

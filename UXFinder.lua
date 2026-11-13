@@ -1454,13 +1454,12 @@ end
 
 -- The former board shares page 10 with the finder. It is hidden while the finder shows, not merely covered:
 -- the window turns translucent while the character moves, and anything left underneath would shine through.
-local function coverBoard(covered)
-    local page = U.pages[10]
+local function coverPage(page, keep, covered)
     for _, getter in ipairs({ 'GetChildren', 'GetRegions' }) do
         local parts = type(page[getter]) == 'function' and { pcall(page[getter], page) } or { false }
         for index = 2, parts[1] and #parts or 0 do
             local part = parts[index]
-            if part ~= F.frame and type(part) == 'table' and type(part.IsShown) == 'function' then
+            if part ~= keep and type(part) == 'table' and type(part.IsShown) == 'function' then
                 if covered then
                     if part:IsShown() then
                         part.zenialFinderCovered = true
@@ -1473,6 +1472,9 @@ local function coverBoard(covered)
             end
         end
     end
+end
+local function coverBoard(covered)
+    coverPage(U.pages[10], F.frame, covered)
     F.boardCovered = covered
 end
 -- view: now | dungeons | raids | pvp | quests | other | list. nil keeps the tab that was open.
@@ -1751,5 +1753,7 @@ end
 
 -- Shared with the group form (GroupFormUI.lua).
 F.CreatePicture, F.SetRoleIcon = createPicture, setRoleIcon
+-- Shared with the start page (UXStart.lua).
+F.CreateTile, F.UpdateTile, F.CoverPage = createTile, updateTile, coverPage
 
 return F

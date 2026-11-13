@@ -1254,6 +1254,13 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["Start"]="Start"
+DE["Who is online and what is open in the community right now"]="Wer online ist und was in der Community gerade offen ist"
+DE["Members online"]="Mitglieder online"
+DE["Planned groups"]="Geplante Gruppen"
+DE["Requests waiting for you"]="Anfragen an dich"
+DE["Your open requests"]="Deine offenen Anfragen"
+DE["In demand right now"]="Gerade gefragt"
 DE["Open for (minutes)"]="Offen für (Minuten)"
 DE["Wanted roles"]="Gesuchte Rollen"
 DE["%d of %d places wanted"]="%d von %d Plätzen gesucht"
