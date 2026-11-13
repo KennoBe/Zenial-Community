@@ -40,6 +40,9 @@ local function setCraftFeedback(message, ok)
     )
 end
 S.setCraftFeedback = setCraftFeedback
+-- Heading of the recipe list as the list part sets it (profession, count, offline or search state). The
+-- materials view replaces it with its own caption only while it is open.
+local recipeHeading
 local function refreshProfessions()
     local items = {}
     local rawQuery = U.recipeSearch:GetText() or ''
@@ -78,6 +81,7 @@ local function refreshProfessions()
         local online = own or peerOnline(key)
         if not key or not profession then
             rows(U.professionRecipeList, {}, 40)
+            recipeHeading = nil
             U.professionRecipeTitle:SetText(tr('Recipes'))
             for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
                 U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
@@ -107,7 +111,8 @@ local function refreshProfessions()
         if not online then
             state = tr('Offline · recipes cannot be fetched')
         end
-        U.professionRecipeTitle:SetText(tr(profession) .. ' · ' .. state)
+        recipeHeading = tr(profession) .. ' · ' .. state
+        U.professionRecipeTitle:SetText(recipeHeading)
         rows(U.professionRecipeList, recipeItems, 42)
         if U.professionEntryKind == 'recipe' and selectedRecipe then
             U.professionDetail:SetText(
@@ -259,6 +264,7 @@ local function refreshProfessions()
         showDetail()
     else
         rows(U.professionRecipeList, {}, 42)
+        recipeHeading = nil
         U.professionRecipeTitle:SetText(tr('Recipes'))
         for _, control in ipairs({ U.craftDetailMaterialsTitle, U.craftDetailMaterials, U.craftDetailMaterialState,
             U.craftDetailCrafts.caption, U.craftDetailCrafts, U.craftDetailSaveList, U.craftDetailOffers }) do control:Hide() end
@@ -357,7 +363,7 @@ function U.RefreshCraftDetailMaterials()
         if U.craftDetailMaterials then U.craftDetailMaterials:Hide() end
         if U.craftDetailMaterialState then U.craftDetailMaterialState:Hide() end
         if U.professionRecipeList then U.professionRecipeList:Show() end
-        if U.professionRecipeTitle then U.professionRecipeTitle:SetText(tr('Recipes')) end
+        if U.professionRecipeTitle then U.professionRecipeTitle:SetText(recipeHeading or tr('Recipes')) end
         return
     end
     local recipe, crafts = U.professionRecipe, tonumber(U.craftDetailCrafts:GetText())
@@ -393,7 +399,7 @@ function U.RefreshCraftDetailMaterials()
     local expanded = hasRecipe and U.craftDetailMaterialsOpen == true
     U.craftDetailMaterialsToggle:SetShown(hasRecipe)
     U.craftDetailMaterialsToggle:SetText(tr(expanded and 'Recipes' or 'Materials'))
-    U.professionRecipeTitle:SetText(tr(expanded and 'Materials' or 'Recipes'))
+    U.professionRecipeTitle:SetText(expanded and tr('Materials') or recipeHeading or tr('Recipes'))
     U.professionRecipeList:SetShown(not expanded)
     U.craftDetailMaterialsTitle:Hide()
     U.craftDetailMaterials:SetShown(expanded)
