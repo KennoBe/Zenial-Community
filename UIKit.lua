@@ -16,6 +16,7 @@
 --   K.Plate(owner[, kind])                        card surface made of owner textures only; :Place(x, y, w, h), :SetShown
 --   K.FilterBar(owner)                            plate behind a page's filter controls
 --   K.Segmented(parent, items, onSelect)          joined switch for 2-4 options; :Select(key), :GetSelected()
+--   K.DialogHeader(dialog, title[, onClose])      head band for a dialog around its existing title; :SetSubtitle(text)
 local Z = ZenialCommunity
 local T = Z and Z.Theme
 if type(T) ~= "table" or type(T.Font) ~= "function" then return end
@@ -340,6 +341,55 @@ function K.Segmented(parent, items, onSelect)
     layout()
     if items and items[1] then seg:Select(items[1].key) end
     return seg
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- Dialog header: a raised band along the top of a dialog with its title, an optional sub line, a rule and an
+-- optional close symbol. The band is made of textures of the dialog: the title is a region of the dialog and a
+-- child frame would cover it in the client. `title` is the dialog's existing font string; it keeps its text
+-- and is moved into the band. header:SetSubtitle(text); header.height is 44, or 58 with a sub line.
+-- ---------------------------------------------------------------------------------------------
+local DIALOG_HEADER, DIALOG_HEADER_SUB = 44, 58
+function K.DialogHeader(dialog, title, onClose)
+    if dialog.zenialDialogHeader then return dialog.zenialDialogHeader end
+    local header = { dialog = dialog, title = title, height = DIALOG_HEADER }
+    dialog.zenialDialogHeader = header
+    header.band = dialog:CreateTexture(nil, "BACKGROUND")
+    header.band:SetPoint("TOPLEFT", 1, -1); header.band:SetPoint("TOPRIGHT", -1, -1)
+    T.Tint(header.band, "SetColorTexture", "panelRaised")
+    header.line = dialog:CreateTexture(nil, "BORDER")
+    header.line:SetPoint("TOPLEFT", header.band, "BOTTOMLEFT"); header.line:SetPoint("TOPRIGHT", header.band, "BOTTOMRIGHT")
+    header.line:SetHeight(1)
+    T.Tint(header.line, "SetColorTexture", "line")
+    local left, right = T.space.lg, T.space.lg
+    if onClose then
+        header.close = K.IconButton(dialog, "close", 26, onClose)
+        header.close:SetPoint("TOPRIGHT", -9, -9)
+        right = 44
+    end
+    T.Font(title, "title")
+    call(title, "SetWordWrap", false)
+    local function layout()
+        local sub = header.subtitle ~= nil and header.subtitle:IsShown()
+        header.height = sub and DIALOG_HEADER_SUB or DIALOG_HEADER
+        header.band:SetHeight(header.height - 1)
+        local top = sub and -11 or -13
+        title:ClearAllPoints()
+        title:SetPoint("TOPLEFT", dialog, "TOPLEFT", left, top); title:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -right, top)
+        title:SetHeight(18)
+    end
+    function header:SetSubtitle(value)
+        value = value or ""
+        if value ~= "" and not self.subtitle then
+            self.subtitle = K.Text(dialog, "", "caption", "dim")
+            self.subtitle:SetPoint("TOPLEFT", dialog, "TOPLEFT", left, -33); self.subtitle:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -right, -33)
+            self.subtitle:SetHeight(14); call(self.subtitle, "SetWordWrap", false)
+        end
+        if self.subtitle then self.subtitle:SetText(value); self.subtitle:SetShown(value ~= "") end
+        layout()
+    end
+    layout()
+    return header
 end
 
 return K
