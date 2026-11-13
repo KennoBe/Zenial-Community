@@ -79,8 +79,10 @@ function Art.Resolve(entry)
         end
     end
     if not art and journalLoaded then
+        -- The journal names files of its own folder; the client's file list (the probe) does not know addon
+        -- files, so its table is taken as given.
         local file, coords = journal.Art(entry.id)
-        if file and exists(file) then
+        if file then
             art = { file = file, kind = 'journal', coords = coords, source = 'journal' }
         end
     end

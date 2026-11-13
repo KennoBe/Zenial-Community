@@ -237,7 +237,7 @@ local function ensureFollowToast()
 end
 function U.NotifyGroupFollow(key, id, activity)
     Z.Notifications.Push('groups', 'browse', 'follow:' .. key .. ':' .. id, A.Now(), 'GROUP_FOLLOW', key, id, activity, nil, true)
-    -- Switched off in the settings: the entry stays in the bell, the pop-up notice and its sound are skipped.
+    -- Switched off in the finder: the entry stays in the bell, the pop-up notice and its sound are skipped.
     if Z.ui and Z.ui.finderNotices == false then
         return
     end

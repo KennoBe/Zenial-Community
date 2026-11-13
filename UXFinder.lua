@@ -18,7 +18,7 @@ local F = { view = 'now', filters = { level = false, groups = false, seekers = f
 U.Finder = F
 
 local VIEWS = { 'now', 'dungeons', 'raids', 'pvp', 'quests', 'other' }
-local VIEW_LABEL = { now = 'Happening now', dungeons = 'Dungeons', raids = 'Raids', pvp = 'PvP', quests = 'Questing and levelling', other = 'Other' }
+local VIEW_LABEL = { now = 'Happening now', dungeons = 'Dungeons', raids = 'Raids', pvp = 'PvP', quests = 'Questing and levelling', other = 'Miscellaneous' }
 local VIEW_WIDTH = { now = 92, dungeons = 108, raids = 86, pvp = 76, quests = 100, other = 108 }
 local VIEW_KIND = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP' }
 local VIEW_CATEGORY = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP', quests = 'QUEST', other = 'CUSTOM' }
@@ -348,7 +348,7 @@ local function applicationBadge(r)
     elseif state == 'WAITLIST' then
         return tr('Waitlist'), 'warning'
     elseif state == 'rejected' or state == 'DECLINED' then
-        return tr('Declined'), 'danger'
+        return tr('Rejected'), 'danger'
     end
 end
 local function pendingRequests(r)
@@ -1145,7 +1145,7 @@ local function renderStatus(snap, width)
     if group then
         local g = group.data
         local pending = pendingRequests(group)
-        status.over:SetText(K.Upper(tr('My group')))
+        status.over:SetText(K.Upper(tr('My Group')))
         status.line:SetText(
             paint('text', activityName(group.title))
                 .. paint('dim', ' · ')
@@ -1305,6 +1305,9 @@ function U.RefreshFinder()
         button:SetPoint('TOPLEFT', footX, -(height - 26))
         footX = footX + button.zenialWidth + 6
     end
+    F.notices:ClearAllPoints()
+    F.notices:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width, -(height - 26))
+    F.notices:SetChecked(not Z.ui or Z.ui.finderNotices ~= false)
 end
 function U.LayoutFinder()
     if F.frame and F.frame:IsShown() then
@@ -1378,7 +1381,9 @@ function U.CreateFinder()
     local frame = CreateFrame('Frame', nil, page)
     F.frame = frame
     frame:SetAllPoints(page)
-    frame:SetFrameLevel((page:GetFrameLevel() or 1) + 40)
+    -- Above the board's own controls (lists, rows, sliders), far below the dialog blocker (window level + 40):
+    -- the deepest finder widget sits six levels above this frame.
+    frame:SetFrameLevel((page:GetFrameLevel() or 1) + 8)
     frame:EnableMouse(true)
     frame.fill = frame:CreateTexture(nil, 'BACKGROUND')
     frame.fill:SetPoint('TOPLEFT', -8, 6)
@@ -1560,6 +1565,14 @@ function U.CreateFinder()
         button.zenialWidth = spec[2]
         F.footer[#F.footer + 1] = button
     end
+    -- Pop-up notices for new groups of followed activities, on or off for the whole account.
+    F.notices = T.Chip(frame, tr('Group finder notices'), 150, 24, function(self)
+        local on = self:GetChecked() and true or false
+        if Z.ui then
+            Z.ui.finderNotices = on
+        end
+        U.Message(tr(on and 'Notices for new groups of followed activities are on.' or 'Notices for new groups of followed activities are off. They stay in the bell.'))
+    end)
     return frame
 end
 
