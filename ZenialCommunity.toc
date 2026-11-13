@@ -41,7 +41,6 @@ SocialDiary.lua
 AccountOverview.lua
 TradeManager.lua
 GroupFinder.lua
-SessionPlans.lua
 Diagnostics.lua
 ProfessionScan.lua
 RecipeSearch.lua
@@ -77,7 +76,6 @@ UXAddons.lua
 UXNotices.lua
 UXMembers.lua
 UXMemberGroups.lua
-UXSessions.lua
 UXGroups.lua
 UXQuests.lua
 UXCrafting.lua

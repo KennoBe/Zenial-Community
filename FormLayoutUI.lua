@@ -175,16 +175,6 @@ function U.ApplyFormLayouts(helpers)
     place(U.scheduledSeriesPreviewButton,224,-144,196);place(U.scheduledTemplateDelete,432,-144,202)
     place(U.scheduledSeriesPreview,16,-202,594,260);U.scheduledSeriesPreview.height=260
     place(U.scheduledSeriesCreate,16,-512,294);place(U.scheduledSeriesCancel,324,-512,310)
-    -- Wishes remain private and last until the local calendar day changes.
-    center(U.homeWishPanel,440);U.sessionPlanFrame:ClearAllPoints();U.sessionPlanFrame:SetPoint('TOPLEFT',16,-18);U.sessionPlanFrame:SetSize(618,350)
-    place(U.sessionState,0,-32,618,30)
-    for i,row in ipairs(U.sessionRows)do local y=-80-(i-1)*78
-        field(row.kind,0,y,210);field(row.target,226,y,392);field(row.text,226,y,392);row.hint:Hide()
-    end
-    H.showControl(U.sessionDuration,false)
-    U.sessionSave:SetText(tr('Save wishes'));U.sessionEnd:SetText(tr('Clear wishes'))
-    place(U.sessionSave,0,-302,294);place(U.sessionEnd,308,-302,310);place(U.sessionEditStatus,0,-338,618,28)
-    place(U.homeWishClose,16,-392,618)
     -- Dialog heads. Set here, after every place() above, so the head positions the titles last. The three
     -- detail editors cover the creator, so each carries the same head around its own title.
     local K=Z.Kit
@@ -246,8 +236,6 @@ function U.ApplyFormLayouts(helpers)
     tabOrder({U.groupCustom,U.groupActivitySearch,U.groupFields.min,U.groupFields.max,U.groupFields.size,U.groupFields.tank,U.groupFields.healer,U.groupFields.dd,U.groupFields.note,U.groupTemplateDuration,U.groupTemplateName})
     tabOrder({U.questPickerSearch,U.questFields.title,U.questFields.zone,U.questFields.min,U.questFields.max,U.questDuration,U.questFields.note})
     tabOrder({U.craftOrderQuantity,U.craftOrderTip,U.craftMaterialCount,U.craftOrderNote})
-    tabOrder({U.sessionRows[1].text,U.sessionRows[2].text,U.sessionRows[3].text})
-    U.homeWishPanel:HookScript('OnHide',function()clearInputs({U.sessionRows[1].text,U.sessionRows[2].text,U.sessionRows[3].text});U.CloseDropdowns()end)
     U.craftOrderForm:HookScript('OnHide',function()clearInputs({U.craftOrderQuantity,U.craftOrderTip,U.craftMaterialCount,U.craftOrderNote});U.CloseDropdowns()end)
     U.materialOrderForm:HookScript('OnHide',function()U.materialOrderCount:ClearFocus()end)
     for _,entry in ipairs({{'OpenGroupEditor',U.groupForm},{'OpenQuestEditor',U.questForm},{'OpenScheduledEditor',U.scheduledEditor}})do

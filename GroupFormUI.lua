@@ -1,5 +1,6 @@
 -- Group form of the activity dialog, laid out for few decisions: the picture and facts of the chosen activity,
--- size and running time as switches, wanted roles as counters with the role symbols.
+-- the size as a switch, wanted roles as counters with the role symbols. A group has no running time to choose:
+-- it stays open until its leader goes offline (GroupFinderCatalog, C.Resume).
 -- The existing controls stay the data: every switch and counter writes into the edit box that already holds
 -- the value (U.groupFields.*, U.groupTemplateDuration), so validation, drafts, templates and publishing are
 -- untouched. Choosing an activity for a new group fills level range and size from GroupFinderCatalog.
@@ -141,7 +142,6 @@ function U.RefreshGroupForm()
         form.zenialDialogHeader:SetSubtitle(facts)
     end
     G.size:Select(tostring(size))
-    G.duration:Select(tostring(number(U.groupTemplateDuration)))
     local wanted = 0
     for _, s in ipairs(G.steppers) do
         local value = number(fields[s.key])
@@ -211,15 +211,11 @@ function U.StyleGroupForm()
     place(G.size, 16, -186)
     fields.size.caption:Hide()
     place(fields.size, 232, -187, 46, 24)
-    G.durationLabel = overline(form, 'Open for (minutes)', 342, -170)
-    G.duration = K.Segmented(form, { { key = '30', label = '30' }, { key = '60', label = '60' }, { key = '120', label = '120' }, { key = '240', label = '240' } }, function(key)
-        U.groupTemplateDuration:SetText(key)
-        U.CaptureGroupDraft()
-    end)
-    G.duration:SetSegmentWidth(52)
-    place(G.duration, 342, -186)
-    U.groupTemplateDuration.caption:Hide()
-    place(U.groupTemplateDuration, 558, -187, 54, 24)
+    G.durationLabel = overline(form, 'Open for', 342, -170)
+    G.durationHint = K.Text(form, tr('Stays open until you go offline.'), 'body', 'textSoft')
+    place(G.durationHint, 342, -190, 292, 16)
+    call(G.durationHint, 'SetWordWrap', false)
+    show(U.groupTemplateDuration, false)
 
     -- Wanted roles: counters instead of number fields. The fields stay (hidden) as the values.
     overline(form, 'Wanted roles', 16, -228)
@@ -294,7 +290,7 @@ function U.StyleGroupForm()
         end
         U.RefreshGroupForm()
     end
-    for _, field in ipairs({ fields.size, fields.tank, fields.healer, fields.dd, U.groupTemplateDuration }) do
+    for _, field in ipairs({ fields.size, fields.tank, fields.healer, fields.dd }) do
         if field.HookScript then
             field:HookScript('OnTextChanged', function()
                 U.RefreshGroupForm()

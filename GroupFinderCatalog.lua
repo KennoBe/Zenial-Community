@@ -251,9 +251,9 @@ end
 -- which means nothing for a search, as "+Second;Third". Clients that do not know this show the search under
 -- its first activity only. Creating a group stays limited to one.
 C.MAX_SEARCH = 3
--- A search runs until the player goes offline: its end time is far away (inside the day a live record may
--- last, with room for clock differences between clients), other members only see it while the player is
--- online, and C.Resume ends it after a break longer than SEARCH_GRACE.
+-- A search and a group run until the player goes offline: the end time is far away (inside the day a live
+-- record may last, with room for clock differences between clients), other members only see the record
+-- while the player is online, and C.Resume ends it after a break longer than SEARCH_GRACE.
 C.SEARCH_MINUTES = 1200
 C.SEARCH_GRACE = 600
 function C.SearchActivities(g)
@@ -388,12 +388,12 @@ function C.StopSearch()
     end
     return Z.CloseGroup(g.id)
 end
--- Logging out (also /reload) notes the moment on the search itself; the note stays local, the wire does not
--- carry it. Logging in within SEARCH_GRACE continues the search, a longer break ends it. After a client crash
--- the saved data is that of the last login or /reload, so only a search that existed then can continue.
+-- Logging out (also /reload) notes the moment on the live record itself; the note stays local, the wire does
+-- not carry it. Logging in within SEARCH_GRACE continues the search or group, a longer break ends it. After a
+-- client crash the saved data is that of the last login or /reload, so nothing started later can continue.
 function C.Resume()
     local g = Z.db and Z.db.lfg[1]
-    if not g or not C.IsSearch(g) then
+    if not g then
         return false
     end
     local seen = g.seen
@@ -401,14 +401,19 @@ function C.Resume()
     if type(seen) == 'number' and A.Now() - seen <= C.SEARCH_GRACE and A.Now() >= seen then
         return true
     end
-    L.CloseGroup(Z.db, g.id)
+    if C.IsSearch(g) then
+        L.CloseGroup(Z.db, g.id)
+    else
+        -- A group ends through the usual expiry, which also files it in the history and the archive.
+        g.expires = math.min(g.expires, A.Now())
+    end
     return false
 end
 local watcher = CreateFrame('Frame')
 watcher:RegisterEvent('PLAYER_LOGOUT')
 watcher:SetScript('OnEvent', function()
     local g = Z.db and Z.db.lfg and Z.db.lfg[1]
-    if g and C.IsSearch(g) then
+    if g then
         g.seen = A.Now()
     end
 end)

@@ -6,7 +6,7 @@ local uiDirty=false
 -- links, i.e. nothing the member list model reads. Their changes still refresh
 -- the visible page at once and invalidate every other view cache; only the
 -- member list model is reused. Unknown or missing kinds invalidate everything.
-local MEMBER_INDEPENDENT={guild=true,order=true,history=true,materials=true,materialOffers=true,search=true,sessionPlans=true,sessionMatches=true,questHelper=true,scheduled=true,party=true}
+local MEMBER_INDEPENDENT={guild=true,order=true,history=true,materials=true,materialOffers=true,search=true,questHelper=true,scheduled=true,party=true}
 function Z.MarkDirty(kind)
     Z.viewRevision=(Z.viewRevision or 0)+1
     if not MEMBER_INDEPENDENT[kind]then Z.memberRevision=(Z.memberRevision or 0)+1 end
@@ -553,7 +553,6 @@ local function initializeNetworkModules()
     Z.QuestHelper.Initialize()
     Z.CommunityMap.Initialize()
     Z.UpdateNotice.Initialize(ZenialCommunityDB)
-    Z.SessionPlans.Initialize()
     Z.MaterialPlanner.Initialize()
     Z.ScheduledGroups.Initialize()
     Z.ActivityParty.Initialize()
@@ -730,7 +729,6 @@ local function tickQuarterSecond()
     Z.CommunityMesh.Tick()
     if Z.CommunityLayer then Z.CommunityLayer.Tick()end
     Z.QuestHelper.Tick()
-    Z.SessionPlans.Tick()
     Z.MaterialPlanner.Tick()
     Z.ScheduledMesh.Tick()
     Z.ScheduledGroups.Tick()

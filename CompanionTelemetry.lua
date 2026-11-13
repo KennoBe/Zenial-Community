@@ -174,6 +174,6 @@ function T.private()
     local notes=P.Array();local social=Z.Social and Z.Social.store
     local keys={};for key in pairs(social and social.notes or{})do keys[key]=true end;for key in pairs(social and social.favorites or{})do keys[key]=true end
     for key in pairs(keys)do notes[#notes+1]={key=key,note=text(social.notes[key],500),favorite=social.favorites[key]==true}end
-    local wishes=P.Array();for _,w in ipairs(Z.SessionPlans.store and Z.SessionPlans.store.wishes or{})do wishes[#wishes+1]={kind=w.kind,label=w.label,targetID=w.targetID,activity=w.activity}end
-    return{notes=notes,wishes=wishes}
+    -- 'wishes' stays in the payload as an empty list: the companion's schema still expects the field.
+    return{notes=notes,wishes=P.Array()}
 end

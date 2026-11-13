@@ -1,7 +1,7 @@
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local G={}
 Z.GroupFinder=G
--- Existing finder catalog, also used by private session wishes.
+-- Existing finder catalog.
 local PVP={"Open World PvP","Warsong Gulch","Arathi Basin","Alterac Valley"}
 local DUNGEONS={
     "Hall of Thanes","Ruins of Lordaeron","Excavation Site","City of Dalaran","The Drowned City","Krol'dok","Alcaz Prison","Blackmaw Hold","Shaper's Terrace",

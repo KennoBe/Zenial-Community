@@ -271,7 +271,10 @@ function S.createGroupsPage(f)
             activity = U.groupKind:GetText() == 'CUSTOM' and U.groupCustom:GetText() or U.groupActivity:GetText(),
             have = A.GroupRoles(),
             start = U.groupEditID and Z.db.lfg[1].start or now,
-            expires = U.groupEditID and Z.db.lfg[1].expires or now + (tonumber(U.groupTemplateDuration:GetText()) or 120) * 60,
+            -- A new group stays open until its leader goes offline (GroupFinderCatalog: long end time, C.Resume);
+            -- the running time field only applies where the finder modules are not loaded.
+            expires = U.groupEditID and Z.db.lfg[1].expires
+                or now + (Z.GroupFinderCatalog and Z.GroupFinderCatalog.SEARCH_MINUTES or tonumber(U.groupTemplateDuration:GetText()) or 120) * 60,
         }
         for k, e in pairs(U.groupFields) do
             g[k] = k == 'note' and e:GetText() or tonumber(e:GetText())
@@ -342,17 +345,13 @@ function S.createGroupsPage(f)
     U.groupFollowTab:ClearAllPoints()
     U.groupFollowTab:SetPoint('TOPLEFT', 426, 0)
     U.groupFollowTab:SetWidth(136)
-    U.sessionPlanTab = navButton(p, 'Today', 568, 0, 136, function()
-        U.SetGroupView('today')
-    end)
     U.pvpTab:ClearAllPoints()
     U.pvpTab:SetPoint('TOPLEFT', 710, 0)
     U.pvpTab:SetWidth(136)
-    U.CreateSessionPlans(p)
     U.scheduledTab = navButton(p, tr('Scheduled'), 610, 0, 116, function()
         U.SetGroupView('scheduled')
     end)
-    for i, tab in ipairs({ U.groupBrowseTab, U.groupMineTab, U.groupOutgoingTab, U.groupFollowTab, U.sessionPlanTab, U.scheduledTab, U.pvpTab }) do
+    for i, tab in ipairs({ U.groupBrowseTab, U.groupMineTab, U.groupOutgoingTab, U.groupFollowTab, U.scheduledTab, U.pvpTab }) do
         tab:ClearAllPoints()
         tab:SetPoint('TOPLEFT', (i - 1) * 122, 0)
         tab:SetWidth(116)

@@ -11,7 +11,22 @@ local NAV_ICONS, DUNGEONS, RAIDS, PVP, RAID_SIZE = S.NAV_ICONS, S.DUNGEONS, S.RA
 local canonicalOption, selectNav, updateNavPath, rows, keys = S.canonicalOption, S.selectNav, S.updateNavPath, S.rows, S.keys
 local peerOnline, roleName, activityName, activityCategory = S.peerOnline, S.roleName, S.activityName, S.activityCategory
 local groupCategory, stateName, groupHave, deliveryState = S.groupCategory, S.stateName, S.groupHave, S.deliveryState
-local peerLocationLine, wanted = S.peerLocationLine, S.wanted
+local peerLocationLine = S.peerLocationLine
+
+-- Wanted roles of a group as text ("1 Tank, 3 Damage dealers").
+local function wanted(g)
+    local a = {}
+    if g.tank > 0 then
+        a[#a + 1] = g.tank .. ' ' .. roleName('TANK')
+    end
+    if g.healer > 0 then
+        a[#a + 1] = g.healer .. ' ' .. roleName('HEALER')
+    end
+    if g.dd > 0 then
+        a[#a + 1] = g.dd .. ' ' .. roleName('DAMAGER')
+    end
+    return table.concat(a, ', ')
+end
 
 -- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays
 -- the data contract. With a symbol name the row gets the small atlas symbol the activity board uses.
@@ -300,9 +315,6 @@ function U.SetGroupView(v)
     if U.groupPvpFrame then
         U.groupPvpFrame:SetShown(v == 'pvp')
     end
-    if U.sessionPlanFrame then
-        U.sessionPlanFrame:SetShown(v == 'today')
-    end
     if U.scheduledFrame then
         U.scheduledFrame:SetShown(v == 'scheduled')
         selectNav(U.scheduledTab, v == 'scheduled')
@@ -310,7 +322,6 @@ function U.SetGroupView(v)
     selectNav(U.activityScopeOrganized, v == 'mine')
     selectNav(U.activityScopeApplications, v == 'outgoing')
     selectNav(U.activityScopePlanned, v == 'scheduled')
-    selectNav(U.sessionPlanTab, v == 'today')
     selectNav(U.groupBrowseTab, v == 'browse')
     selectNav(U.groupMineTab, v == 'mine')
     selectNav(U.groupOutgoingTab, v == 'outgoing')

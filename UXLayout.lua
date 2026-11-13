@@ -499,10 +499,6 @@ function U.RefreshTimed(clock)
     if U.activityArchive and U.activityArchive:IsShown() then
         U.RefreshActivityArchive()
     end
-    if U.page == 3 and U.groupView == 'today' and (clock or A.Clock()) >= (U.nextSessionRefresh or 0) then
-        U.nextSessionRefresh = (clock or A.Clock()) + 5
-        U.RefreshSessionPlans()
-    end
     if U.page == 4 and (U.questView == 'shared' or U.questView == 'questgroups') and (clock or A.Clock()) >= (U.nextSharedRefresh or 0) then
         U.nextSharedRefresh = (clock or A.Clock()) + 5
         if U.questView == 'questgroups' then
@@ -592,9 +588,6 @@ function U.Refresh(all, revisionDriven)
         end
         if all or v == 'pvp' then
             S.refreshPvPHelp()
-        end
-        if all or v == 'today' then
-            U.RefreshSessionPlans()
         end
         if all or v == 'scheduled' then
             U.RefreshScheduledGroups()
@@ -692,7 +685,6 @@ function U.CloseDialogs()
         'materialOrderForm',
         'scheduledEditor',
         'scheduledSeries',
-        'homeWishPanel',
         'activityCreator',
         'categorySettings',
         'activityDetails',
@@ -788,7 +780,6 @@ local function makeModal(dialog)
             'scheduledEditor',
             'scheduledSeries',
             'categoryPanel',
-            'homeWishPanel',
             'activityCreator',
             'categorySettings',
             'activityDetails',

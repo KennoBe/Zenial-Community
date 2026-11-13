@@ -218,9 +218,8 @@ function L.Load(raw)
         end
     end
     if type(raw.peers)=="table"then for k,p in pairs(raw.peers)do if d.contacts[k]and not d.blocked[k]then d.peers[k]=loadMemberPeer(p)end end end
-    -- SessionPlans.Initialize validates only this named private store after load;
-    -- passing future schemas through here preserves them without interpreting them.
-    if raw.sessionPlans~=nil then d.sessionPlans=raw.sessionPlans end
+    -- The retired private session wishes (raw.sessionPlans) are deliberately not copied: the key disappears
+    -- from the saved variables with the next logout.
     -- The private planner owns validation and preserves unsupported schemas.
     if raw.materialPlans~=nil then d.materialPlans=raw.materialPlans end
     if raw.scheduledGroups~=nil then d.scheduledGroups=raw.scheduledGroups end

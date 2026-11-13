@@ -2,8 +2,7 @@
 -- groups are open, how many players look for one, what is planned, what waits for the player, and the
 -- instances that are asked for at the moment. Group search itself lives under Activities (UXFinder.lua).
 --
--- The page is one frame over page 9. The former content (private wishes and their feed) is hidden, its code
--- and stored data are untouched. Every figure counts members of the ZENIAL community the client can reach,
+-- The page is one frame over page 9 (the former private wishes and their feed are gone for good). Every figure counts members of the ZENIAL community the client can reach,
 -- never the whole realm.
 local Z = ZenialCommunity
 local U, L, A, T, K = Z.UI, Z.Logic, Z.Adapter, Z.Theme, Z.Kit
@@ -212,12 +211,10 @@ function U.CreateStart()
 end
 
 function U.RefreshStart()
-    if not U.pages or not U.pages[9] or not U.homeList then
+    if not U.pages or not U.pages[9] then
         return
     end
     local frame = U.CreateStart()
-    -- The former content of the page stays hidden under the start page (see UXFinder.lua, cover).
-    F.CoverPage(U.pages[9], frame, true)
     if not U.pages[9]:IsShown() then
         return
     end
@@ -310,13 +307,8 @@ function U.LayoutStart()
     end
 end
 
--- The page's refresh (U.Refresh, page 9) keeps the former feed up to date for its own callers and draws the
--- start page afterwards.
-local refreshHome = U.RefreshCommunityHome
-function U.RefreshCommunityHome(...)
-    if refreshHome then
-        refreshHome(...)
-    end
+-- The page's refresh (U.Refresh, page 9): the start page is all that page 9 shows.
+function U.RefreshCommunityHome()
     U.RefreshStart()
 end
 

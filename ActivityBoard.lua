@@ -79,45 +79,4 @@ function B.List(filter)
     return out
 end
 function B.Get(key)for _,r in ipairs(B.List())do if r.key==key then return r end end end
-function B.Reason(r)
-    local P=Z.SessionPlans;local store=P.store;if P.State()~='active'or not Z.db.consent or not Z.identityReady or Z.offlineOnly or r.own or r.saved then return nil end
-    if r.kind=='LIVE'and not Z.GroupFinder.Matches(r.data,Z.me.level)then return nil end
-    if r.kind=='QUEST'and(r.data.min>Z.me.level or r.data.max<Z.me.level)then return nil end
-    for _,w in ipairs(store.wishes)do
-        local match=false
-        if r.kind=='EVENT'and r.category=='QUEST'then
-            if w.kind=='LEVEL'and r.title=='Level together'then match=true
-            elseif w.kind=='QUEST'and r.title=='Questing'then
-                local m=Z.QuestHelper.MatchMember(r.owner)
-                if m then if w.targetID==0 then match=m.common>0 else for _,id in ipairs(m.quests)do if id==w.targetID then match=true end end end end
-            end
-        elseif r.kind=='QUEST'and(w.kind=='QUEST'or w.kind=='LEVEL')then
-            local q=r.data;match=w.kind=='LEVEL'and r.title=='Level together'or q and q.questID>0 and Z.QuestHelper.scanState=='ready'and Z.QuestHelper.sampleAt and A.Now()-Z.QuestHelper.sampleAt<=Z.QuestHelper.TTL
-                and Z.QuestHelper.ids[q.questID]and(w.kind=='LEVEL'or w.targetID==0 or w.targetID==q.questID)
-        elseif r.kind=='LIVE'or r.kind=='EVENT'or r.kind=='PVP'then
-            match=Z.GroupFinder.Activities[w.kind]and w.activity==L.ActivityID(r.title)
-                or(w.kind=='FARM'or w.kind=='CUSTOM')and r.category=='CUSTOM'and string.lower(w.label)==string.lower(r.title)
-        end
-        if match then return Z.T('Matches your wish: %s',P.WishLabel(w)),r.startsAt>store.expiresAt or r.kind=='EVENT'and r.endsAt>store.expiresAt,w.priority end
-    end
-end
-function B.Home()
-    local now,later,mine,people={},{},{},{}
-    for _,r in ipairs(B.List())do
-        if r.own or r.application then if(not r.saved or r.kind=='EVENT')and day(math.max(A.Now(),r.startsAt))then mine[#mine+1]=r end
-        else local why,outside,priority=B.Reason(r);if why and day(math.max(A.Now(),r.startsAt))then
-            local entry={activity=r,reason=why,outside=outside,priority=priority}
-            if r.startsAt<=A.Now()+120 then now[#now+1]=entry else later[#later+1]=entry end
-        end end
-    end
-    local function rank(a,b)
-        if a.priority~=b.priority then return a.priority<b.priority end
-        if a.outside~=b.outside then return not a.outside end
-        if a.activity.startsAt~=b.activity.startsAt then return a.activity.startsAt<b.activity.startsAt end
-        return a.activity.key<b.activity.key
-    end
-    table.sort(now,rank);table.sort(later,rank)
-    for _,m in ipairs(Z.SessionPlans.BuildMatches())do if not m.groupID then people[#people+1]=m end end
-    return{now=now,later=later,mine=mine,people=people}
-end
 return B
