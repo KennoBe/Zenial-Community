@@ -526,6 +526,9 @@ function U.CreateCommunityHome(helpers)
     U.activityEvents=button(board,tr('Events'),366,-408,132,function()if U.Navigate('groups','scheduled')then U.scheduledArchive:SetChecked(false);U.RefreshScheduledGroups()end end)
     U.activityArchiveOpen=button(board,tr('Archive'),508,-408,110,function()U.OpenActivityArchive()end)
     button(board,tr('Create activity'),630,-408,220,U.OpenActivityCreator,'primary')
+    -- The tile finder lies over this board; the board stays reachable as its list view.
+    U.activityFinderOpen=button(board,tr('Tile view'),716,-55,134,function()U.Navigate('activities')end);U.activityFinderOpen:SetHeight(22)
+    if U.CreateFinder then U.CreateFinder()end
     U.activityCreator=H.panel(U.frame);local f=U.activityCreator;f:ClearAllPoints();f:SetPoint('CENTER');f:SetSize(650,330)
     U.creatorTitle=label(f,tr('Create activity'),16,-18,618,'GameFontNormalLarge')
     U.creatorWhen=selector(f,'When',16,-66,300,{'NOW','PLANNED'},U.ConfigureActivityCreator,function(v)return tr(v=='NOW'and'Now'or'Planned')end)

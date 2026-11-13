@@ -320,6 +320,8 @@ function S.applyRoute(route)
         U.SetCraftView(subview)
     elseif section == 'groups' then
         U.SetGroupView(subview or 'browse')
+    elseif section == 'activities' and U.SetFinderView then
+        U.SetFinderView(subview)
     elseif section == 'quests' then
         U.SetQuestView(subview or 'shared')
     elseif section == 'trade' then
@@ -636,6 +638,9 @@ function U.Refresh(all, revisionDriven)
     end
     if all or U.page == 10 then
         U.RefreshActivityBoard()
+        if U.RefreshFinder then
+            U.RefreshFinder()
+        end
     end
     if all or U.page == 11 then
         if U.preferences then

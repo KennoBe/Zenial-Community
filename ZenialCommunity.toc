@@ -51,6 +51,9 @@ ScheduleTime.lua
 ScheduledGroups.lua
 ActivityParty.lua
 ActivityBoard.lua
+GroupFinderCatalog.lua
+DungeonJournalLink.lua
+GroupFinderArt.lua
 CompanionProtocol.lua
 DungeonData.lua
 CompanionQuestLocations.lua
@@ -92,6 +95,7 @@ UXCreate.lua
 UXNavigation.lua
 ScheduledGroupsUI.lua
 CommunityHomeUI.lua
+UXFinder.lua
 FormLayoutUI.lua
 SchedulePickersUI.lua
 CategorySettingsUI.lua
