@@ -38,6 +38,11 @@ local function run(...)
     local n,t=packed(...)
     local flag,lineID,guid=t[6],t[11],t[12]
     if not A.Safe(flag,guid)or type(flag)~='string'or type(guid)~='string'then return false end
+    local N=Z.CrossFactionPresence
+    if type(N)=='table'and type(N.HasPending)=='function'and N.HasPending()then
+        local sender=t[2]
+        if A.Safe(sender)and type(sender)=='string'then N.Resolve(guid,sender)end
+    end
     if B.strategy=='flag'then
         local replaced=FLAGS[flag]
         if replaced and eligible(guid)then

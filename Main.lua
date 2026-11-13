@@ -650,10 +650,18 @@ register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
 register("ADDON_ACTION_BLOCKED");register("ADDON_ACTION_FORBIDDEN")
 register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
+register("CHAT_MSG_WHISPER");register("CHAT_MSG_WHISPER_INFORM")
 frame:SetScript("OnEvent",function(_,event,...)
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
     if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
+    -- Presence messages (XF3-T06): greetings, pings to targets and whisper partners; a whisper event has no other consumer.
+    local presence=Z.CrossFactionPresence
+    if presence then
+        if event=="PLAYER_ENTERING_WORLD"or event=="GROUP_ROSTER_UPDATE"then pcall(presence.Announce)
+        elseif event=="PLAYER_TARGET_CHANGED"then pcall(presence.OnTarget)
+        elseif event=="CHAT_MSG_WHISPER"or event=="CHAT_MSG_WHISPER_INFORM"then pcall(presence.OnWhisper,event,...);return end
+    end
     if event=="PLAYER_LOGIN" then Z.Initialize();if Z.CrossFaction then pcall(Z.CrossFaction.RegisterCommands)end
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
     elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end
@@ -665,7 +673,11 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="ADDON_LOADED" then Z.CommunityMap.TryAttach();if Z.UI and Z.UI.frame and Z.UI.frame:IsShown() and Z.UI.OnAddonLoaded then Z.UI.OnAddonLoaded(...)end
     elseif event=="GET_ITEM_INFO_RECEIVED"or event=="ITEM_DATA_LOAD_RESULT"then if Z.Items then Z.Items.OnEvent(...)end
     elseif event=="BAG_UPDATE_DELAYED"then if Z.Items then Z.Items.SeedBags()end;if Z.db and Z.MaterialPlanner then Z.MaterialPlanner.InvalidateInventory()end
-    elseif event=="CHAT_MSG_ADDON" then if Z.db then A.Receive(...) end
+    elseif event=="CHAT_MSG_ADDON" then
+        -- The presence prefix never reaches A.Receive; a secret or non-string prefix goes the old way.
+        local prefix=...
+        if Z.CrossFactionPresence and A.Safe(prefix)and type(prefix)=="string"and prefix==Z.CrossFactionPresence.PREFIX then pcall(Z.CrossFactionPresence.OnAddon,...)
+        elseif Z.db then A.Receive(...) end
     elseif event=="SKILL_LINES_CHANGED"or event=="SPELLS_CHANGED"or event:match("^TRADE_SKILL_")then if Z.ProfessionScan then Z.ProfessionScan.OnEvent(event,...)end
     elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"or event=="PLAYER_FLAGS_CHANGED"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event,...)end
     elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if Z.db and Z.SocialDiary and event=="ZONE_CHANGED_NEW_AREA"then Z.SocialDiary.OnEvent(event)end;Z.RefreshLocation(false)

@@ -140,6 +140,11 @@ function T.Refresh()
         if type(XF)=='table'and XF.Settings().targetIcon==true then
             local guid=currentTarget()
             if guid then
+                local N=Z.CrossFactionPresence
+                if type(N)=='table'and type(N.HasPending)=='function'and N.HasPending()then
+                    local name=A.Call(UnitName,'target')
+                    if type(name)=='string'and name~=''then N.Resolve(guid,name)end
+                end
                 local status=XF.GetPlayerStatus(guid)
                 show=type(status)=='table'and status.status=='CONFIRMED'
             end

@@ -65,6 +65,8 @@ function XF.Tick()
     if XF.IsEnabled()then XF.Expire(now)else reset()end
     XF.CheckEchoes(now)
     expireRegistry(now)
+    local N=Z.CrossFactionPresence
+    if type(N)=='table'and type(N.Tick)=='function'then pcall(N.Tick)end
 end
 -- ===== Listeners (7.1) =====
 local function copy(v)
@@ -251,6 +253,7 @@ local function tocVersion()
     end
     return 0,0
 end
+function XF.Version()return tocVersion()end
 -- One hello frame (one line), same pre-checks and limiter as Send. Its own echo is tracked like any attempt line.
 function XF.SendHello(channel)
     channel=channel or'SAY'
@@ -390,8 +393,15 @@ local function compute(event,text,sender,guid,lineID,language)
     for k in pairs(pending)do if not asm.open[k]then pending[k]=nil end end
     return result
 end
+-- Presence messages that were held back until the client shows the same GUID with the same name (XF3-T06).
+local function resolvePending(sender,guid)
+    local N=Z.CrossFactionPresence
+    if type(N)~='table'or type(N.HasPending)~='function'or not N.HasPending()then return end
+    if A.Safe(sender,guid)and type(sender)=='string'and type(guid)=='string'and guid:sub(1,7)=='Player-'then pcall(N.Resolve,guid,sender)end
+end
 -- One shared step per lineID, whether the event or a chat filter comes first.
 local function process(event,text,sender,lineID,guid,language)
+    resolvePending(sender,guid)
     if not A.Safe(text,lineID,guid)or type(text)~='string'or type(lineID)~='number'or lineID<=0
         or type(guid)~='string'or guid:sub(1,7)~='Player-'then return nil end
     local r=results[lineID]
