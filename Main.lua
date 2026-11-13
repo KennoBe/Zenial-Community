@@ -653,6 +653,7 @@ register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
 frame:SetScript("OnEvent",function(_,event,...)
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
+    if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
     if event=="PLAYER_LOGIN" then Z.Initialize();if Z.CrossFaction then pcall(Z.CrossFaction.RegisterCommands)end
     elseif event:match("^QUEST_")or event=="PLAYER_REGEN_ENABLED"then if Z.db and Z.QuestHelper then Z.QuestHelper.OnEvent(event)end
     elseif event=="BN_CHAT_MSG_ADDON"then if Z.db then local prefix,payload,_,sender=...;Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end

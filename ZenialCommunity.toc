@@ -21,6 +21,7 @@ CrossFactionProtocol.lua
 CrossFactionRegistry.lua
 CrossFaction.lua
 CrossFactionChatBadge.lua
+CrossFactionTargetBadge.lua
 QuestHelper.lua
 QuestGroups.lua
 UpdateNotice.lua
