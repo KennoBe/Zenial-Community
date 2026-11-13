@@ -143,8 +143,8 @@ function Assembler:Accept(senderKey,frame,now)
     local e=self.open[key]
     local restarted=false
     if e then
-        if e.last~=frame.last then self.open[key]=nil;return'rejected','mismatch'end
-        if e.parts[frame.index]then
+        if e.last~=frame.last then self.open[key]=nil;e=nil;restarted=true
+        elseif e.parts[frame.index]then
             if e.crcs[frame.index]==frame.crc then return'duplicate'end
             self.open[key]=nil;e=nil;restarted=true
         end
@@ -162,7 +162,7 @@ function Assembler:Accept(senderKey,frame,now)
     e.parts[frame.index]=frame.payload;e.crcs[frame.index]=frame.crc;e.count=e.count+1
     if e.count>=e.last+1 then
         self.open[key]=nil;self.done[key]={untilAt=now+P.LIMITS.timeout,crcs=e.crcs}
-        return'complete',table.concat(e.parts,'',0,e.last)
+        return'complete',table.concat(e.parts,'',0,e.last),restarted and'restart'or nil
     end
     if restarted then return'partial','restart'end
     return'partial'

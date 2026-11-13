@@ -378,12 +378,12 @@ local function compute(event,text,sender,guid,lineID,language)
     if frame.type~=0 then return result end
     asm=asm or P.NewAssembler()
     local channel=event=='CHAT_MSG_YELL'and'YELL'or'SAY'
-    local status,out=asm:Accept(guid,frame,A.Clock())
-    if status=='rejected'and out~='mismatch'then return result end
+    local status,out,restart=asm:Accept(guid,frame,A.Clock())
+    if status=='rejected'then return result end
     result.hide=true
     local key=guid..':'..frame.messageId
     local p=pending[key]
-    if status=='partial'and out=='restart'then p=nil;pending[key]=nil end
+    if(status=='partial'and out=='restart')or(status=='complete'and restart=='restart')then p=nil;pending[key]=nil end
     local name=checkedName(sender)
     if status=='partial'then
         if not p then p={guid=guid,name=name,channel=channel,lineIDs={}};pending[key]=p end

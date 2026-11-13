@@ -36,8 +36,6 @@ local function ownGuid()
     if type(g)=='string'and g~=''then return g end
 end
 local function within(last,now,window)return last~=nil and now>=last and now-last<window end
-local function namePart(n)return n:match('^([^%-]+)')end
-local function realmPart(n)local r=n:match('^[^%-]+%-(.+)$');return r and r:gsub('[%s%-]','')end
 local function normRealm(r)
     if type(r)=='string'then r=r:gsub('[%s%-]','');if r~=''then return r end end
 end
@@ -46,15 +44,38 @@ local function ownRealm()
     if not r and Z.me and A.Safe(Z.me.realm)then r=normRealm(Z.me.realm)end
     return r
 end
--- Realms are always compared; a missing or empty realm means the own realm. Own realm unreadable and one side missing: no match.
-local function realmsMatch(a,b)
-    a,b=normRealm(a),normRealm(b)
-    if not a or not b then
+-- Identity keys come from Logic.Identity (Forever: "first last", realm suffix is not part of it; old one-part names: "name-realm").
+-- A one-part name without realm part gets the own realm; own realm unreadable: no key (two-part names need no realm).
+local function senderKey(name)
+    local L=Z.Logic
+    if type(L)~='table'or type(name)~='string'then return nil end
+    local key=L.Identity(name)
+    if key then return key end
+    local own=ownRealm()
+    if own then return(L.Identity(name,own))end
+end
+-- All keys the client's answer of GetPlayerInfoByGUID can stand for (whole name, surname in the realm field, Retail name+realm, empty realm = own).
+local function guidKeys(name,realm)
+    local L=Z.Logic
+    local keys={}
+    local function add(key)if key then keys[key]=true end end
+    if type(L)~='table'then return keys end
+    add((L.Identity(name)))
+    if type(realm)=='string'and realm~=''then
+        add((L.Identity(name..' '..realm)))
+        add((L.Identity(name,realm)))
+    else
         local own=ownRealm()
-        if not own then return false end
-        a,b=a or own,b or own
+        if own then add((L.Identity(name,own)))end
     end
-    return a==b
+    return keys
+end
+-- Addon whispers go to the name in the form of the client: a realm suffix of a two-part name is dropped.
+local function whisperTarget(name)
+    local L=Z.Logic
+    local key,target=L.Identity(name)
+    if key and type(target)=='string'then return target end
+    return name
 end
 local function cleanSender(sender)
     if A.Safe(sender)and type(sender)=='string'and#sender>0 and#sender<=64 and not sender:find('[|%z\1-\31\127]')then return sender end
@@ -135,9 +156,10 @@ function N.Resolve(guid,name)
     if not A.Safe(guid,name)or type(guid)~='string'or type(name)~='string'or name==''then return false end
     local p=N.pending[guid]
     if not p then return false end
+    local seen,held=senderKey(name),senderKey(p.name)
+    if not seen or not held then return false end -- form not classifiable: the entry stays until it expires
     N.pending[guid]=nil
-    if namePart(name)~=namePart(p.name)then return false end
-    if not realmsMatch(realmPart(name),realmPart(p.name))then return false end
+    if seen~=held then return false end
     return accept(guid,p.name,p.proto,p.caps,p.channel)
 end
 
@@ -165,14 +187,24 @@ function N.OnAddon(prefix,text,channel,sender)
         addPending(msg.guid,{name=sender,kind=msg.kind,proto=msg.proto,caps=msg.caps,channel=channel,at=A.Clock()})
         return true
     end
-    if name~=namePart(sender)then return false end
-    if not realmsMatch(realm,realmPart(sender))then return false end
+    local mineKey,keys=senderKey(sender),guidKeys(name,realm)
+    local comparable=false
+    if mineKey then
+        local forever=mineKey:find(' ',1,true)~=nil
+        for key in pairs(keys)do if(key:find(' ',1,true)~=nil)==forever then comparable=true end end
+    end
+    if not comparable then
+        -- name forms of sender and client cannot be compared (no key, or Forever name against Name-Realm only): neither confirmed nor discarded
+        addPending(msg.guid,{name=sender,kind=msg.kind,proto=msg.proto,caps=msg.caps,channel=channel,at=A.Clock()})
+        return true
+    end
+    if not keys[mineKey]then return false end
     if not accept(msg.guid,sender,msg.proto,msg.caps,channel)then return false end
     if(msg.kind=='H'or msg.kind=='P')and msg.proto==N.PROTO and discovery()then
         local now=A.Clock()
         if not within(replyAt[msg.guid],now,N.RATE.reply)then
             replyAt[msg.guid]=now
-            send('A','WHISPER',sender)
+            send('A','WHISPER',whisperTarget(sender))
         end
     end
     return true
@@ -227,7 +259,13 @@ local function ping(guid,target)
     if ok and refresh then noteAwaiting(guid,now)end
     return ok
 end
-local function targetName()
+function N.TargetName()
+    local key,target=A.UnitIdentity('target')
+    if key and type(target)=='string'then
+        -- Retail-style clients return the own realm as second value of UnitFullName; that is no surname.
+        local family,own=target:match(' ([^ ]+)$'),ownRealm()
+        if not(family and own and family:lower()==own:lower())then return cleanSender(target)end
+    end
     local full=A.Call(GetUnitName,'target',true)
     if type(full)=='string'and full~=''then return cleanSender(full)end
     local name,realm=A.Call(UnitFullName,'target')
@@ -303,7 +341,7 @@ function N.OnTarget()
     if not guid then return end
     local now=A.Clock()
     if within(lastPing,now,N.RATE.pingGap)or within(pingAt[guid],now,N.RATE.ping)then return end
-    local name=targetName()
+    local name=N.TargetName()
     if name then ping(guid,name)end
 end
 -- BN_CHAT_MSG_ADDON with our prefix: sender is the game account ID. The GUID counts only if the client reports it for that account.
@@ -348,7 +386,7 @@ function N.OnWhisper(event,...)
     local _,sender,_,_,_,_,_,_,_,_,_,guid=...
     if not A.Safe(sender,guid)then return end
     sender,guid=cleanSender(sender),readableGuid(guid)
-    if sender and guid then ping(guid,sender)end
+    if sender and guid then ping(guid,whisperTarget(sender))end
 end
 
 -- ===== Beacon (c) =====
