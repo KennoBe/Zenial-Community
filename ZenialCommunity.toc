@@ -48,6 +48,7 @@ CraftOrders.lua
 MaterialPlanner.lua
 ScheduleTime.lua
 ScheduledGroups.lua
+ScheduledRelay.lua
 ActivityParty.lua
 ActivityBoard.lua
 GroupFinderCatalog.lua

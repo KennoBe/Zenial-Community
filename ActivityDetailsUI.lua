@@ -45,7 +45,7 @@ function U.ActivityActionState(r)
         return result
     end
     local _,p=state(r);local e=r.kind=='EVENT'and S.Get(r.owner,r.id)or r.data
-    local can=r.kind=='EVENT'and S.CanApply(r.owner,r.id)==true or r.kind~='EVENT'and not r.saved and Z.IsOnline(r.owner)and(not p or p.state=='withdrawn')
+    local can=r.kind=='EVENT'and(S.CanApply(r.owner,r.id)==true or Z.ScheduledRelay~=nil and Z.ScheduledRelay.CanApply(r.owner,r.id))or r.kind~='EVENT'and not r.saved and Z.IsOnline(r.owner)and(not p or p.state=='withdrawn')
     if r.kind=='PVP'then can=e and e.response~='coming'and Z.IsOnline(r.owner)end
     result.join=can==true
     local withdraw=r.kind=='EVENT'and S.CanWithdraw(r.owner,r.id)or r.kind~='EVENT'and(p and p.state~='withdrawn'or r.kind=='PVP'and e and e.response=='coming')

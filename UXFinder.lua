@@ -551,6 +551,19 @@ local function describe(r, context)
             -- Kept visible by confirmed participants while the organizer is offline.
             d.badge, d.tone = tr('Organizer offline'), 'neutral'
         end
+        -- A decision that reached the player through a participant, or an application left with one.
+        local relay = Z.ScheduledRelay
+        local follow = relay and Z.ScheduledGroups.Follow(r.owner, r.id)
+        if follow then
+            local carriedState, _, carriedOn = relay.Effective(follow)
+            if carriedOn then
+                d.badge = Z.ScheduledGroups.StateLabel(carriedState)
+                d.tone = carriedState == 'CONFIRMED' and 'success' or carriedState == 'WAITLIST' and 'warning' or carriedState == 'DECLINED' and 'danger' or 'neutral'
+                d.meta = d.meta .. ' · ' .. tr('carried on, not yet confirmed')
+            elseif follow.pending then
+                d.badge, d.tone = tr(follow.pending.deposited and 'Left with a participant' or 'Request pending'), 'info'
+            end
+        end
         if state.withdraw then
             d.actions[1] = { text = tr('Sign off'), click = function()
                 U.WithdrawActivity(r.key)

@@ -302,7 +302,7 @@ function Z.ResolvePeerKey(sender)
 end
 function Z.Receive3(sender,kind,wire)
     if kind=="SP"and Z.ActivityParty then return Z.ActivityParty.Receive(sender,wire)end
-    if(kind=="SH"or kind=="SA"or kind=="SQ"or kind=="SS"or kind=="SK")and Z.ScheduledGroups then return Z.ScheduledGroups.Receive(sender,kind,wire)end
+    if(kind=="SH"or kind=="SA"or kind=="SQ"or kind=="SS"or kind=="SK"or kind=="SX")and Z.ScheduledGroups then return Z.ScheduledGroups.Receive(sender,kind,wire)end
     if kind=="AV"and Z.UpdateNotice then return Z.UpdateNotice.Receive(sender,wire)end
     if(kind=="RQ"or kind=="RR"or kind=="RB")and Z.RecipeSearch then return Z.RecipeSearch.Receive(sender,kind,wire)end
     if(kind=="OC"or kind=="OO"or kind=="OS"or kind=="OQ"or kind=="OA")and Z.CraftOrders then return Z.CraftOrders.Receive(sender,kind,wire)end

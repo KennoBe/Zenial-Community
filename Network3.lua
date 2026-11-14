@@ -4,7 +4,7 @@ Z.Network3=N
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true}
-local DIRECT={RQ=true,RR=true,RB=true,OC=true,OO=true,OS=true,OQ=true,OA=true,AV=true,SH=true,SA=true,SQ=true,SS=true,SK=true,SP=true}
+local DIRECT={RQ=true,RR=true,RB=true,OC=true,OO=true,OS=true,OQ=true,OA=true,AV=true,SH=true,SA=true,SQ=true,SS=true,SK=true,SP=true,SX=true}
 local function allowedKind(channel,kind)return channel=="PUBLIC"and PUBLIC[kind]or channel=="WHISPER"and DIRECT[kind]or false end
 local function trace(reason,...)
     if Z.Diagnostics then Z.Diagnostics.Record("protocol3:"..reason,...)end

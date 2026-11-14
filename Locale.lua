@@ -1254,6 +1254,11 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["carried on, not yet confirmed"]="weitergetragen, noch nicht bestätigt"
+DE["Left with a participant"]="Bei Teilnehmer hinterlegt"
+DE["Left with a participant; the organizer has not seen it yet"]="Bei einem Teilnehmer hinterlegt; der Ersteller hat es noch nicht gesehen"
+DE["Carried on; not yet confirmed by the organizer"]="Weitergetragen, vom Ersteller noch nicht bestätigt"
+DE["This event is not open for applications right now."]="Dieser Termin nimmt gerade keine Anmeldungen an."
 DE["Organizer offline"]="Ersteller offline"
 DE["Start"]="Start"
 DE["Who is online and what is open in the community right now"]="Wer online ist und was in der Community gerade offen ist"

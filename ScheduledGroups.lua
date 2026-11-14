@@ -27,7 +27,7 @@ local STATE_EN={DRAFT='Draft',OPEN='Open',CANCELLED='Cancelled',FINISHED='Finish
 local STATE_DE={DRAFT='Entwurf',OPEN='Offen',CANCELLED='Abgesagt',FINISHED='Beendet',NONE='Keine Anmeldung',REQUESTED='Angefragt',CONFIRMED='Bestätigt',WAITLIST='Ersatzbank',DECLINED='Abgelehnt',WITHDRAWN='Zurückgezogen'}
 function S.StateLabel(state)return(Z.Locale.isGerman and STATE_DE[state]or STATE_EN[state])or Z.T('Unknown')end
 function S.DeliveryLabel(value)
-    local labels={saved='Saved state',unknown='Unknown',querying='Verification in progress',offline='No direct route',pending='Awaiting organizer response',queued='Queued operation',verified='Verified with organizer',blocked='Blocked',unconfirmed='No confirmed response',OK='Verified with organizer',STALE='Event changed; request rejected',FULL='Application limit reached',CLOSED='Registration closed',MISSING='Event unavailable',CHANGED='Scheduled event changed; apply again',PRIVACY='Publication withdrawn'}
+    local labels={saved='Saved state',unknown='Unknown',querying='Verification in progress',offline='No direct route',pending='Awaiting organizer response',queued='Queued operation',verified='Verified with organizer',blocked='Blocked',unconfirmed='No confirmed response',deposited='Left with a participant; the organizer has not seen it yet',OK='Verified with organizer',STALE='Event changed; request rejected',FULL='Application limit reached',CLOSED='Registration closed',MISSING='Event unavailable',CHANGED='Scheduled event changed; apply again',PRIVACY='Publication withdrawn'}
     return Z.T(labels[value]or'Unknown')
 end
 local MAX=2147483646
@@ -69,7 +69,8 @@ function S.Normalize(raw,owner)
             or not L.Text(e.templateID or'',32,true)or e.templateID~=''and not id(e.templateID)or type(e.participants)~='table'then return empty(),'invalid'end
         if e.public and e.status=='OPEN'then published=published+1;if published>S.MAX_PUBLIC then return empty(),'invalid'end end
         local row=snapshot(e);row.public=e.public;row.createdAt=e.createdAt;row.updatedAt=e.updatedAt;row.organizerRole=e.organizerRole;row.templateID=e.templateID or'';row.participants={}
-        local m=0;for peer,p in pairs(e.participants)do m=m+1;if m>S.MAX_PARTICIPANTS or not L.ValidIdentityKey(peer)or peer==owner or not validApp(p)or p.revision>e.revision or p.lastContentRevision>e.contentRevision or(p.ackEventRevision or 0)>e.revision or(p.ackAppRevision or 0)>p.revision or(e.status=='DRAFT'or e.status=='CANCELLED')and(p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST')then return empty(),'invalid'end;row.participants[peer]={state=p.state,role=p.role,seq=p.seq,revision=p.revision,lastNonce=p.lastNonce,lastAction=p.lastAction,lastContentRevision=p.lastContentRevision,ackEventRevision=p.ackEventRevision or 0,ackAppRevision=p.ackAppRevision or 0,reason=REASONS[p.reason]and p.reason or'OK'}end
+        local m=0;for peer,p in pairs(e.participants)do m=m+1;if m>S.MAX_PARTICIPANTS or not L.ValidIdentityKey(peer)or peer==owner or not validApp(p)or p.revision>e.revision or p.lastContentRevision>e.contentRevision or(p.ackEventRevision or 0)>e.revision or(p.ackAppRevision or 0)>p.revision or(e.status=='DRAFT'or e.status=='CANCELLED')and(p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST')then return empty(),'invalid'end;row.participants[peer]={state=p.state,role=p.role,seq=p.seq,revision=p.revision,lastNonce=p.lastNonce,lastAction=p.lastAction,lastContentRevision=p.lastContentRevision,ackEventRevision=p.ackEventRevision or 0,ackAppRevision=p.ackAppRevision or 0,reason=REASONS[p.reason]and p.reason or'OK',
+            target=L.Text(p.target,49)and L.Identity(p.target)and p.target or nil,via=L.ValidIdentityKey(p.via)and p.via or nil,relayedAt=L.Int(p.relayedAt,1,4102444799)and p.relayedAt or nil}end
         local used=S.Counts(row);for role,amount in pairs(used)do if amount>row.roleSlots[role]then return empty(),'invalid'end end
         out.owned[key]=row
     end
@@ -79,8 +80,9 @@ function S.Normalize(raw,owner)
             or not L.Text(r.operationNonce or'',32,true)or(r.operationNonce and r.operationNonce~=''and not id(r.operationNonce))or not L.Int(r.seq,0,MAX)or not L.Int(r.acceptedSeq or 0,0,r.seq)or not L.Int(r.authorityRevision or 0,0,MAX)or not L.Int(r.appRevision,0,MAX)or not L.Int(r.updatedAt,1,4102444799)then return empty(),'invalid'end
         local row={ownerKey=r.ownerKey,id=r.id,snapshot=snapshot(r.snapshot),state=r.state,role=r.role,seq=r.seq,operationNonce=r.operationNonce or'',acceptedSeq=r.acceptedSeq or 0,authorityRevision=r.authorityRevision or 0,appRevision=r.appRevision,updatedAt=r.updatedAt,delivery='saved',
             superseded=L.Int(r.superseded,1,MAX)and r.superseded or nil,
+            box=Z.ScheduledRelay and Z.ScheduledRelay.CleanBox(r.box)or nil,relayed=Z.ScheduledRelay and Z.ScheduledRelay.CleanRelayed(r.relayed)or nil,
             announced=r.announced==true,ownerSession=type(r.ownerSession)=='string'and L.Text(r.ownerSession,32)and r.ownerSession:match('^%d+%.%d+%.%d+$')and r.ownerSession or nil}
-        if r.pending~=nil then local p=r.pending;if type(p)~='table'or(p.action~='APPLY'and p.action~='WITHDRAW')or not validRole(p.role)or not L.Int(p.seq,1,MAX)or p.seq~=r.seq or not L.Int(p.contentRevision,1,MAX)or not id(p.nonce)then return empty(),'invalid'end;row.pending={action=p.action,role=p.role,seq=p.seq,contentRevision=p.contentRevision,nonce=p.nonce,attempts=0,next=0}end
+        if r.pending~=nil then local p=r.pending;if type(p)~='table'or(p.action~='APPLY'and p.action~='WITHDRAW')or not validRole(p.role)or not L.Int(p.seq,1,MAX)or p.seq~=r.seq or not L.Int(p.contentRevision,1,MAX)or not id(p.nonce)then return empty(),'invalid'end;row.pending={action=p.action,role=p.role,seq=p.seq,contentRevision=p.contentRevision,nonce=p.nonce,attempts=0,next=0,deposited=p.deposited==true or nil}end
         out.following[key]=row
     end
     n=0;for key,p in pairs(raw.templates)do
@@ -345,15 +347,19 @@ sendPending=function(r)
     r.delivery=queued and'pending'or'queued';p.next=A.Clock()+20;p.attempts=(p.attempts or 0)+1;return queued~=nil
 end
 function S.Apply(owner,eventID,role)
+    -- The organizer cannot be reached: the application is left with the event's confirmed participants (ScheduledRelay.lua).
+    if Z.ScheduledRelay and Z.ScheduledRelay.CanApply(owner,eventID)then return Z.ScheduledRelay.Apply(owner,eventID,role)end
     if not S.CanApply(owner,eventID)or not validRole(role)then return false,'Verify the event with its organizer before applying.'end
     local r=S.Follow(owner,eventID);if r.snapshot.roleSlots[role]<1 then return false,'This role has no scheduled slot.'end;if r.seq>=MAX then return false,'Scheduled revision limit reached.'end
     r.seq=r.seq+1;r.pending={action='APPLY',role=role,seq=r.seq,contentRevision=r.snapshot.contentRevision,nonce=L.NextID(Z.db,A.Now()),attempts=0,next=0};r.updatedAt=A.Now();sendPending(r);changed();return true
 end
 function S.CanWithdraw(owner,eventID)
     local r=S.Follow(owner,eventID)
+    if Z.ScheduledRelay and Z.ScheduledRelay.CanWithdraw(owner,eventID)then return true end
     return r~=nil and editable()and(r.state=='REQUESTED'or r.state=='CONFIRMED'or r.state=='WAITLIST')and not r.pending and r.seq<MAX and r.snapshot.status=='OPEN'and r.snapshot.endsAt>A.Now()
 end
 function S.Withdraw(owner,eventID)
+    if Z.ScheduledRelay and Z.ScheduledRelay.CanWithdraw(owner,eventID)then return Z.ScheduledRelay.Withdraw(owner,eventID)end
     local r=S.Follow(owner,eventID);if not S.CanWithdraw(owner,eventID)then return false,'No active scheduled application to withdraw.'end
     r.seq=r.seq+1;r.pending={action='WITHDRAW',role=L.Role(r.role)or'DAMAGER',seq=r.seq,contentRevision=r.snapshot.contentRevision,nonce=L.NextID(Z.db,A.Now()),attempts=0,next=0};r.updatedAt=A.Now();sendPending(r);changed();return true
 end
@@ -422,7 +428,7 @@ local function receiveStatus(key,route,f)
     if reason=='OK'and r.pending and nonce==r.pending.nonce and seq~=r.pending.seq then return false end
     if r.pending and seq==r.pending.seq and operationNonce~=r.pending.nonce then return false end
     if seq==r.acceptedSeq and seq>0 and operationNonce~=r.operationNonce then return false end
-    local previous=r.state;local changedContent=e.contentRevision~=r.snapshot.contentRevision;r.snapshot=snapshot(e);r.state=state;r.role=role;r.appRevision=revision;r.updatedAt=A.Now();r.verifiedSession=route.session;r.verifiedAt=A.Clock();r.superseded=nil;r.delivery=reason=='OK'and'verified'or reason
+    local previous=r.state;local changedContent=e.contentRevision~=r.snapshot.contentRevision;r.snapshot=snapshot(e);r.state=state;r.role=role;r.appRevision=revision;r.updatedAt=A.Now();r.verifiedSession=route.session;r.verifiedAt=A.Clock();r.superseded=nil;r.relayed=nil;r.delivery=reason=='OK'and'verified'or reason
     if r.pending and(nonce==r.pending.nonce or seq==r.pending.seq and operationNonce==r.pending.nonce)then r.pending=nil end
     r.seq=math.max(r.seq,seq);r.acceptedSeq=seq;r.operationNonce=operationNonce;r.authorityRevision=e.revision;S.queryNonce[tok]=nil;S.querySentAt[tok]=nil;S.queryAt[tok]=A.Clock()+60
     local contact=Z.db.contacts[key];Z.Network3.QueueDirect(contact.target,'SK',Z.Network3.Pack({'1',Z.session,route.session,e.id,e.revision,revision}),85,'SCHEDULEACK:'..tok)
@@ -445,6 +451,7 @@ function S.Receive(sender,kind,wire)
         if#f~=6 or not id(f[4])or not L.Int(tonumber(f[5]),1,MAX)or not L.Int(tonumber(f[6]),0,MAX)then return false end
         local e=S.GetOwned(f[4]);local p=e and e.participants[key]
         if not p or tonumber(f[5])~=e.revision or tonumber(f[6])~=p.revision then return false end;p.ackEventRevision=e.revision;p.ackAppRevision=p.revision;S.pushAt[token(key,e.id)]=nil;return true
+    elseif kind=='SX'then return Z.ScheduledRelay~=nil and Z.ScheduledRelay.Receive(key,route,f)or false
     end;return false
 end
 function S.Block(key)
@@ -467,7 +474,9 @@ end
 function S.Participation(owner,eventID)
     if owner==Z.me.key then return Z.T('Organizer')end
     local r=S.Follow(owner,eventID);if not r then return Z.T('No application')end
-    if r.pending then return Z.T(r.pending.action=='WITHDRAW'and'Withdrawal pending'or'Application pending')end
+    local state,_,carried=r.state,nil,false;if Z.ScheduledRelay then state,_,carried=Z.ScheduledRelay.Effective(r)end
+    if carried then return S.StateLabel(state)..' · '..Z.T('Carried on; not yet confirmed by the organizer')end
+    if r.pending then return Z.T(r.pending.action=='WITHDRAW'and'Withdrawal pending'or'Application pending')..(r.pending.deposited and' · '..S.DeliveryLabel('deposited')or'')end
     local current=S.Verified(owner,eventID)
     return S.StateLabel(r.state)..(current and''or' · '..Z.T('Saved state; verification pending'))
 end
@@ -475,6 +484,7 @@ local function reminders()
     local now=A.Now();local examined=0
     for _,e in ipairs(S.List(true))do
         local following=S.Follow(e.ownerKey,e.id);local eligible=e.ownerKey==Z.me.key or following and following.state=='CONFIRMED'and not following.pending
+            or following and Z.ScheduledRelay and Z.ScheduledRelay.Effective(following)=='CONFIRMED'
         if eligible and e.status=='OPEN'then
             local tok=token(e.ownerKey,e.id);local mark=S.store.reminded[tok];if not mark or mark.contentRevision~=e.contentRevision then mark={contentRevision=e.contentRevision,stage=0};S.store.reminded[tok]=mark end
             local delta=e.startsAt-now;local stage=delta<=0 and 3 or delta<=600 and 2 or delta<=1800 and 1 or 0
@@ -546,6 +556,7 @@ function S.Tick()
         end
     end
     carry(now,clock)
+    if Z.ScheduledRelay then Z.ScheduledRelay.Tick(now,clock)end
     reminders()
     if clock>=S.nextPrune then
         S.nextPrune=clock+60
@@ -557,4 +568,6 @@ function S.Tick()
         for key,r in pairs(S.rates)do if clock-r.at>300 then S.rates[key]=nil end end
     end
 end
+-- For ScheduledRelay.lua, which continues this module.
+S.internal={MAX=MAX,id=id,validRole=validRole,currentRoute=currentRoute,ensureFollow=ensureFollow,receiveAction=receiveAction,notify=notify,changed=changed}
 return S
