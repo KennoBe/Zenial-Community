@@ -213,7 +213,10 @@ function M.Accept(row,source,own)
     if key==Z.me.key and not own then return false end
     if key and Z.db.blocked[key]then if L.Count(M.ignored)<M.MAX_RECORDS then M.ignored[recordHash(token(row))]=key end;return false end
     local id=token(row);local old=M.records[id]
-    if not newer(row,old)then M.stats.duplicates=M.stats.duplicates+1;return true end
+    -- A stored record that has outlived its lifetime no longer outranks a valid one: it only waits for the next
+    -- prune. (Needed when confirmed participants carry on a scheduled event after its organizer's last own
+    -- announcement has run out; their records rank below every real session of the organizer.)
+    if not newer(row,old)and not(old and A.Now()-old.at>lifetime(old))then M.stats.duplicates=M.stats.duplicates+1;return true end
     if row.kind=="PD"and not old then
         -- At most eight living markers per origin.
         local live,now=0,A.Now()
@@ -228,6 +231,12 @@ function M.Accept(row,source,own)
     M.records[id]=row;M.bytes=M.bytes-(old and#old.wire or 0)+#row.wire;M.durable[id]=durable(row)and row or nil
     if not own then apply(row);M.stats.received=M.stats.received+1 end
     enqueue(id,source);persist();return true
+end
+-- Hands in a record on behalf of another origin, as if it had arrived from a neighbour: it is validated, ranked
+-- and forwarded like any received record. Used for scheduled events carried on by their confirmed participants.
+function M.Relay(origin,session,seq,at,kind,wire)
+    if not enabled()or not PUBLIC[kind]then return false end
+    return M.Accept({origin=origin,session=session,seq=seq,at=at,kind=kind,wire=wire,realm=Z.me.realm,region=D.Region()or 0,project=D.Project()},nil,false)
 end
 function M.Publish(kind,wire)
     if not enabled()or not PUBLIC[kind]then return nil end

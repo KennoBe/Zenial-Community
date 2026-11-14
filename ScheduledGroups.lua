@@ -2,6 +2,24 @@
 -- announcements are claims; attendance is authoritative only on private routes.
 local Z,L,A,T=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter,ZenialCommunity.ScheduleTime
 local S={VERSION=1,MAX_EVENTS=100,MAX_PUBLIC=10,MAX_FOLLOWING=100,MAX_PARTICIPANTS=40,MAX_TEMPLATES=20,MAX_REMOTE=2048,HORIZON=90*86400};Z.ScheduledGroups=S
+-- Carrying on: while the organizer of an event is offline, its participants (confirmed, waitlisted or with an
+-- open request) repeat the public announcement so the event stays visible. They repeat only what the organizer
+-- announced publicly, only for events that start within CARRY_HORIZON, and under a session that ranks below
+-- every real session of the organizer (same epoch, middle part 0): whatever the organizer sends later always
+-- wins. Among carried records the later session of the organizer wins, then the newer state of the event, then
+-- time. "State" is the content revision and whether the event is closed; the plain revision also counts every
+-- participant's change and differs between participants without anyone being out of date. A participant who
+-- knows a newer state corrects one who repeats an older one (a changed or cancelled event), and the one with
+-- the older state stops until the organizer has verified it again. Not a setting; players who are hidden
+-- (S.Enabled) take no part.
+S.CARRY_HORIZON=14*86400;S.CARRY_INTERVAL=600
+local CARRIER={CONFIRMED=true,WAITLIST=true,REQUESTED=true}
+local function carriedSession(session)return type(session)=='string'and session:match('^%d+%.0%.')~=nil end
+-- Orders two states of one event: positive when a is newer than b.
+local function newerState(a,b)
+    if a.contentRevision~=b.contentRevision then return a.contentRevision>b.contentRevision end
+    return a.status~='OPEN'and b.status=='OPEN'
+end
 local EVENTS={DRAFT=true,OPEN=true,CANCELLED=true,FINISHED=true}
 local APPS={NONE=true,REQUESTED=true,CONFIRMED=true,WAITLIST=true,DECLINED=true,WITHDRAWN=true}
 local REASONS={OK=true,STALE=true,FULL=true,CLOSED=true,MISSING=true,CHANGED=true,PRIVACY=true}
@@ -59,7 +77,9 @@ function S.Normalize(raw,owner)
         n=n+1;if n>S.MAX_FOLLOWING or type(r)~='table'or not header(r.snapshot)or not L.ValidIdentityKey(r.ownerKey)or r.ownerKey==owner or not id(r.id)or key~=token(r.ownerKey,r.id)
             or r.snapshot.ownerKey~=r.ownerKey or r.snapshot.id~=r.id or not APPS[r.state]or(r.role~=''and not validRole(r.role))
             or not L.Text(r.operationNonce or'',32,true)or(r.operationNonce and r.operationNonce~=''and not id(r.operationNonce))or not L.Int(r.seq,0,MAX)or not L.Int(r.acceptedSeq or 0,0,r.seq)or not L.Int(r.authorityRevision or 0,0,MAX)or not L.Int(r.appRevision,0,MAX)or not L.Int(r.updatedAt,1,4102444799)then return empty(),'invalid'end
-        local row={ownerKey=r.ownerKey,id=r.id,snapshot=snapshot(r.snapshot),state=r.state,role=r.role,seq=r.seq,operationNonce=r.operationNonce or'',acceptedSeq=r.acceptedSeq or 0,authorityRevision=r.authorityRevision or 0,appRevision=r.appRevision,updatedAt=r.updatedAt,delivery='saved'}
+        local row={ownerKey=r.ownerKey,id=r.id,snapshot=snapshot(r.snapshot),state=r.state,role=r.role,seq=r.seq,operationNonce=r.operationNonce or'',acceptedSeq=r.acceptedSeq or 0,authorityRevision=r.authorityRevision or 0,appRevision=r.appRevision,updatedAt=r.updatedAt,delivery='saved',
+            superseded=L.Int(r.superseded,1,MAX)and r.superseded or nil,
+            announced=r.announced==true,ownerSession=type(r.ownerSession)=='string'and L.Text(r.ownerSession,32)and r.ownerSession:match('^%d+%.%d+%.%d+$')and r.ownerSession or nil}
         if r.pending~=nil then local p=r.pending;if type(p)~='table'or(p.action~='APPLY'and p.action~='WITHDRAW')or not validRole(p.role)or not L.Int(p.seq,1,MAX)or p.seq~=r.seq or not L.Int(p.contentRevision,1,MAX)or not id(p.nonce)then return empty(),'invalid'end;row.pending={action=p.action,role=p.role,seq=p.seq,contentRevision=p.contentRevision,nonce=p.nonce,attempts=0,next=0}end
         out.following[key]=row
     end
@@ -246,7 +266,14 @@ function S.List(includeClosed)
         inspected=0;for _,record in pairs(Z.ScheduledMesh and Z.ScheduledMesh.records or{})do
             inspected=inspected+1;if inspected>S.MAX_REMOTE then break end
             local e=record.scheduledWire==record.wire and record.scheduledDecoded;local owner=record.scheduledOwner
+            -- What the organizer announces publicly, seen while the organizer is verified on a direct route: the
+            -- only evidence a participant accepts for carrying the event on later.
+            local known=e and owner and S.store and S.store.following[token(owner,e.id)]
+            if known and known.verifiedSession and known.verifiedSession==record.session then local route=currentRoute(owner)
+                if route and route.session==record.session then known.announced=e.status~='DRAFT';known.ownerSession=record.session end -- an unpublished event is announced as DRAFT
+            end
             if e and A.Now()-e.at<=900 and owner and owner~=Z.me.key and not Z.db.blocked[owner]and e.status=='OPEN'and e.endsAt>A.Now()then
+                e.carried=carriedSession(record.session)
                 e.ownerKey=owner;e.ownerTarget=record.origin;e.announcement=true;local key=token(owner,e.id)
                 local follow=S.store and S.store.following[key]
                 if follow and follow.verifiedSession and follow.verifiedSession==record.session and currentRoute(owner)and follow.verifiedSession==currentRoute(owner).session then e= snapshot(follow.snapshot)end
@@ -395,7 +422,7 @@ local function receiveStatus(key,route,f)
     if reason=='OK'and r.pending and nonce==r.pending.nonce and seq~=r.pending.seq then return false end
     if r.pending and seq==r.pending.seq and operationNonce~=r.pending.nonce then return false end
     if seq==r.acceptedSeq and seq>0 and operationNonce~=r.operationNonce then return false end
-    local previous=r.state;local changedContent=e.contentRevision~=r.snapshot.contentRevision;r.snapshot=snapshot(e);r.state=state;r.role=role;r.appRevision=revision;r.updatedAt=A.Now();r.verifiedSession=route.session;r.verifiedAt=A.Clock();r.delivery=reason=='OK'and'verified'or reason
+    local previous=r.state;local changedContent=e.contentRevision~=r.snapshot.contentRevision;r.snapshot=snapshot(e);r.state=state;r.role=role;r.appRevision=revision;r.updatedAt=A.Now();r.verifiedSession=route.session;r.verifiedAt=A.Clock();r.superseded=nil;r.delivery=reason=='OK'and'verified'or reason
     if r.pending and(nonce==r.pending.nonce or seq==r.pending.seq and operationNonce==r.pending.nonce)then r.pending=nil end
     r.seq=math.max(r.seq,seq);r.acceptedSeq=seq;r.operationNonce=operationNonce;r.authorityRevision=e.revision;S.queryNonce[tok]=nil;S.querySentAt[tok]=nil;S.queryAt[tok]=A.Clock()+60
     local contact=Z.db.contacts[key];Z.Network3.QueueDirect(contact.target,'SK',Z.Network3.Pack({'1',Z.session,route.session,e.id,e.revision,revision}),85,'SCHEDULEACK:'..tok)
@@ -458,6 +485,43 @@ local function reminders()
         end
     end
 end
+-- One pass over the followed events (see the rules above).
+local function carry(now,clock)
+    if clock<(S.nextCarry or 0)then return end;S.nextCarry=clock+15;S.carryAt=S.carryAt or{}
+    local mesh=Z.ScheduledMesh;if not mesh or not mesh.Relay or not S.Enabled()then return end
+    for tok,r in pairs(S.store.following)do local e=r.snapshot
+        if r.announced and r.ownerSession and not r.pending and not Z.db.blocked[r.ownerKey]and e.endsAt>now and e.startsAt<=now+S.CARRY_HORIZON
+            and not Z.IsOnline(r.ownerKey)and clock>=(S.carryAt[tok]or 0)then
+            local contact=Z.db.contacts[r.ownerKey];local epoch=tonumber(r.ownerSession:match('^(%d+)%.'))
+            if contact and epoch then
+                local record=mesh.records and mesh.records[L.Identity(contact.target)..'/SE/'..e.id]
+                local seen=record and record.scheduledWire==record.wire and record.scheduledDecoded or nil
+                local seenEpoch=seen and tonumber(record.session:match('^(%d+)%.'))or 0
+                local carried=seen and carriedSession(record.session)
+                if seen and(seenEpoch>epoch or seenEpoch==epoch and newerState(seen,e))then
+                    -- Somebody knows a newer state of this event: stay quiet until the organizer verifies this one again.
+                    if r.superseded~=seen.contentRevision then r.superseded=seen.contentRevision;changed()end;S.carryAt[tok]=clock+60
+                elseif r.superseded then S.carryAt[tok]=clock+60
+                else
+                    local stale=carried and(seenEpoch<epoch or newerState(e,seen))
+                    if seen and not stale and(not carried and now-record.at<=900 or carried and now-record.at<S.CARRY_INTERVAL)then
+                        S.carryAt[tok]=clock+30 -- alive: the organizer's own record, or a carried one of this state
+                    elseif stale or CARRIER[r.state]and e.status=='OPEN'then
+                        -- Either a correction of an older carried state (also for a closed event and from a former
+                        -- participant), or the regular repetition by a participant.
+                        local session=epoch..'.0.0';local used=e.used or{TANK=0,HEALER=0,DAMAGER=0}
+                        local values={'1',session,now,Z.me.faction};for _,v in ipairs(headerFields(e))do values[#values+1]=v end
+                        for _,role in ipairs({'TANK','HEALER','DAMAGER'})do values[#values+1]=used[role]or 0 end
+                        -- Rank inside the carried session: content revision, closed before open, then time (20 s steps).
+                        local seq=math.min(e.contentRevision,1022)*2097152+(e.status~='OPEN'and 1048576 or 0)+math.floor(now/20)%1048576
+                        local sent=mesh.Relay(contact.target,session,seq,now,'SE',Z.Network3.Pack(values))
+                        S.carryAt[tok]=clock+(sent and S.CARRY_INTERVAL+math.random(0,60)or 120)
+                    else S.carryAt[tok]=clock+60 end
+                end
+            end
+        end
+    end
+end
 function S.Tick()
     S.DecodePending()
     if not S.store or not Z.db or A.Now()<1 or A.Clock()<S.nextTick then return end;S.nextTick=A.Clock()+1
@@ -481,6 +545,7 @@ function S.Tick()
             elseif not r.pending and r.state~='NONE'and clock>=(S.queryAt[tok]or 0)then if sendQuery(r)then sent=sent+1 end end
         end
     end
+    carry(now,clock)
     reminders()
     if clock>=S.nextPrune then
         S.nextPrune=clock+60

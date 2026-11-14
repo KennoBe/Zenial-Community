@@ -1254,6 +1254,7 @@ DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge un
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
 -- Group finder (UXFinder.lua, GroupFinderCatalog.lua).
+DE["Organizer offline"]="Ersteller offline"
 DE["Start"]="Start"
 DE["Who is online and what is open in the community right now"]="Wer online ist und was in der Community gerade offen ist"
 DE["Members online"]="Mitglieder online"

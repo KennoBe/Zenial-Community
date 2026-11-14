@@ -547,6 +547,9 @@ local function describe(r, context)
         d.badge, d.tone = applicationBadge(r)
         if not d.badge and r.saved then
             d.badge, d.tone = tr('Saved state'), 'neutral'
+        elseif not d.badge and ev.carried then
+            -- Kept visible by confirmed participants while the organizer is offline.
+            d.badge, d.tone = tr('Organizer offline'), 'neutral'
         end
         if state.withdraw then
             d.actions[1] = { text = tr('Sign off'), click = function()
