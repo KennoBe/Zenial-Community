@@ -1,7 +1,7 @@
 ZenialCommunity = ZenialCommunity or {}
 -- The TOC is the source of truth. The fallback is only used when the client
 -- cannot report metadata and must equal the TOC (test_addon_version.lua).
-local FALLBACK_VERSION = "6.2.0"
+local FALLBACK_VERSION = "6.3.0"
 local function tocVersion()
     local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     if type(get) ~= "function" then return nil end

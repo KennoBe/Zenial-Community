@@ -590,6 +590,7 @@ SLASH_ZENIALCOMMUNITY1="/zenial"
 SlashCmdList.ZENIALCOMMUNITY=function(text)
     Z.Initialize();if not Z.db then return end
     if Z.CrossFaction and Z.CrossFaction.HandleSubcommand and Z.CrossFaction.HandleSubcommand(text) then return end
+    if Z.Deck and Z.Deck.HandleCommand(text) then return end
     text=type(text)=="string" and string.lower(text:match("^%s*(.-)%s*$") or "") or ""
     if text=="discover" or text=="finden" then Z.CommunityDirectory.RequestScan();A.DiscoveryTick(true)
     elseif text=="debug on"then Z.Companion.SetDebugPixel(true)

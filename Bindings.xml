@@ -1,0 +1,27 @@
+<Bindings>
+    <Binding name="ZENIALCOMMUNITY_TOGGLE" header="ZENIALCOMMUNITY">ZenialCommunity.Deck.Run("open")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_TODAY">ZenialCommunity.Deck.Run("nav_today")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_MEMBERS">ZenialCommunity.Deck.Run("nav_members")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_ACTIVITIES">ZenialCommunity.Deck.Run("nav_activities")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_QUESTS">ZenialCommunity.Deck.Run("nav_quests")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_CRAFT">ZenialCommunity.Deck.Run("nav_craft")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_TRADE">ZenialCommunity.Deck.Run("nav_trade")</Binding>
+    <Binding name="ZENIALCOMMUNITY_NAV_CHARACTERS">ZenialCommunity.Deck.Run("nav_characters")</Binding>
+    <Binding name="ZENIALCOMMUNITY_PVP_REQUEST">ZenialCommunity.Deck.Run("pvp_request")</Binding>
+    <Binding name="ZENIALCOMMUNITY_PVP_CALLS">ZenialCommunity.Deck.Run("pvp_calls")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT1_WHISPER">ZenialCommunity.Deck.Run("slot1_whisper")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT1_INVITE">ZenialCommunity.Deck.Run("slot1_invite")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT1_PROFILE">ZenialCommunity.Deck.Run("slot1_profile")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT2_WHISPER">ZenialCommunity.Deck.Run("slot2_whisper")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT2_INVITE">ZenialCommunity.Deck.Run("slot2_invite")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT2_PROFILE">ZenialCommunity.Deck.Run("slot2_profile")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT3_WHISPER">ZenialCommunity.Deck.Run("slot3_whisper")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT3_INVITE">ZenialCommunity.Deck.Run("slot3_invite")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT3_PROFILE">ZenialCommunity.Deck.Run("slot3_profile")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT4_WHISPER">ZenialCommunity.Deck.Run("slot4_whisper")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT4_INVITE">ZenialCommunity.Deck.Run("slot4_invite")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT4_PROFILE">ZenialCommunity.Deck.Run("slot4_profile")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT5_WHISPER">ZenialCommunity.Deck.Run("slot5_whisper")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT5_INVITE">ZenialCommunity.Deck.Run("slot5_invite")</Binding>
+    <Binding name="ZENIALCOMMUNITY_SLOT5_PROFILE">ZenialCommunity.Deck.Run("slot5_profile")</Binding>
+</Bindings>

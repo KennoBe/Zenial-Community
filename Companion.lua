@@ -2,13 +2,14 @@
 local Z,A,L=ZenialCommunity,ZenialCommunity.Adapter,ZenialCommunity.Logic
 local P,T=Z.CompanionProtocol,Z.CompanionTelemetry
 local C={};Z.Companion=C
-C.TOPICS={'position','map','inventory','quests','character','community','materials','activities','private','groups','requests','notifications','chat','professions','trade','player','itemdetails','mapcatalog','questareas','progress'}
+C.TOPICS={'position','map','inventory','quests','character','community','materials','activities','private','groups','requests','notifications','chat','professions','trade','player','itemdetails','mapcatalog','questareas','progress','bindings','pvp','deckslots'}
 local intervals={identity=60,position=1,inventory=5,quests=5,character=10,community=60,materials=15,activities=30,private=60,heartbeat=5,policy=60}
 for _,topic in ipairs({'groups','requests','notifications','chat','player'})do intervals[topic]=5 end
 intervals.professions=60;intervals.trade=30;intervals.map=5
 intervals.itemdetails=1
 intervals.mapcatalog=.5;intervals.questareas=5
 intervals.progress=5
+intervals.bindings=10;intervals.pvp=2;intervals.deckslots=10
 local incomingEvents={'CHAT_MSG_SAY','CHAT_MSG_YELL','CHAT_MSG_PARTY','CHAT_MSG_PARTY_LEADER','CHAT_MSG_RAID','CHAT_MSG_RAID_LEADER','CHAT_MSG_RAID_WARNING','CHAT_MSG_INSTANCE_CHAT','CHAT_MSG_INSTANCE_CHAT_LEADER','CHAT_MSG_GUILD','CHAT_MSG_OFFICER','CHAT_MSG_WHISPER','CHAT_MSG_BN_WHISPER','CHAT_MSG_WHISPER_INFORM','CHAT_MSG_BN_WHISPER_INFORM','CHAT_MSG_CHANNEL','CHAT_MSG_EMOTE','CHAT_MSG_TEXT_EMOTE','CHAT_MSG_LOOT','CHAT_MSG_MONEY','CHAT_MSG_SYSTEM'}
 local incomingSet={};for _,event in ipairs(incomingEvents)do incomingSet[event]=true end
 local defaultCategories={position=true,inventory=true,quests=true,character=true,community=true,activities=true}
@@ -79,6 +80,7 @@ function C.Initialize()
     if s.transport~='chatlog'then s.transport='pixel'end
     C.settings=s;C.source=P.Source(Z.me.key);C.stats={sent=0,echoed=0,automatic=0};C.Stop()
     if s.enabled==true then C.BeginSession()end
+    if Z.Deck then Z.Deck.Request()end
 end
 function C.BeginSession()
     if not C.settings or not Z.identityReady or A.Now()<1 then return false end
@@ -99,7 +101,10 @@ function C.BeginSession()
 end
 function C.Enable(enabled)
     if not C.settings then return false end;C.settings.enabled=enabled==true
-    if enabled then return C.BeginSession()else C.Stop();return true end
+    local ok=true
+    if enabled then ok=C.BeginSession()else C.Stop()end
+    if Z.Deck then Z.Deck.Request()end
+    return ok
 end
 function C.SetExportEnabled(enabled)
     if not C.settings then return false end
@@ -310,6 +315,7 @@ end
 function C.Probe()
     if not C.settings then return false end
     C.settings.enabled=true;if not C.BeginSession()then return false end
+    if Z.Deck then Z.Deck.Request()end
     if C.IsPixel()then C.state='unverified';C.reason='Pixel transport requires verification in the companion.';changed();return true end
     if not logging()then C.reason='Enable /chatlog once, then start the probe again.';changed();return false end
     -- This first send runs in our own button click. Timer-origin sends follow

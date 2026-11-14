@@ -141,13 +141,18 @@ function P.RuleMet()
     for _,d in ipairs(P.store.deaths)do if(d.minAttackers or 0)>=2 then return true end end
     return false
 end
+-- Same checks and texts as before; the code and cooldown end serve the Companion export (cooldownUntil is server time).
+function P.CallState()
+    local now=A.Now();local cooldownUntil=P.store.lastCallAt>0 and P.store.lastCallAt+CALL_COOLDOWN>now and P.store.lastCallAt+CALL_COOLDOWN or nil
+    if currentCall()then return false,"active","Es läuft bereits ein Hilferuf.",cooldownUntil end
+    if cooldownUntil then return false,"cooldown","Ein neuer Hilferuf ist erst nach zehn Minuten möglich.",cooldownUntil end
+    if not A.IsPvpFlagged()then return false,"unflagged",Z.T("You must be flagged for PvP to request help."),cooldownUntil end
+    if P.testMode then return true,nil,nil,cooldownUntil end
+    if not P.RuleMet()then return false,"deaths",Z.T("Another %d death(s) needed before requesting help.",math.max(1,2-P.DeathCount())),cooldownUntil end
+    if not P.store.lastDeath then return false,"no-location","Kein Todesort gespeichert.",cooldownUntil end;return true,nil,nil,cooldownUntil
+end
 function P.CanCall()
-    local now=A.Now();if currentCall()then return false,"Es läuft bereits ein Hilferuf."end
-    if P.store.lastCallAt>0 and now-P.store.lastCallAt<CALL_COOLDOWN then return false,"Ein neuer Hilferuf ist erst nach zehn Minuten möglich."end
-    if not A.IsPvpFlagged()then return false,Z.T("You must be flagged for PvP to request help.")end
-    if P.testMode then return true end
-    if not P.RuleMet()then return false,Z.T("Another %d death(s) needed before requesting help.",math.max(1,2-P.DeathCount()))end
-    if not P.store.lastDeath then return false,"Kein Todesort gespeichert."end;return true
+    local ok,_,text=P.CallState();if ok then return true end;return false,text
 end
 -- Test aid: lifts only the two-deaths rule, until the next reload (a plain field, never saved).
 -- The current position stands in for the place of death. All other limits still apply.

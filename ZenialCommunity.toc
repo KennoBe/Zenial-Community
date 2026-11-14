@@ -3,7 +3,7 @@
 ## Notes: ZENIAL members, crafting, groups, PvP help, quest help and trade
 ## Notes-deDE: ZENIAL-Mitglieder, Handwerk, Gruppen, PvP-Hilfe, Questhilfe und Handel
 ## Author: ZENIAL contributors
-## Version: 6.2.0
+## Version: 6.3.0
 ## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
 ## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
 ## SavedVariables: ZenialCommunityDB, ZenialMinimapDB
@@ -66,6 +66,8 @@ CompanionProgress.lua
 CompanionPixel.lua
 CompanionVitals.lua
 CompanionQuestAreas.lua
+DeckBindings.lua
+Bindings.xml
 Theme.lua
 ThemeTokens.lua
 ThemeCommunity.lua
@@ -111,6 +113,7 @@ ResponsiveUI.lua
 ProfessionHistoryUI.lua
 NetworkSetup.lua
 CompanionUI.lua
+DeckUI.lua
 RealmMigration.lua
 AccountPreferences.lua
 ForeverLiveMigration.lua
