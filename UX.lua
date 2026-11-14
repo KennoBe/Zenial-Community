@@ -1135,6 +1135,10 @@ local function stateName(v)
 end
 S.stateName = stateName
 local function groupHave(value)
+    -- Preferred classes behind the roles are shown separately (GroupFinderCatalog, C.SplitHave).
+    if type(value) == 'string' then
+        value = value:gsub(';w=[a-z%.]*$', '')
+    end
     if value == 'SOLO' or value == tr('Solo') then
         return tr('Solo')
     elseif value == 'UNASSIGNED' or value == tr('Rollen nicht zugewiesen') then

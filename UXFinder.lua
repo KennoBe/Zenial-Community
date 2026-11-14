@@ -486,6 +486,19 @@ local function describe(r, context)
             d.roleItems, d.roles = nil, paint('dim', tr('Group is full'))
         end
         d.note = g.note
+        -- Preferred classes lead the comment line, in their class colours.
+        local classes = C.WantedClasses(g)
+        if #classes > 0 then
+            local names = {}
+            for index, class in ipairs(classes) do
+                local hex = T.ClassColorHex(class)
+                local label = Z.Locale.Class(nil, class)
+                names[index] = hex and ('|cff' .. hex .. label .. '|r') or label
+            end
+            d.note = paint('dim', Z.T('Preferred: %s', '')) .. table.concat(names, ', ')
+                .. ((g.note or '') ~= '' and paint('dim', ' · ') .. '„' .. g.note .. '“' or '')
+            d.noteRaw = true
+        end
         d.click = function()
             U.OpenActivity(r.key)
         end
@@ -560,8 +573,8 @@ local function describe(r, context)
                 d.badge = Z.ScheduledGroups.StateLabel(carriedState)
                 d.tone = carriedState == 'CONFIRMED' and 'success' or carriedState == 'WAITLIST' and 'warning' or carriedState == 'DECLINED' and 'danger' or 'neutral'
                 d.meta = d.meta .. ' · ' .. tr('carried on, not yet confirmed')
-            elseif follow.pending then
-                d.badge, d.tone = tr(follow.pending.deposited and 'Left with a participant' or 'Request pending'), 'info'
+            elseif follow.pending and follow.pending.deposited then
+                d.badge, d.tone = tr('Left with a participant'), 'info'
             end
         end
         if state.withdraw then
@@ -987,7 +1000,47 @@ function U.OpenFinderCreate(activity, planned)
         return
     end
     U.OpenActivityCreator()
-    if not e or not U.creatorKind then
+    if not U.creatorKind then
+        return
+    end
+    if not e and not planned then
+        -- No instance chosen: straight to the form for the content of the open tab. The first step of the
+        -- creator (when, kind, template) stays one "Back" away.
+        if F.view == 'quests' then
+            U.creatorWhen:SetText('NOW')
+            U.creatorKind:SetText('QUEST')
+            U.ConfigureActivityCreator()
+            U.creatorGoal:SetText('Questing')
+            U.ContinueActivityCreator()
+            return
+        elseif F.view == 'other' then
+            U.creatorWhen:SetText('NOW')
+            U.creatorKind:SetText('CUSTOM')
+            U.ConfigureActivityCreator()
+            U.creatorFlow = true
+            U.OpenGroupEditor(own)
+            U.groupKind:SetText('CUSTOM')
+            U.GroupKind('CUSTOM', '')
+            return
+        end
+        -- The instance of this kind that fits the player's level best.
+        local list = C.List(({ raids = 'RAID', pvp = 'PVP' })[F.view] or 'DUNGEON')
+        local level = Z.me and Z.me.level
+        for _, entry in ipairs(list) do
+            if C.Fits(entry, level) then
+                e = entry
+            end
+        end
+        if not e and type(level) == 'number' then
+            for _, entry in ipairs(list) do
+                if not e and entry.min > level then
+                    e = entry
+                end
+            end
+        end
+        e = e or list[#list]
+    end
+    if not e then
         return
     end
     U.creatorWhen:SetText(planned and 'PLANNED' or 'NOW')
@@ -1015,6 +1068,10 @@ function U.OpenFinderCreate(activity, planned)
         U.AutofillGroupNeeds()
     end
     U.CaptureGroupDraft()
+    -- The optional part of the form opens only when something in it is set (GroupFormUI.lua).
+    if U.GroupForm and U.GroupForm.Reset then
+        U.GroupForm.Reset()
+    end
 end
 function U.OpenFinderJournal(activity)
     local ok, why = J.Open(activity)

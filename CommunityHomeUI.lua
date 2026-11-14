@@ -130,6 +130,12 @@ function U.RefreshActivityBoard()
                 local label,value=tr('Current party size')..': ',(party and party.total or tr('Unknown'))..' / '..e.size
                 local text=label..value..'\n'..needed..parts[1][2]..' · '..parts[2][2]..' · '..parts[3][2]
                 fact(text,pair(label,value)..'\n'..paint('dim',needed)..roleList(parts),measuredHeight(text,width,DETAIL_FACT_HEIGHT))
+                -- Preferred classes of the group (GroupFinderCatalog, behind the present roles).
+                local classes=Z.GroupFinderCatalog and Z.GroupFinderCatalog.WantedClasses(e)or{}
+                if #classes>0 then
+                    local names={};for i,class in ipairs(classes)do names[i]=Z.Locale.Class(nil,class)end
+                    local classLabel,classValue=tr('Preferred classes')..': ',table.concat(names,', ');fact(classLabel..classValue,pair(classLabel,classValue))
+                end
             elseif selected.kind=='EVENT'then
                 local party=Z.ActivityParty.Info(selected);local used=party and party.used or e.participants and Z.ScheduledGroups.Counts(e)or e.used;local roles,parts={},{}
                 local label,value=tr('Current party size')..': ',(party and party.total or tr('Unknown'))..' / '..(e.roleSlots.TANK+e.roleSlots.HEALER+e.roleSlots.DAMAGER)
@@ -407,6 +413,6 @@ function U.CreateCommunityHome(helpers)
         if order and order.key then U.craftOrderID=order.key;U.craftOrderFilter='all' end
         U.SetCraftView('orders')
     end);U.materialBackOrders:Hide()
-    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);if U.StyleGroupForm then U.StyleGroupForm()end;U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
+    U.CreateProfessionHistory(helpers);U.ApplyFormLayouts(helpers);if U.StyleGroupForm then U.StyleGroupForm()end;if U.StyleActivityForms then U.StyleActivityForms()end;U.CreateCategorySettings(helpers);U.CreateActivityDetails(helpers);U.CreateActivityArchive(helpers);U.CreateSocialDiary(helpers);U.CreateNotificationInbox(helpers);U.CreatePvPHelpPage(helpers);U.CreateResponsiveLayout(helpers)
 end
 return U

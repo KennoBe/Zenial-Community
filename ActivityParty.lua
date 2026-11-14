@@ -111,7 +111,10 @@ function P.SyncLive()
 end
 function P.Tick()
     local now=A.Clock();if now<(P.nextTick or 0)then return end;P.nextTick=now+1
-    if P.SyncLive()then Z.db.lfg[1].have=A.GroupRoles();L.Touch(Z.db);Z.Publish()end
+    if P.SyncLive()then
+        local C=Z.GroupFinderCatalog;local have=A.GroupRoles()
+        Z.db.lfg[1].have=C and C.JoinHave(have,C.WantedClasses(Z.db.lfg[1]))or have;L.Touch(Z.db);Z.Publish()
+    end
     for tok,r in pairs(P.receivers)do
         local connected=route(r.key);local e=current(r.kind,Z.me.key,r.id)
         if now-r.at>120 or not connected or connected.session~=r.session or not e then P.receivers[tok]=nil

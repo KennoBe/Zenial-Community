@@ -276,6 +276,60 @@ function C.SearchActivities(g)
     end
     return out
 end
+-- Preferred classes of a group. They travel behind the present roles in the record's `have` field
+-- ("TANK=1;w=ma.wr", lower case): clients before 6.2 read only the role counts there and skip the rest, so
+-- the record gets no new field. No class or every class means no preference.
+C.CLASSES = { 'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID' }
+local CLASS_CODE = { WARRIOR = 'wr', PALADIN = 'pa', HUNTER = 'hu', ROGUE = 'ro', PRIEST = 'pr', SHAMAN = 'sh', MAGE = 'ma', WARLOCK = 'wl', DRUID = 'dr' }
+local CODE_CLASS = {}
+for class, code in pairs(CLASS_CODE) do
+    CODE_CLASS[code] = class
+end
+-- Role part of a `have` value and the preferred classes in the order of C.CLASSES.
+function C.SplitHave(have)
+    if type(have) ~= 'string' then
+        return '', {}
+    end
+    local roles, codes = have:match('^(.-);w=([a-z%.]*)$')
+    if not roles then
+        return have, {}
+    end
+    local set, out = {}, {}
+    for code in codes:gmatch('[a-z]+') do
+        if CODE_CLASS[code] then
+            set[CODE_CLASS[code]] = true
+        end
+    end
+    for _, class in ipairs(C.CLASSES) do
+        if set[class] then
+            out[#out + 1] = class
+        end
+    end
+    return roles, out
+end
+function C.JoinHave(roles, classes)
+    local set, codes = {}, {}
+    for _, class in ipairs(type(classes) == 'table' and classes or {}) do
+        set[class] = true
+    end
+    for _, class in ipairs(C.CLASSES) do
+        if set[class] then
+            codes[#codes + 1] = CLASS_CODE[class]
+        end
+    end
+    roles = type(roles) == 'string' and roles or ''
+    if #codes == 0 or #codes == #C.CLASSES then
+        return roles
+    end
+    return roles .. ';w=' .. table.concat(codes, '.')
+end
+function C.WantedClasses(g)
+    if type(g) ~= 'table' or g.mode == 'LFG' then
+        return {}
+    end
+    local _, classes = C.SplitHave(g.have)
+    return classes
+end
 -- activities: one activity or a list; roles = { TANK = true, HEALER = false, DAMAGER = true }.
 -- An open group has to be closed first. Calling it again while searching replaces the search (same id).
 function C.StartSearch(activities, roles, note, minutes)

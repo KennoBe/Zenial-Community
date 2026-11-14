@@ -699,7 +699,10 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
         Z.CommunityMap.Refresh()
         if Z.ActivityParty and Z.ActivityParty.SyncLive()then L.Touch(Z.db);Z.Publish()end
-        if Z.db and Z.db.lfg[1] and Z.db.lfg[1].mode~="LFG" then local have=A.GroupRoles(); if Z.db.lfg[1].have~=have then Z.db.lfg[1].have=have; L.Touch(Z.db); Z.Publish() end end
+        if Z.db and Z.db.lfg[1] and Z.db.lfg[1].mode~="LFG" then local have=A.GroupRoles()
+            -- Preferred classes stay behind the roles (GroupFinderCatalog, C.JoinHave).
+            if Z.GroupFinderCatalog then have=Z.GroupFinderCatalog.JoinHave(have,Z.GroupFinderCatalog.WantedClasses(Z.db.lfg[1]))end
+            if Z.db.lfg[1].have~=have then Z.db.lfg[1].have=have; L.Touch(Z.db); Z.Publish() end end
         if Z.db then Z.ObserveFinderGroup()end
         if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end
         A.DiscoveryTick(true)

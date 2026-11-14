@@ -255,6 +255,9 @@ function S.createQuestsPage(f)
                 U.questFields.min:SetText(tostring(q.level))
                 U.questFields.max:SetText(tostring(q.level))
             end
+            if Z.Logic.Text(q.category, 64) then
+                U.questFields.zone:SetText(q.category)
+            end
             U.CaptureQuestDraft()
         end
     end)

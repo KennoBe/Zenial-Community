@@ -7,8 +7,9 @@ function U.AutofillGroupNeeds()
     if assigned~='TANK'and assigned~='HEALER'and assigned~='DAMAGER'and preferred then
         if preferred=='TANK'then tank=tank+1 elseif preferred=='HEALER'then heal=heal+1 else dd=dd+1 end
     end
-    -- Tanks and healers a group of this size usually takes (5: 1/1, 10: 2/2, 20: 2/4, 40: 4/8).
-    local needTank=size>=40 and 4 or size>=10 and 2 or 1;local needHeal=size>=40 and 8 or size>=20 and 4 or size>=10 and 2 or 1
+    -- Tanks and healers a group of this size usually takes (5: 1/1, 10: 2/2, 20: 2/4, 40: 4/8). PvP has no tanks.
+    local pvp=U.groupKind and U.groupKind:GetText()=='PVP'
+    local needTank=pvp and 0 or size>=40 and 4 or size>=10 and 2 or 1;local needHeal=size>=40 and 8 or size>=20 and 4 or size>=10 and 2 or 1
     local unknown=math.max(0,state.total-tank-heal-dd);local remaining=math.max(0,size-state.total);local wantedTank=math.min(remaining,math.max(0,needTank-tank));local wantedHeal=math.min(remaining-wantedTank,math.max(0,needHeal-heal));U.groupAutofilling=true;U.groupNeedsAuto=true
     U.groupFields.tank:SetText(tostring(wantedTank));U.groupFields.healer:SetText(tostring(wantedHeal))
     U.groupFields.dd:SetText(tostring(math.max(0,remaining-wantedTank-wantedHeal)));U.groupAutofilling=false

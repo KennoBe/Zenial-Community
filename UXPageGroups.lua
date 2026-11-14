@@ -269,7 +269,7 @@ function S.createGroupsPage(f)
             id = U.groupEditID,
             mode = 'LFM',
             activity = U.groupKind:GetText() == 'CUSTOM' and U.groupCustom:GetText() or U.groupActivity:GetText(),
-            have = A.GroupRoles(),
+            have = U.GroupForm and U.GroupForm.Have and U.GroupForm.Have() or A.GroupRoles(),
             start = U.groupEditID and Z.db.lfg[1].start or now,
             -- A new group stays open until its leader goes offline (GroupFinderCatalog: long end time, C.Resume);
             -- the running time field only applies where the finder modules are not loaded.
