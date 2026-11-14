@@ -130,7 +130,7 @@ function U.RefreshScheduledGroups()
     local people={};if own then
         if e.organizerRole~=''then people[#people+1]={text=Z.me.target..' · '..Z.Locale.Role(e.organizerRole)..' · '..tr('Organizer'),height=48}end
         local keys={};for key in pairs(e.participants)do keys[#keys+1]=key end;table.sort(keys)
-        for _,key in ipairs(keys)do local p=e.participants[key];local c=Z.db.contacts[key];people[#people+1]={selected=key==U.scheduledParticipant,text=(c and c.target or key)..' · '..Z.Locale.Role(p.role)..'\n'..S.StateLabel(p.state)..' · '..tr(S.ParticipantStatus(key)),height=56,click=function()U.scheduledParticipant=key;U.scheduledParticipantRevision=p.revision;U.RefreshScheduledGroups()end}end
+        for _,key in ipairs(keys)do local p=e.participants[key];local c=Z.db.contacts[key];people[#people+1]={selected=key==U.scheduledParticipant,text=(c and c.target or p.target or key)..' · '..Z.Locale.Role(p.role)..'\n'..S.StateLabel(p.state)..' · '..tr(S.ParticipantStatus(key))..(p.via and' · '..Z.T('Handed over by %s',Z.db.contacts[p.via]and Z.db.contacts[p.via].target or p.via)or''),height=56,click=function()U.scheduledParticipant=key;U.scheduledParticipantRevision=p.revision;U.RefreshScheduledGroups()end}end
         U.scheduledConfirm:SetEnabled(S.CanDecide(e.id,U.scheduledParticipant,'CONFIRMED',U.scheduledParticipantRevision)==true)
         U.scheduledWaitlist:SetEnabled(S.CanDecide(e.id,U.scheduledParticipant,'WAITLIST',U.scheduledParticipantRevision)==true)
         U.scheduledDecline:SetEnabled(S.CanDecide(e.id,U.scheduledParticipant,'DECLINED',U.scheduledParticipantRevision)==true)

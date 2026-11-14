@@ -23,7 +23,7 @@ if type(S) ~= 'table' or type(S.internal) ~= 'table' then
     return
 end
 local I = S.internal
-local R = { MAX_BOX = 40, MAX_DEPOSITS = 3, MAX_PROBES = 16, PROBE_EVERY = 120 }
+local R = { MAX_BOX = 40, MAX_DEPOSITS = 3, MAX_PROBES = 16, PROBE_EVERY = 120, MAX_HANDS = 3, MAX_TRIES = 20 }
 Z.ScheduledRelay = R
 local MAX = I.MAX
 local ACTIVE = { REQUESTED = true, CONFIRMED = true, WAITLIST = true }
@@ -47,6 +47,16 @@ local function targetOf(key)
     local c = Z.db.contacts[key]
     return c and c.target or nil
 end
+-- The organizer's character name: the contact, otherwise the one the public announcement of the event carries.
+local function ownerTargetOf(ownerKey, eventID)
+    local t = targetOf(ownerKey)
+    if t then
+        return t
+    end
+    local e = S.Get(ownerKey, eventID)
+    local o = e and e.ownerTarget
+    return o and L.Text(o, 49) and L.Identity(o) and o or nil
+end
 local function send(key, fields, priority, dedupe)
     local route, contact = I.currentRoute(key)
     if not route or not route.scheduledGroups then
@@ -69,14 +79,16 @@ local function cleanStatement(m)
         or not L.Int(m.content, 1, MAX) or not I.id(m.nonce) or not L.Text(m.proof or '', 32, true) or not L.Int(m.at, 1, 4102444799) then
         return nil
     end
-    return { seq = m.seq, action = m.action, role = m.role, content = m.content, nonce = m.nonce, proof = m.proof or '', at = m.at, done = m.done == true }
+    return { seq = m.seq, action = m.action, role = m.role, content = m.content, nonce = m.nonce, proof = m.proof or '', at = m.at, done = m.done == true,
+        tries = L.Int(m.tries, 0, 1000) and m.tries or 0 }
 end
 local function cleanDecision(d)
     if type(d) ~= 'table' or not STATES[d.state] or not I.validRole(d.role) or not L.Int(d.appRevision, 1, MAX) or not L.Int(d.ackSeq, 0, MAX)
         or not L.Int(d.at, 1, 4102444799) then
         return nil
     end
-    return { state = d.state, role = d.role, appRevision = d.appRevision, ackSeq = d.ackSeq, at = d.at, done = d.done == true }
+    return { state = d.state, role = d.role, appRevision = d.appRevision, ackSeq = d.ackSeq, at = d.at, done = d.done == true,
+        tries = L.Int(d.tries, 0, 1000) and d.tries or 0 }
 end
 function R.CleanBox(raw)
     if type(raw) ~= 'table' then
@@ -97,7 +109,7 @@ end
 function R.CleanRelayed(raw)
     local d = cleanDecision(raw)
     if d then
-        d.done = nil
+        d.done, d.tries = nil, nil
     end
     return d
 end
@@ -124,7 +136,7 @@ function R.CanApply(owner, eventID)
         return false
     end
     local e = S.Get(owner, eventID)
-    if not e or e.status ~= 'OPEN' or e.startsAt <= A.Now() then
+    if not e or e.status ~= 'OPEN' or e.startsAt <= A.Now() or not ownerTargetOf(owner, eventID) then
         return false
     end
     local r = S.Follow(owner, eventID)
@@ -153,7 +165,7 @@ function R.Apply(owner, eventID, role)
 end
 function R.CanWithdraw(owner, eventID)
     local r = S.Follow(owner, eventID)
-    if not r or not ownerOffline(owner) or r.seq >= MAX or r.snapshot.status ~= 'OPEN' or r.snapshot.endsAt <= A.Now() then
+    if not r or not ownerOffline(owner) or r.seq >= MAX or r.snapshot.status ~= 'OPEN' or r.snapshot.endsAt <= A.Now() or not ownerTargetOf(owner, eventID) then
         return false
     end
     local state = R.Effective(r)
@@ -243,10 +255,23 @@ local function receiveStatement(key, f)
         -- The organizer: accepted from a confirmed participant only, and treated like a direct operation.
         local e = S.GetOwned(f[6])
         local carrier = e and e.participants[key]
-        if not e or not carrier or carrier.state ~= 'CONFIRMED' or memberKey == key then
+        if memberKey == key then
             return false
         end
-        I.receiveAction(memberKey, { '1', '', '', f[6], m.content, m.seq, m.action, m.role, m.nonce })
+        if not e or not carrier or carrier.state ~= 'CONFIRMED' then
+            receipt(key, f[5], f[6], f[7], m.seq, 'N') -- refused for good: the carrier stops handing it over
+            return true
+        end
+        if not e.participants[memberKey] and m.action == 'WITHDRAW' and e.status == 'OPEN' and e.public and A.Now() < e.endsAt and m.content == e.contentRevision
+            and count(e.participants) < S.MAX_PARTICIPANTS then
+            -- A sign-off that arrives before the application it follows: remember it, so the older application
+            -- that arrives later through another carrier changes nothing (the direct way would answer STALE).
+            e.participants[memberKey] = { state = 'WITHDRAWN', role = m.role, seq = m.seq, revision = 1, lastNonce = m.nonce, lastAction = 'WITHDRAW',
+                lastContentRevision = m.content, ackEventRevision = 0, ackAppRevision = 1, reason = 'OK' }
+            I.changed()
+        else
+            I.receiveAction(memberKey, { '1', '', '', f[6], m.content, m.seq, m.action, m.role, m.nonce })
+        end
         local p = e.participants[memberKey]
         if p and p.seq == m.seq and p.lastNonce == m.nonce then
             p.via, p.relayedAt, p.target = key, m.at, f[7]
@@ -297,7 +322,7 @@ local function receiveDecision(key, f)
         local before = R.Effective(r)
         r.relayed = { state = d.state, role = d.role, appRevision = d.appRevision, ackSeq = d.ackSeq, at = d.at }
         if R.Effective(r) ~= before then
-            I.notify(r.snapshot, 'SCHEDULE_STATUS', ownerKey)
+            I.notify(r.snapshot, 'SCHEDULE_STATUS', ownerKey, 'relay', d.appRevision)
         end
         I.changed()
         receipt(key, f[5], f[6], f[7], d.appRevision, 'A')
@@ -351,7 +376,7 @@ local function receiveReceipt(key, f)
         return true
     end
     local row = r.box and r.box[memberKey]
-    if row and who == 'O' and key == ownerKey and row.m and row.m.seq <= number then
+    if row and (who == 'O' or who == 'N') and key == ownerKey and row.m and row.m.seq <= number then
         row.m.done = true
         I.changed()
     elseif row and who == 'A' and key == memberKey and row.d and row.d.appRevision <= number then
@@ -382,75 +407,150 @@ end
 
 -- Periodic work ----------------------------------------------------------------------------------------------
 R.probeAt, R.deposits, R.pushed, R.handAt = {}, {}, {}, {}
+R.probeFrom, R.tried = {}, {}
 local function probe(tok, r, clock)
-    local ownerTarget = targetOf(r.ownerKey)
+    local ownerTarget = ownerTargetOf(r.ownerKey, r.id)
     if not ownerTarget then
-        return
+        R.probeAt[tok] = clock + R.PROBE_EVERY
+        return false
     end
-    local sent = 0
+    local keys = {}
     for key in pairs(Z.db.contacts) do
-        if sent >= R.MAX_PROBES then
-            break
-        end
         if key ~= r.ownerKey and key ~= Z.me.key and not Z.db.blocked[key] then
             local route = I.currentRoute(key)
-            if route and route.scheduledGroups and send(key, { 'P', ownerTarget, r.id, math.max(r.appRevision or 0, r.relayed and r.relayed.appRevision or 0) }, 60,
-                'SCHEDULERELAYP:' .. tok .. ':' .. key) then
-                sent = sent + 1
+            if route and route.scheduledGroups then
+                keys[#keys + 1] = key
             end
         end
     end
+    table.sort(keys)
+    local sent, start, used = 0, #keys > 0 and (R.probeFrom[tok] or 0) % #keys or 0, 0
+    for i = 0, #keys - 1 do
+        if sent >= R.MAX_PROBES then
+            break
+        end
+        local key = keys[(start + i) % #keys + 1]
+        used = i + 1
+        if send(key, { 'P', ownerTarget, r.id, math.max(r.appRevision or 0, r.relayed and r.relayed.appRevision or 0) }, 60, 'SCHEDULERELAYP:' .. tok .. ':' .. key) then
+            sent = sent + 1
+        end
+    end
+    R.probeFrom[tok] = start + used -- the next round starts with the contacts this one did not reach
     R.probeAt[tok] = clock + R.PROBE_EVERY
+    return true
+end
+-- Forget bookkeeping of events that are over.
+local function sweep(now, clock)
+    local live, tokens = {}, {}
+    for tok, r in pairs(S.store.following) do
+        if r.snapshot.status == 'OPEN' and r.snapshot.endsAt > now then
+            live[#live + 1], live[#live + 2], tokens[tok] = tok, r.id, true
+        end
+    end
+    for _, e in pairs(S.store.owned) do
+        if e.status == 'OPEN' and e.endsAt > now then
+            live[#live + 1] = e.id
+        end
+    end
+    local function alive(mark)
+        for _, prefix in ipairs(live) do
+            if mark:sub(1, #prefix + 1) == prefix .. ':' then
+                return true
+            end
+        end
+        return false
+    end
+    for _, t in ipairs({ R.handAt, R.pushed, R.tried }) do
+        for mark in pairs(t) do
+            if not alive(mark) then
+                t[mark] = nil
+            end
+        end
+    end
+    for _, t in ipairs({ R.probeAt, R.deposits, R.probeFrom }) do
+        for tok in pairs(t) do
+            if not tokens[tok] then
+                t[tok] = nil
+            end
+        end
+    end
 end
 function R.Tick(now, clock)
     if clock < (R.nextTick or 0) or not S.store or not S.Enabled() then
         return
     end
     R.nextTick = clock + 5
-    local sent = 0
+    if clock >= (R.sweepAt or 0) then
+        R.sweepAt = clock + 300
+        sweep(now, clock)
+    end
+    local sent, probed = 0, false
     for tok, r in pairs(S.store.following) do
         local open = r.snapshot.status == 'OPEN' and r.snapshot.endsAt > now and not Z.db.blocked[r.ownerKey]
         -- Member: while the organizer is away, look for confirmed participants to leave the own operation with and
-        -- to ask for a decision.
-        if open and ownerOffline(r.ownerKey) and (r.pending or ACTIVE[R.Effective(r)]) and clock >= (R.probeAt[tok] or 0) then
-            probe(tok, r, clock)
-            if not r.pending then
-                R.probeAt[tok] = clock + 5 * R.PROBE_EVERY -- nothing to leave, only a decision to ask for
-            end
-        end
-        -- Confirmed participant: hand statements to the organizer and decisions to their members.
-        if r.box and sent < 6 then
-            local ownerTarget = targetOf(r.ownerKey)
-            for memberKey, row in pairs(r.box) do
-                local mark = tok .. ':' .. memberKey
-                if ownerTarget and clock >= (R.handAt[mark] or 0) and sent < 6 then
-                    if row.m and not row.m.done and send(r.ownerKey, statementFields(ownerTarget, r.id, row.target, row.m), 90) then
-                        R.handAt[mark] = clock + 30
-                        sent = sent + 1
-                    end
-                    if row.d and not row.d.done and send(memberKey, decisionFields(ownerTarget, r.id, row.target, row.d), 85) then
-                        R.handAt[mark] = clock + 30
-                        sent = sent + 1
-                    end
+        -- to ask for a decision. One event per pass: the send limiter refills slowly.
+        if not probed and open and ownerOffline(r.ownerKey) and (r.pending or ACTIVE[R.Effective(r)]) and clock >= (R.probeAt[tok] or 0) then
+            if probe(tok, r, clock) then
+                probed = true
+                if not r.pending then
+                    R.probeAt[tok] = clock + 5 * R.PROBE_EVERY -- nothing to leave, only a decision to ask for
                 end
             end
-            if now >= r.snapshot.endsAt then
+        end
+        -- Confirmed participant: hand statements to the organizer and decisions to their members, as long as the
+        -- own verified state is confirmed and the event is open.
+        if r.box then
+            if r.state ~= 'CONFIRMED' or r.snapshot.status ~= 'OPEN' or now >= r.snapshot.endsAt then
                 r.box = nil
                 I.changed()
+            elseif sent < R.MAX_HANDS then
+                local ownerTarget = targetOf(r.ownerKey)
+                for memberKey, row in pairs(r.box) do
+                    local mark = tok .. ':' .. memberKey
+                    if ownerTarget and clock >= (R.handAt[mark] or 0) and sent < R.MAX_HANDS then
+                        if row.m and not row.m.done then
+                            if (row.m.tries or 0) >= R.MAX_TRIES then
+                                row.m.done = true
+                                I.changed()
+                            elseif send(r.ownerKey, statementFields(ownerTarget, r.id, row.target, row.m), 90) then
+                                row.m.tries = (row.m.tries or 0) + 1
+                                R.handAt[mark] = clock + 30
+                                sent = sent + 1
+                            end
+                        end
+                        if row.d and not row.d.done and sent < R.MAX_HANDS then
+                            if (row.d.tries or 0) >= R.MAX_TRIES then
+                                row.d.done = true
+                                I.changed()
+                            elseif send(memberKey, decisionFields(ownerTarget, r.id, row.target, row.d), 85) then
+                                row.d.tries = (row.d.tries or 0) + 1
+                                R.handAt[mark] = clock + 30
+                                sent = sent + 1
+                            end
+                        end
+                    end
+                end
             end
         end
     end
     -- Organizer: leave decisions for members who cannot be reached with the confirmed participants who can.
     for _, e in pairs(S.store.owned) do
-        if e.status == 'OPEN' and e.public and e.endsAt > now and sent < 6 then
+        if e.status == 'OPEN' and e.public and e.endsAt > now and sent < R.MAX_HANDS then
             for memberKey, p in pairs(e.participants) do
                 local memberTarget = targetOf(memberKey) or p.target
                 if memberTarget and STATES[p.state] and I.validRole(p.role) and p.revision > (p.ackAppRevision or 0) and not I.currentRoute(memberKey) then
                     for carrierKey, carrier in pairs(e.participants) do
                         local mark = e.id .. ':' .. memberKey .. ':' .. carrierKey
-                        if carrierKey ~= memberKey and carrier.state == 'CONFIRMED' and (R.pushed[mark] or 0) < p.revision and clock >= (R.handAt[mark] or 0) and sent < 6 then
+                        local tried = R.tried[mark]
+                        if not tried or tried.revision ~= p.revision then
+                            tried = { revision = p.revision, n = 0 }
+                            R.tried[mark] = tried
+                        end
+                        if carrierKey ~= memberKey and carrier.state == 'CONFIRMED' and (R.pushed[mark] or 0) < p.revision and tried.n < R.MAX_TRIES
+                            and clock >= (R.handAt[mark] or 0) and sent < R.MAX_HANDS then
                             local d = { state = p.state, role = p.role, appRevision = p.revision, ackSeq = p.seq or 0, at = now }
                             if send(carrierKey, decisionFields(Z.me.target, e.id, memberTarget, d), 85) then
+                                tried.n = tried.n + 1
                                 R.handAt[mark] = clock + 60
                                 sent = sent + 1
                             end

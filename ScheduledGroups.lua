@@ -304,9 +304,9 @@ local function ensureFollow(e)
     local key=token(e.ownerKey,e.id);local r=S.store.following[key]
     if not r then if count(S.store.following)>=S.MAX_FOLLOWING then return nil end;r={ownerKey=e.ownerKey,id=e.id,snapshot=snapshot(e),state='NONE',role='',seq=0,operationNonce='',acceptedSeq=0,authorityRevision=0,appRevision=0,updatedAt=A.Now(),delivery='unknown'};S.store.following[key]=r end;return r
 end
-local function notify(e,code,peer,source)
+local function notify(e,code,peer,source,version)
     local c=source and Z.db.contacts[source]
-    if Z.Notifications and Z.Notifications.store then Z.Notifications.Push('groups','scheduled','schedule:'..e.ownerKey..':'..e.id..':'..(source or code),e.revision,code,peer or e.ownerKey,e.id,e.activity,c and c.target or nil)end
+    if Z.Notifications and Z.Notifications.store then Z.Notifications.Push('groups','scheduled','schedule:'..e.ownerKey..':'..e.id..':'..(source or code),version or e.revision,code,peer or e.ownerKey,e.id,e.activity,c and c.target or nil)end
 end
 function S.OnConnected(route)
     if not S.store or not Z.db.consent then return end
@@ -411,7 +411,7 @@ local function receiveAction(key,f)
     if not p and f[7]=='WITHDRAW'then sendStatus(e,key,f[9],'STALE');return true end
     local ok=bump(e,false);if not ok then return false end
     p=p or{revision=0,ackEventRevision=0,ackAppRevision=0};e.participants[key]=p
-    p.state=f[7]=='APPLY'and'REQUESTED'or'WITHDRAWN';p.role=f[8];p.seq=seq;p.revision=math.min(MAX,p.revision+1);p.lastNonce=f[9];p.lastAction=f[7];p.lastContentRevision=content;p.reason='OK'
+    p.state=f[7]=='APPLY'and'REQUESTED'or'WITHDRAWN';p.role=f[8];p.seq=seq;p.revision=math.min(MAX,p.revision+1);p.lastNonce=f[9];p.lastAction=f[7];p.lastContentRevision=content;p.reason='OK';p.via=nil;p.relayedAt=nil
     sendStatus(e,key,f[9]);local tok=token(key,e.id);S.pushAt[tok]=A.Clock()+20;S.pushAttempts[tok]=1;notify(e,'SCHEDULE_APPLICATION',Z.me.key,key);return true
 end
 local function receiveStatus(key,route,f)
@@ -483,8 +483,9 @@ end
 local function reminders()
     local now=A.Now();local examined=0
     for _,e in ipairs(S.List(true))do
-        local following=S.Follow(e.ownerKey,e.id);local eligible=e.ownerKey==Z.me.key or following and following.state=='CONFIRMED'and not following.pending
-            or following and Z.ScheduledRelay and Z.ScheduledRelay.Effective(following)=='CONFIRMED'
+        local following=S.Follow(e.ownerKey,e.id);local eligible
+        if Z.ScheduledRelay then local st,_,carried=Z.ScheduledRelay.Effective(following);eligible=e.ownerKey==Z.me.key or st=='CONFIRMED'and(carried or not following.pending) -- an open sign-off ends the reminders
+        else eligible=e.ownerKey==Z.me.key or following and following.state=='CONFIRMED'and not following.pending end
         if eligible and e.status=='OPEN'then
             local tok=token(e.ownerKey,e.id);local mark=S.store.reminded[tok];if not mark or mark.contentRevision~=e.contentRevision then mark={contentRevision=e.contentRevision,stage=0};S.store.reminded[tok]=mark end
             local delta=e.startsAt-now;local stage=delta<=0 and 3 or delta<=600 and 2 or delta<=1800 and 1 or 0

@@ -220,7 +220,7 @@ function U.RefreshActivityDetails()
     local source=r.kind=='EVENT'and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e.responses or Z.db.interests[r.id]
     local people={};local keys={};for key in pairs(source or{})do keys[#keys+1]=key end;table.sort(keys)
     for _,key in ipairs(keys)do local p=source[key];local who=key;local c=Z.db.contacts[key]
-        people[#people+1]={selected=key==U.activityParticipantKey,text=(c and c.target or key)..' · '..(r.kind=='EVENT'and S.StateLabel(p.state)or Z.Locale.State(p.state))..'\n'..(p.role and Z.Locale.Role(p.role)or''),height=44,click=function()
+        people[#people+1]={selected=key==U.activityParticipantKey,text=(c and c.target or r.kind=='EVENT'and p.target or key)..' · '..(r.kind=='EVENT'and S.StateLabel(p.state)or Z.Locale.State(p.state))..(r.kind=='EVENT'and p.via and' · '..Z.T('Handed over by %s',Z.db.contacts[p.via]and Z.db.contacts[p.via].target or p.via)or'')..'\n'..(p.role and Z.Locale.Role(p.role)or''),height=44,click=function()
             U.SelectActivityParticipant(who)
         end}
     end
