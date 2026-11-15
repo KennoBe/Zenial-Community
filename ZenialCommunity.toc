@@ -67,7 +67,6 @@ CompanionPixel.lua
 CompanionVitals.lua
 CompanionQuestAreas.lua
 DeckBindings.lua
-Bindings.xml
 Theme.lua
 ThemeTokens.lua
 ThemeCommunity.lua
