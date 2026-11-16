@@ -541,6 +541,7 @@ local function initializeGameplayModules(d)
     if H then H.Initialize(ZenialCommunityDB,Z.me)end
     Z.ExpireFinder(A.Now())
     if Z.PvPHelp then Z.PvPHelp.Initialize(ZenialCommunityDB,Z.storageKey)end
+    if Z.Rivalry then Z.Rivalry.Initialize()end
 end
 
 -- Step 6: directory, transport, mesh, map and scheduled-group modules.

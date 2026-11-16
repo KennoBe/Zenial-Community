@@ -74,10 +74,10 @@ end
 -- Name, class, race and level of one player GUID; nil for whatever cannot be read.
 local function resolve(guid,eventName)
     local out={name=eventName}
-    local className,classFile,raceName,_,_,name,realm=nil,nil,nil,nil,nil,nil,nil
+    local className,classFile,raceName,raceFile,_,name,realm=nil,nil,nil,nil,nil,nil,nil
     if type(GetPlayerInfoByGUID)=="function"then
         local ok,a,b,c,d,e,f,g=pcall(GetPlayerInfoByGUID,guid)
-        if ok then className,classFile,raceName,name,realm=public(a),public(b),public(c),public(f),public(g)end
+        if ok then className,classFile,raceName,raceFile,name,realm=public(a),public(b),public(c),public(d),public(f),public(g)end
     end
     if not out.name then
         name=text(name,64);realm=text(realm,48)
@@ -85,6 +85,8 @@ local function resolve(guid,eventName)
     end
     out.classFile=type(classFile)=="string"and #classFile<=16 and classFile:match("^[A-Z_]+$")and classFile or nil
     out.race=text(raceName,24)
+    -- Language-neutral race token; only the private rivalry history keeps it (PvPHelp copies known fields only).
+    out.raceFile=type(raceFile)=="string"and #raceFile<=24 and raceFile:match("^%a+$")and raceFile or nil
     local level
     if type(UnitTokenFromGUID)=="function"then
         local ok,unit=pcall(UnitTokenFromGUID,guid);unit=ok and public(unit)or nil
@@ -94,6 +96,7 @@ local function resolve(guid,eventName)
     if not out.name then return nil end
     return out
 end
+D.Resolve=resolve
 
 local function signature(e)
     if type(e)~="table"then return nil end
@@ -105,15 +108,21 @@ local function signature(e)
 end
 
 -- Builds the death record from the Recap events (nil: no readable recap -> unknown, not confirmed).
-function D.Evaluate(events,snapshot,myGUID)
+-- Fatal blow and the distinct player attackers of one recap, fatal blow first (shared with the rivalry history).
+function D.Attackers(events,myGUID)
     local fatal=type(events)=="table"and events[1]or nil
     local c=D.Classify(fatal,myGUID)
-    if c.cause~="player"then return nil,c.cause end
     local order,seen={},{}
+    if c.cause~="player"then return c,order end
     local function add(class)
         if class.cause=="player"and not class.pet and guidKind(class.guid)=="Player"and not seen[class.guid]then seen[class.guid]=true;order[#order+1]=class end
     end
     for i=1,math.min(#events,D.MAX_EVENTS)do add(i==1 and c or D.Classify(events[i],myGUID))end
+    return c,order
+end
+function D.Evaluate(events,snapshot,myGUID)
+    local c,order=D.Attackers(events,myGUID)
+    if c.cause~="player"then return nil,c.cause end
     local death={id=snapshot.at.."."..snapshot.serial,at=snapshot.at,cause="player",confirmed=true,
         mapID=snapshot.mapID,area=snapshot.area,subzone=snapshot.subzone,hasPos=snapshot.hasPos,x=snapshot.x,y=snapshot.y,layerID=snapshot.layerID,
         attackers={},minAttackers=math.max(1,#order),attackersComplete=false}
@@ -170,8 +179,11 @@ function D.Tick()
             return
         end
         if store then store.recapSig=sig end
+        local myGUID=public(A.Call(UnitGUID,"player"))
+        -- The private rivalry history also keeps deaths in battlegrounds; its errors never reach the help rules.
+        if Z.Rivalry then pcall(Z.Rivalry.OnRecapDeath,events,p.snapshot,myGUID)end
         if p.ignore then D.last={cause="ignored"};return end
-        local death,cause=D.Evaluate(events,p.snapshot,public(A.Call(UnitGUID,"player")))
+        local death,cause=D.Evaluate(events,p.snapshot,myGUID)
         D.last={cause=cause,death=death}
         if death and Z.PvPHelp then Z.PvPHelp.RecordDeath(death)end
     end)
