@@ -3,7 +3,7 @@ local function tr(value)return Z.T and Z.T(value)or value end
 local P={jobs={},deathArmed=false};Z.PvPHelp=P
 local CALL_LIFETIME,DEATH_WINDOW,CALL_COOLDOWN=600,3600,600
 P.HISTORY_WINDOW,P.MAX_HISTORY=7200,100
-P.DEATH_MARK_WINDOW=1800
+P.DEATH_MARK_WINDOW=600
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local function validID(v)return L.Text(v,32)and v:match("^[%d%.]+$")end
