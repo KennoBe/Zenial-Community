@@ -25,7 +25,7 @@ local KIND_TOTAL={K="kills",D="deaths",A="assists",W="duelWins",L="duelLosses"}
 local ENEMY_UNITS={"target","focus","mouseover"}
 local RACE_FACTION={Human="Alliance",Dwarf="Alliance",NightElf="Alliance",Gnome="Alliance",Draenei="Alliance",Worgen="Alliance",
     Orc="Horde",Scourge="Horde",Tauren="Horde",Troll="Horde",BloodElf="Horde",Goblin="Horde"}
-local DEFAULTS={banner=true,kills=true,deaths=true,assists=true,duels=true,animation=true,sound=true,style="standard",scale=1,duration=4}
+local DEFAULTS={banner=true,kills=true,deaths=true,assists=true,duels=true,animation=true,sound=true,tooltip=true,style="standard",scale=1,duration=4}
 local STYLES={standard=true,compact=true}
 R.DEFAULTS=DEFAULTS
 
@@ -507,6 +507,37 @@ local function registerEvents()
     end)
 end
 
+-- Meeting a known opponent again: one line in the unit tooltip with the record so far.
+-- Returns the line and the marker (nemesis or rival), nil for players without a shared history.
+function R.TooltipText(unit)
+    if not R.char or not R.Settings().tooltip or A.Call(UnitIsPlayer,unit)~=true then return nil end
+    local _,full=A.UnitIdentity(unit)
+    local p,key=R.Lookup(A.Call(UnitGUID,unit),full or A.Call(UnitName,unit))
+    if not p or #p.events==0 then return nil end
+    local line=Z.T("Kills %d",p.kills).." · "..Z.T("Deaths %d",p.deaths).." · "..Z.T("Assists %d",p.assists)
+    if p.duelWins+p.duelLosses>0 then line=line.." · "..Z.T("Duels %d : %d",p.duelWins,p.duelLosses)end
+    local tag=nemesisOf(R.char)==key and Z.T("Nemesis")or p.kills+p.deaths>=R.RIVAL_FIGHTS and Z.T("Rival")or nil
+    return"Rivalry: "..line,tag
+end
+local function onTooltip(tooltip)
+    if type(tooltip)~="table"or type(tooltip.GetUnit)~="function"or type(tooltip.AddLine)~="function"then return end
+    if type(tooltip.IsForbidden)=="function"and tooltip:IsForbidden()then return end
+    local _,unit=A.Call(tooltip.GetUnit,tooltip);if type(unit)~="string"then return end
+    local line,tag=R.TooltipText(unit);if not line then return end
+    local r,g,b=1,1,1
+    if Z.Theme and Z.Theme.PaletteColor then r,g,b=Z.Theme.PaletteColor(tag and"goldBright"or"goldText")end
+    tooltip:AddLine(tag and(line.."  ·  "..tag)or line,r,g,b)
+end
+local function registerTooltip()
+    if R.tooltipHooked then return end
+    local processor,kinds=TooltipDataProcessor,Enum and Enum.TooltipDataType
+    if type(processor)~="table"or type(processor.AddTooltipPostCall)~="function"or type(kinds)~="table"or kinds.Unit==nil then return end
+    R.tooltipHooked=pcall(processor.AddTooltipPostCall,kinds.Unit,function(tooltip)
+        local ok,err=pcall(onTooltip,tooltip)
+        if not ok then R.lastError=err end
+    end)
+end
+
 function R.Initialize()
     R.char,R.store,R.readOnly=nil,nil,false
     R.casts,R.engaged,R.engagedGuid,R.pending,R.settled={},{},{},{},{}
@@ -520,7 +551,7 @@ function R.Initialize()
     if type(store.zones)~="table"then store.zones={}end
     if type(store.characters)~="table"then store.characters={}end
     R.store=store;R.char=adoptCharacter(store)
-    invalidate();registerEvents()
+    invalidate();registerEvents();registerTooltip()
     return true
 end
 function R.Enabled()return R.char~=nil end
