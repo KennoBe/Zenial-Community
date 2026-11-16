@@ -28,13 +28,14 @@ local MAIN_TAB_NAMES = {
     tr('Start'),
     tr('Activities'),
     tr('Settings'),
-    tr('PvP'),
+    tr('PvP Help'),
+    tr('Rivalry'),
 }
 S.MAIN_TAB_NAMES = MAIN_TAB_NAMES
 local NAV_ICONS = T and T.assets and T.assets.icons or {}
 S.NAV_ICONS = NAV_ICONS
 -- Sidebar icons are names of the Community icon atlas (T.iconCells); list rows keep NAV_ICONS.
-local MAIN_TAB_ICONS = { 'members', 'craft', 'activities', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'pvp' }
+local MAIN_TAB_ICONS = { 'members', 'craft', 'activities', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'pvp', 'history' }
 S.MAIN_TAB_ICONS = MAIN_TAB_ICONS
 -- One line under the page title in the top bar, per main page.
 local PAGE_SUBTITLES = {
@@ -49,7 +50,8 @@ local PAGE_SUBTITLES = {
     'Who is online and what is open in the community right now',
     'Groups, events and PvP help from the community',
     'Display, privacy, tools and data',
-    'PvP help and your record against other players',
+    'Call for help when you are attacked, or help others',
+    'Kills, deaths and duels against other players',
 }
 S.PAGE_SUBTITLES = PAGE_SUBTITLES
 local PVP, DUNGEONS, RAIDS = Z.GroupFinder.Activities.PVP, Z.GroupFinder.Activities.DUNGEON, Z.GroupFinder.Activities.RAID

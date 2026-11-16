@@ -153,7 +153,7 @@ function U.ApplyResponsiveLayout(activePage)
     if U.LayoutQuestsVisual and(not activePage or activePage==U.pages[4])then U.LayoutQuestsVisual()end
     if U.LayoutTradeVisual and(not activePage or activePage==U.pages[5])then U.LayoutTradeVisual()end
     if U.LayoutCraftVisual and(not activePage or activePage==U.pages[2])then U.LayoutCraftVisual()end
-    if U.LayoutRivalry and(not activePage or activePage==U.pages[12])then U.LayoutRivalry()end
+    if U.LayoutRivalry and(not activePage or activePage==U.pages[13])then U.LayoutRivalry()end
     if U.LayoutSettings and(not activePage or activePage==U.pages[11])then U.LayoutSettings()end
     U.responsiveUpdating=false
 end

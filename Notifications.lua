@@ -109,9 +109,9 @@ function N.Read(token)
 end
 function N.ReadVisible(area,view,token)
     local U=Z.UI
-    -- PvP help lives on page 12 ("PvP"), its notifications still belong to the groups area.
+    -- PvP help lives on page 12, its notifications still belong to the groups area.
     local pvpHelp=area=="groups"and view=="pvp"
-    if U and U.frame and U.frame:IsShown()and(pvpHelp and U.page==12 and U.pvpPart=="help"or not pvpHelp and U.IsRoute(area))then
+    if U and U.frame and U.frame:IsShown()and(pvpHelp and U.page==12 or not pvpHelp and U.IsRoute(area))then
         local current=pvpHelp and"pvp"or area=="craft"and U.craftView or area=="trade"and U.tradeView or area=="groups"and U.groupView or U.questView
         if current==view and(view~="pvp"or U.pvpUnified and U.pvpHelpers and U.pvpHelpers:IsShown()or not U.pvpUnified and U.pvpView=="mine")then N.Read(token)end
     end

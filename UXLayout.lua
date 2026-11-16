@@ -9,9 +9,12 @@ local refreshOffers, refreshTradeRules, refreshTradeManage = S.refreshOffers, S.
 local refreshCharacters = S.refreshCharacters
 
 -- Sidebar order from the top: numbers are page indices, 'group' starts the next labelled group
--- (U.navGroupLabels: Play, Community, Economy, Account). Settings and the optional Addon Manager sit
+-- (U.navGroupLabels: Play, Community, Economy, PvP, Account). Settings and the optional Addon Manager sit
 -- at the bottom of the sidebar.
-local NAV_ORDER = { 9, 'group', 10, 4, 12, 'group', 1, 'group', 2, 5, 'group', 6 }
+local NAV_ORDER = { 9, 'group', 10, 4, 'group', 1, 'group', 2, 5, 'group', 12, 13, 'group', 6 }
+-- Spacing taken away in a low window, from normal to tightest: gap between entries, space above a group
+-- label, label to its first entry.
+local NAV_SQUEEZE = { { 0, 0, 0 }, { 1, 2, 1 }, { 2, 4, 2 }, { 2, 5, 3 }, { 2, 7, 4 } }
 function U.LayoutMainTabs()
     if not U.tabs or not U.frame then
         return
@@ -21,33 +24,47 @@ function U.LayoutMainTabs()
     local frameWidth = U.sidebarFrameWidth or (width + 16)
     local x = math.floor((frameWidth - width) / 2)
     local entry = M.navEntry or 36
-    local pitch = entry + (M.navGap or 2)
-    local y = -((M.brand or 64) + 8)
-    local positions = {}
-    local group = 0
-    for _, item in ipairs(NAV_ORDER) do
-        if item == 'group' then
-            group = group + 1
-            y = y - 10
-            local caption = U.navGroupLabels and U.navGroupLabels[group]
-            if caption then
-                caption:ClearAllPoints()
-                caption:SetPoint('TOPLEFT', x + 12, y)
-                caption:SetWidth(width - 12)
-            end
-            y = y - (M.navGroupGap or 18)
-        else
-            positions[item] = y
-            y = y - pitch
-        end
-    end
     local height = U.sidebar and U.sidebar:GetHeight() or (U.frame:GetHeight() - 2)
     local bottom = 34
     -- Availability is based on installed providers, never leftover SavedVariables.
-    if (U.addonAvailableCount or 0) > 0 and (not Z.ui or Z.ui.showAddonManager ~= false) then
-        positions[ADDON_PAGE] = -(height - bottom - entry - pitch)
+    local addons = (U.addonAvailableCount or 0) > 0 and (not Z.ui or Z.ui.showAddonManager ~= false)
+    local positions, captions
+    -- The first spacing that leaves 12 px between the groups and the entries at the foot is used.
+    for _, squeeze in ipairs(NAV_SQUEEZE) do
+        local gap = math.max(0, (M.navGap or 2) - squeeze[1])
+        local pitch = entry + gap
+        local y = -((M.brand or 64) + 8)
+        local group = 0
+        positions, captions = {}, {}
+        for _, item in ipairs(NAV_ORDER) do
+            if item == 'group' then
+                group = group + 1
+                y = y - (10 - squeeze[2])
+                captions[group] = y
+                y = y - ((M.navGroupGap or 18) - squeeze[3])
+            else
+                positions[item] = y
+                y = y - pitch
+            end
+        end
+        local foot = -(height - bottom - entry)
+        positions[11] = foot
+        if addons then
+            foot = foot + pitch
+            positions[ADDON_PAGE] = foot
+        end
+        if y + gap >= foot + 12 then
+            break
+        end
     end
-    positions[11] = -(height - bottom - entry)
+    for group, y in ipairs(captions) do
+        local caption = U.navGroupLabels and U.navGroupLabels[group]
+        if caption then
+            caption:ClearAllPoints()
+            caption:SetPoint('TOPLEFT', x + 12, y)
+            caption:SetWidth(width - 12)
+        end
+    end
     -- Background refreshes run while the mouse may still be held down.
     -- Hiding and showing an unchanged button cancels its native release-click.
     for index, tab in ipairs(U.tabs) do
@@ -312,7 +329,7 @@ function U.FinishResize()
 end
 
 local PAGE_BY_KEY =
-    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11, pvp = 12 }
+    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11, pvp = 12, rivalry = 13 }
 function S.applyRoute(route)
     local section, subview = route.legacy.section, route.legacy.subview
     U.Page(route.page)
@@ -333,8 +350,8 @@ function S.applyRoute(route)
         U.SetSettingsView(subview)
     elseif section == 'addons' then
         U.SetAddonView(route.selection or U.addonIndex or 1)
-    elseif section == 'pvp' then
-        U.SetPvPTab(route.view, route.selection)
+    elseif section == 'rivalry' then
+        U.SetRivalryView(route.view, route.selection)
     end
     if Z.UIState then
         Z.UIState.Route(section, subview)
@@ -383,7 +400,7 @@ function U.Page(n)
         selectNav(U.tabs[i], mainTabSelected(i, n))
     end
     updateNavPath()
-    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings', 'pvp' })[n]
+    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings', 'pvp', 'rivalry' })[n]
     if key and Z.UIState then
         Z.UIState.Route(key)
     end
@@ -401,7 +418,7 @@ function U.Page(n)
     end
 end
 local function timedRoute()
-    return table.concat({ U.page or 0, U.craftView or '', U.groupView or '', U.questView or '', U.tradeView or '', U.pvpView or '', U.pvpPart or '' }, ':')
+    return table.concat({ U.page or 0, U.craftView or '', U.groupView or '', U.questView or '', U.tradeView or '', U.pvpView or '' }, ':')
 end
 local function scheduleTimedRefresh()
     local clock, now = A.Clock(), A.Now()
@@ -445,7 +462,7 @@ local function scheduleTimedRefresh()
                 at(row.at + 86401)
             end
         end
-    elseif U.page == 12 and U.pvpPart == 'help' and Z.PvPHelp and Z.PvPHelp.store then
+    elseif U.page == 12 and Z.PvPHelp and Z.PvPHelp.store then
         local store = Z.PvPHelp.store
         expiry(store.own, true)
         at(store.lastCallAt + 600)
@@ -647,8 +664,11 @@ function U.Refresh(all, revisionDriven)
             U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
         end
     end
-    if U.page == 12 and U.RefreshPvPTab then
-        U.RefreshPvPTab()
+    if U.page == 12 and U.RefreshPvPPage then
+        U.RefreshPvPPage()
+    end
+    if U.page == 13 and U.RefreshRivalryPage then
+        U.RefreshRivalryPage()
     end
     if all or U.page == HISTORY_PAGE then
         U.RefreshHistory()

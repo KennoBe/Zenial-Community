@@ -40,7 +40,7 @@ local ROUTES = {
     ['groups/mine'] = r('activities', 'mine', 3, 'groups', 'mine'),
     ['groups/outgoing'] = r('activities', 'mine', 3, 'groups', 'outgoing'),
     ['groups/scheduled'] = r('activities', 'planned', 3, 'groups', 'scheduled'),
-    ['groups/pvp'] = r('pvp', 'help', 12, 'pvp', 'help'),
+    ['groups/pvp'] = r('pvp', 'help', 12, 'pvp', nil),
     ['quests'] = r('quests', 'shared', 4, 'quests', nil),
     ['quests/shared'] = r('quests', 'shared', 4, 'quests', 'shared'),
     ['quests/questgroups'] = r('quests', 'questgroups', 4, 'quests', 'questgroups'),
@@ -78,14 +78,14 @@ local ROUTES = {
     ['addons'] = r('settings', 'addons', ADDON_PAGE, 'addons', nil, 'addon'),
     ['history'] = r('settings', nil, 7, 'history', nil),
     ['settings/rivalry'] = r('settings', 'rivalry', 11, 'settings', 'rivalry'),
-    -- Page 12 "PvP": PvP help and Rivalry. The old names stay as aliases.
-    ['pvp'] = r('pvp', nil, 12, 'pvp', nil, 'opponent'),
-    ['pvp/help'] = r('pvp', 'help', 12, 'pvp', 'help'),
-    ['pvp/rivalry'] = r('pvp', 'rivalry', 12, 'pvp', 'rivalry', 'opponent'),
-    ['pvp/rivals'] = r('pvp', 'rivals', 12, 'pvp', 'rivals', 'opponent'),
-    ['rivalry'] = r('pvp', 'rivalry', 12, 'pvp', 'rivalry', 'opponent'),
-    ['rivalry/overview'] = r('pvp', 'rivalry', 12, 'pvp', 'rivalry', 'opponent'),
-    ['rivalry/rivals'] = r('pvp', 'rivals', 12, 'pvp', 'rivals', 'opponent'),
+    -- Page 12 "PvP Help" and page 13 "Rivalry"; pvp/rivalry and pvp/rivals stay as aliases.
+    ['pvp'] = r('pvp', 'help', 12, 'pvp', nil),
+    ['pvp/help'] = r('pvp', 'help', 12, 'pvp', nil),
+    ['pvp/rivalry'] = r('rivalry', 'overview', 13, 'rivalry', 'overview', 'opponent'),
+    ['pvp/rivals'] = r('rivalry', 'rivals', 13, 'rivalry', 'rivals', 'opponent'),
+    ['rivalry'] = r('rivalry', 'overview', 13, 'rivalry', 'overview', 'opponent'),
+    ['rivalry/overview'] = r('rivalry', 'overview', 13, 'rivalry', 'overview', 'opponent'),
+    ['rivalry/rivals'] = r('rivalry', 'rivals', 13, 'rivalry', 'rivals', 'opponent'),
 }
 local KNOWN_SECTIONS = {}
 for key in pairs(ROUTES) do
@@ -256,7 +256,7 @@ function N.Open(route, opts)
             return false, 'target-unavailable'
         end
     end
-    if route.selection and route.page == 12 and not (U.RivalryCanSelect and U.RivalryCanSelect(route.selection)) then
+    if route.selection and route.page == 13 and not (U.RivalryCanSelect and U.RivalryCanSelect(route.selection)) then
         return false, 'target-unavailable'
     end
     if not (opts and opts.skipGuard) and N.UnsavedInput() then

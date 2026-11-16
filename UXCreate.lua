@@ -169,7 +169,7 @@ function U.Create()
         U.brandLine:SetPoint('TOPRIGHT', -1, -T.metrics.brand)
         T.Tint(U.brandLine, 'SetColorTexture', 'lineSoft')
         U.navGroupLabels = {}
-        for index, name in ipairs({ 'Play', 'Community', 'Economy', 'Account' }) do
+        for index, name in ipairs({ 'Play', 'Community', 'Economy', 'PvP', 'Account' }) do
             local group = K.Text(U.sidebar, K.Upper(tr(name)), 'overline', 'muted')
             group:SetHeight(12)
             if group.SetWordWrap then
@@ -246,7 +246,7 @@ function U.Create()
         p:SetSize(856, 500)
         p:Hide()
         U.pages[i] = p
-        local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'pvp' }
+        local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'pvp', 'rivalry' }
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
             if U.Navigation.UnsavedInput() then
                 U.Navigation.Fail('unsaved-input')
