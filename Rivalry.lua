@@ -531,11 +531,43 @@ local function onSystemMessage(text)
     end
 end
 
+-- Cross-check for the in-game test, never used for counting. The client's own recap window marks the
+-- first entry as the killing blow, and so does the detection. Here the first entry carrying overkill is
+-- compared with it and the outcome goes to the session diagnostics (/zenial debug):
+--   rivalry:recap-overkill-first     the overkill entry is the first entry (or names the same source)
+--   rivalry:recap-overkill-mismatch  the overkill entry names another source than the first entry
+--   rivalry:recap-overkill-none      no entry carries overkill
+-- The line holds positions and source kinds only, no names and no GUIDs.
+local function recapCheck(events,fatal,myGUID)
+    local P=Z.PvPDeath;local result={index=0,same=true,entries=#events}
+    for i=1,math.min(#events,P.MAX_EVENTS)do
+        local e=events[i]
+        local over=type(e)=="table"and A.PublicTable(e)and public(e.overkill)or nil
+        if type(over)=="number"and over>0 then
+            result.index=i
+            if i>1 then
+                local c=P.Classify(e,myGUID)
+                result.cause=c.cause..(c.pet and"/pet"or"")
+                result.same=c.guid~=nil and c.guid==fatal.guid
+            end
+            break
+        end
+    end
+    R.recapCheck=result
+    if not Z.Diagnostics then return end
+    if result.index==0 then Z.Diagnostics.Record("rivalry:recap-overkill-none","entries="..result.entries)
+    elseif result.same then Z.Diagnostics.Record("rivalry:recap-overkill-first","index="..result.index,"entries="..result.entries)
+    else
+        Z.Diagnostics.Record("rivalry:recap-overkill-mismatch","index="..result.index,"entries="..result.entries,
+            "overkill="..tostring(result.cause),"first="..fatal.cause..(fatal.pet and"/pet"or""))
+    end
+end
 -- A confirmed death by a player (any context). Called by PvPDeathDetection once per life.
 local function recapDeath(events,snap,myGUID)
     if not R.char or not Z.PvPDeath then return end
     local fatal,order=Z.PvPDeath.Attackers(events,myGUID)
     if fatal.cause~="player"then return end
+    pcall(recapCheck,events,fatal,myGUID)
     local at=type(snap)=="table"and L.Int(snap.at,1,MAX_TIME)and snap.at or A.Now();if at==0 then return end
     local ctx,area,sub=here()
     if ctx=="W"and type(snap)=="table"and L.Text(snap.area,64)then
