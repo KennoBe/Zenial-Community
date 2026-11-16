@@ -903,6 +903,15 @@ function R.Lookup(guid,name)
     key=key or identify(name)
     return key and profile(R.char.rivals[key])or nil,key
 end
+-- Read-only standing of one player for other addons (ZENIAL Watch): a new small table, never the stored profile.
+-- Current character only, nothing is written and the revision stays. guid may be nil; both are plain strings of the caller.
+R.API=1
+function R.Standing(guid,name)
+    local p,key=R.Lookup(guid,name)
+    if not p or not key or#p.events==0 then return nil end
+    return{key=key,kills=p.kills,deaths=p.deaths,assists=p.assists,last=p.last,outcome=p.outcome,
+        rival=p.kills+p.deaths>=R.RIVAL_FIGHTS,nemesis=nemesisOf(R.char)==key}
+end
 -- Key of the social-diary row of the same player, when the faction is known and a row exists.
 function R.DiaryKey(row)
     local D=Z.SocialDiary

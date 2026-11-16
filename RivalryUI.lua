@@ -179,8 +179,27 @@ function U.RivalryCanSelect(key)
     if r.Get(U.RivalryScope(),key)then return true end
     return #characters()>1 and r.Get('ALL',key)~=nil
 end
-local function fact(items,label,value)
-    items[#items+1]={text=label..': '..value,display=K.Fact(label..': ',value),flat=true,textInset=0,noWrap=true,height=FACT_ROW}
+local function fact(items,label,value,valueKey)
+    items[#items+1]={text=label..': '..value,display=K.Fact(label..': ',value,valueKey),flat=true,textInset=0,noWrap=true,height=FACT_ROW}
+end
+-- ZENIAL Watch (optional): where it sees this player right now. Any wrong answer means no row.
+local WATCH_TEXT={near='Out of sight · %d s',past='Last seen · %d s',shared='Reported by the group · %d s'}
+local function watchFact(name)
+    local api=ZenialWatchAPI
+    if type(api)~='table'or api.version~=1 or type(api.Sighting)~='function'then return nil end
+    local ok,state,seconds=pcall(api.Sighting,name)
+    if not ok then return nil end
+    if state=='visible'then return tr('In sight'),'success'end
+    if WATCH_TEXT[state]and type(seconds)=='number'and seconds>=0 and seconds<1e9 then return tr(WATCH_TEXT[state],math.floor(seconds)),'dim'end
+end
+-- Facts of the selected opponent; the Watch row (if any) goes first and is the only one that changes between redraws.
+local function applyFacts(row)
+    local items={};local text,key=watchFact(row.name)
+    if text then fact(items,tr('Watch'),text,key)end
+    U.rivalryWatchText=text and(text..'|'..key)or''
+    for _,item in ipairs(U.rivalryFactBase)do items[#items+1]=item end
+    U.rivalryFactCount=#items
+    H.rows(U.rivalryFacts,items,FACT_ROW)
 end
 local function detailLine(row)
     local parts={}
@@ -256,8 +275,7 @@ function U.RefreshRivalryOpponents()
     if#places>0 then fact(items2,tr('Places'),table.concat(places,', '))end
     local kind,count=r.Streak(timeline)
     if kind and count>=2 then fact(items2,tr('Streak'),tr(kind=='K'and'%d kills in a row'or'%d deaths in a row',count))end
-    U.rivalryFactCount=#items2
-    H.rows(U.rivalryFacts,items2,FACT_ROW)
+    U.rivalryFactBase=items2;applyFacts(row)
     if U.rivalryTimelineKey~=row.key then
         U.rivalryTimelineKey=row.key;U.rivalryTimeline.zenialOffset=0;if U.rivalryTimeline.SetVerticalScroll then U.rivalryTimeline:SetVerticalScroll(0)end
     end
@@ -367,6 +385,16 @@ function U.RefreshRivalryPage()
     U.LayoutRivalry()
     if filled and U.rivalryView=='overview'then U.RefreshRivalryOverview(o)
     elseif filled then U.RefreshRivalryOpponents()end
+end
+-- Once per second from the UI tick (U.RefreshTimed): only the Watch row follows Watch; list and timeline stay untouched.
+function U.TickRivalryWatch(clock)
+    local row=U.rivalryDetailRow
+    if U.page~=PAGE or not row or not U.rivalryKey or not U.rivalryFactBase or not U.rivalryOpponents or not U.rivalryOpponents:IsShown()then return end
+    if clock<(U.nextRivalryWatch or 0)then return end
+    U.nextRivalryWatch=clock+1
+    local text,key=watchFact(row.name)
+    if(text and(text..'|'..key)or'')==U.rivalryWatchText then return end
+    applyFacts(row);U.LayoutRivalryOpponents()
 end
 -- Called by the core after every recorded event: does nothing unless the page is on screen.
 function U.RefreshRivalry()

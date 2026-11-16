@@ -505,6 +505,9 @@ function U.RefreshTimed(clock)
     if U.timedRoute ~= timedRoute() then
         scheduleTimedRefresh()
     end
+    if U.page == 13 and U.TickRivalryWatch then
+        U.TickRivalryWatch(clock or A.Clock())
+    end
     if (U.page == 9 or U.page == 10) and (clock or A.Clock()) >= (U.nextHomeRefresh or 0) then
         U.nextHomeRefresh = (clock or A.Clock()) + 5
         U.RefreshCommunityHome()
