@@ -3,8 +3,9 @@
 --
 -- What the client lets an addon see (the combat log is closed to addons):
 --   kill    PARTY_KILL with the player or the player's pet as attacker and a player as victim
---   assist  an enemy player dies (PARTY_KILL by someone else, or UNIT_DIED) and the player successfully
---           used an ability on exactly that player within ASSIST_WINDOW seconds before
+--   assist  an enemy player dies and the player successfully used an ability on exactly that player within
+--           ASSIST_WINDOW seconds before. Signals of the death: PARTY_KILL by someone else, UNIT_DIED, the
+--           dead target or focus, or the honor message naming that player
 --   death   the Death Recap read by PvPDeathDetection: fatal blow by a player, further attackers as a minimum
 --   duel    the client's own duel result message (DUEL_WINNER_KNOCKOUT / DUEL_WINNER_RETREAT)
 -- An honorable kill alone is never counted. Whatever cannot be read (secret values) is not recorded.
@@ -48,8 +49,11 @@ end
 -- suffix only becomes part of the key when it names another realm than the player's own.
 local function identify(name,realm)
     name=clean(name);if not name then return nil end
+    -- "Name-Realm" only: a Forever name with a hyphenated first name or surname contains a space.
     local base,suffix=name:match("^(.-)%-(.+)$")
-    if base and base~=""then name=base;if not clean(realm)then realm=suffix end end
+    if base and base~=""and not base:find(" ",1,true)and not suffix:find(" ",1,true)then
+        name=base;if not clean(realm)then realm=suffix end
+    end
     realm=clean(realm);realm=realm and(realm:gsub("%s",""))or nil
     local own=Z.me and type(Z.me.realm)=="string"and lower((Z.me.realm:gsub("%s","")))or""
     local foreign=realm~=nil and realm~=""and lower(realm)~=own
@@ -148,10 +152,23 @@ local function here()
     return ctx,area,sub
 end
 
+-- Forever characters have a first name and a surname, and the name APIs return the surname where
+-- Retail returns the realm. Only the own realm is ever dropped.
+local function compose(first,second)
+    first=clean(first);if not first then return nil end
+    second=clean(second)
+    if second and not first:find(" ",1,true)then
+        local realm=A.Call(GetRealmName)
+        local own=type(realm)=="string"and lower((realm:gsub("[%s%-]","")))or""
+        if lower((second:gsub("[%s%-]","")))~=own then return first.." "..second end
+    end
+    return first
+end
 -- Unit details of a player the client shows right now.
 local function describeUnit(unit,info)
     info=info or{}
     local _,full=A.UnitIdentity(unit)
+    if not full then full=compose(A.Call(UnitName,unit))end
     if full then info.name=full;info.realm=nil end
     local guid=A.Call(UnitGUID,unit);if guidKind(guid)=="Player"then info.guid=info.guid or guid end
     local _,classFile=A.Call(UnitClass,unit);info.classFile=classToken(classFile)or info.classFile
@@ -163,10 +180,20 @@ local function describeUnit(unit,info)
     return info
 end
 -- Name, class, race, faction and level of one player GUID; nil without a readable name.
+-- Name sources, best first: a unit the client shows, the GUID cache, the name carried by the event.
 local function describe(guid,eventName)
+    local info={guid=guid}
     local resolve=Z.PvPDeath and Z.PvPDeath.Resolve
-    local info=resolve and resolve(guid,eventName)or(clean(eventName)and{name=eventName})or{}
-    info.guid=guid
+    local known=resolve and resolve(guid,eventName)
+    if known then info.classFile,info.race,info.raceFile,info.level=known.classFile,known.race,known.raceFile,known.level end
+    local name
+    if type(GetPlayerInfoByGUID)=="function"then
+        local ok,_,_,_,_,_,first,second=pcall(GetPlayerInfoByGUID,guid)
+        if ok then name=compose(public(first),public(second))end
+    end
+    local event=clean(public(eventName))
+    if event and(not name or(event:find(" ",1,true)and not name:find(" ",1,true)))then name=event end
+    info.name=name
     local unit=type(UnitTokenFromGUID)=="function"and A.Call(UnitTokenFromGUID,guid)or nil
     if type(unit)=="string"and A.Call(UnitIsPlayer,unit)==true then describeUnit(unit,info)end
     info.faction=info.faction or RACE_FACTION[info.raceFile or""]
@@ -301,47 +328,56 @@ local function upgrade(s)
     notify("K",p,s.key,tagFor(p,s.key,"K",false,false))
 end
 -- Records the kill or assist of one enemy player; one entry per death of that player.
-local function settle(guid,kind)
-    local now=A.Clock();local s=R.settled[guid]
+-- id is the victim's GUID, or "n:"..key for a victim only known by name (then fallback carries the name).
+local function settle(id,kind,fallback)
+    local now=A.Clock()
+    local guid=guidKind(id)=="Player"and id or nil
+    local info=guid and describe(guid)or fallback
+    local key=guid and guidIndex()[guid]or info and identify(info.name,info.realm)or nil
+    local s=R.settled[id]or key and R.settled["n:"..key]or nil
     if s and now-s.at<R.DEDUPE then
         if kind=="K"and s.kind=="A"then upgrade(s)end
         return false
     end
-    local at=A.Now();if at==0 then return false end
-    local info=describe(guid);if not info then return false end
-    local p,key,isNew=upsert(info);if not p then return false end
+    local at=A.Now();if at==0 or not info then return false end
+    local p,isNew
+    p,key,isNew=upsert(info);if not p then return false end
     local ctx,area,sub=here()
     local revenge=kind=="K"and p.outcome=="D"
     record(p,kind,ctx,area,sub,at)
     prune(R.settled,R.DEDUPE,R.MAX_SETTLED,now)
-    R.settled[guid]={at=now,kind=kind,key=key,index=#p.events}
+    s={at=now,kind=kind,key=key,index=#p.events}
+    R.settled[id]=s;R.settled["n:"..key]=s
+    -- The proof is used up: a later signal for the same death finds no attack to count.
+    R.engaged[key]=nil;if p.guid then R.engagedGuid[p.guid]=nil end
     notify(kind,p,key,tagFor(p,key,kind,isNew,revenge))
     return true
 end
-local function engagedAt(guid)
-    local at=R.engagedGuid[guid]
-    if not at then
-        local info=describe(guid);local key=info and identify(info.name,info.realm)
-        at=key and R.engaged[key]or nil
-    end
-    return at
-end
 local function onUpdate()R.Tick()end
 -- An enemy player died without the player's fatal blow: an assist only with proof of an own attack.
-local function enemyDied(guid)
+-- The victim is known by GUID, by name key, or both.
+local function enemyDied(guid,key,name)
     local now=A.Clock()
     prune(R.engaged,R.ASSIST_WINDOW,R.MAX_ENGAGED,now);prune(R.engagedGuid,R.ASSIST_WINDOW,R.MAX_ENGAGED,now)
-    if(not next(R.engaged)and not next(R.engagedGuid))or R.pending[guid]then return end
-    local s=R.settled[guid];if s and now-s.at<R.DEDUPE then return end
-    local at=engagedAt(guid);if not at or now-at>R.ASSIST_WINDOW then return end
-    -- Wait a moment: the PARTY_KILL naming the player as attacker may arrive right after UNIT_DIED.
-    R.pending[guid]=now+R.SETTLE
+    if not next(R.engaged)and not next(R.engagedGuid)then return end
+    local at=guid and R.engagedGuid[guid]or nil
+    if not at then
+        if not key and guid then local info=describe(guid);key=info and identify(info.name,info.realm)end
+        local e=key and R.engaged[key];at=e and e.at or nil
+    end
+    if not at or now-at>R.ASSIST_WINDOW then return end
+    local id=guid or"n:"..key
+    if R.pending[id]then return end
+    local s=R.settled[id]or key and R.settled["n:"..key]or nil
+    if s and now-s.at<R.DEDUPE then return end
+    -- Wait a moment: the PARTY_KILL naming the player as attacker may arrive right after the other signals.
+    R.pending[id]={due=now+R.SETTLE,name=name}
     if R.frame then R.frame:SetScript("OnUpdate",onUpdate)end
 end
 function R.Tick()
     local now=A.Clock()
-    for guid,due in pairs(R.pending or{})do
-        if now>=due then R.pending[guid]=nil;settle(guid,"A")end
+    for id,p in pairs(R.pending or{})do
+        if now>=p.due then R.pending[id]=nil;settle(id,"A",p.name and{name=p.name}or nil)end
     end
     if R.frame and not next(R.pending or{})then R.frame:SetScript("OnUpdate",nil)end
 end
@@ -358,6 +394,40 @@ local function onUnitDied(guid)
     local me=myGUIDs();if guid==me then return end
     enemyDied(guid)
 end
+-- The target or focus is a dead player: one more sign that an attacked enemy died.
+local function onUnitState(unit)
+    unit=public(unit);if unit~="target"and unit~="focus"then return end
+    if not next(R.engaged)and not next(R.engagedGuid)then return end
+    if A.Call(UnitIsDeadOrGhost,unit)~=true or A.Call(UnitIsPlayer,unit)~=true then return end
+    local guid=A.Call(UnitGUID,unit);guid=guidKind(guid)=="Player"and guid or nil
+    local _,full=A.UnitIdentity(unit);if not full then full=compose(A.Call(UnitName,unit))end
+    local key=identify(full)
+    if guid or key then enemyDied(guid,key,full)end
+end
+local function mentions(text,name)
+    if type(name)~="string"or name==""then return false end
+    local from=1
+    while true do
+        local s,e=text:find(name,from,true);if not s then return false end
+        local before=s>1 and text:sub(s-1,s-1)or" ";local after=e<#text and text:sub(e+1,e+1)or" "
+        if before:match("[%s%p]")and after:match("[%s%p]")then return true end
+        from=e+1
+    end
+end
+-- Honor credit that names an attacked enemy confirms that player's death. The message is only searched
+-- for the names of players the player attacked a moment ago, so no localized format has to be parsed.
+-- A first name alone counts when exactly one attacked player carries it.
+local function onHonor(text)
+    text=public(text);if type(text)~="string"or #text>400 or not next(R.engaged)then return end
+    local now=A.Clock();local byShort,shortCount
+    for key,e in pairs(R.engaged)do
+        if now-e.at<=R.ASSIST_WINDOW then
+            if mentions(text,e.name)then enemyDied(e.guid,key,e.name);return end
+            if e.short and mentions(text,e.short)then shortCount=(shortCount or 0)+1;byShort=key end
+        end
+    end
+    if shortCount==1 then local e=R.engaged[byShort];enemyDied(e.guid,byShort,e.name)end
+end
 -- UNIT_SPELLCAST_SENT names the target. It only counts as an attack when that name belongs to an
 -- attackable player the client shows as target, focus or mouseover.
 local function onSpellSent(unit,target,castGUID)
@@ -366,12 +436,13 @@ local function onSpellSent(unit,target,castGUID)
     local wanted=identify(target);if not wanted then return end
     for _,token in ipairs(ENEMY_UNITS)do
         if A.Call(UnitIsPlayer,token)==true and A.Call(UnitCanAttack,"player",token)==true then
-            local _,full=A.UnitIdentity(token);local short=A.Call(UnitName,token)
-            local key=identify(full)or identify(short)
+            local short=A.Call(UnitName,token);local _,full=A.UnitIdentity(token)
+            if not full then full=compose(short)end
+            local key=identify(full)
             if key and(key==wanted or identify(short)==wanted)then
                 local now=A.Clock();prune(R.casts,R.CAST_TTL,R.MAX_CASTS,now)
                 local guid=A.Call(UnitGUID,token)
-                R.casts[castGUID]={key=key,guid=guidKind(guid)=="Player"and guid or nil,at=now}
+                R.casts[castGUID]={key=key,name=full,short=clean(short),guid=guidKind(guid)=="Player"and guid or nil,at=now}
                 return
             end
         end
@@ -383,7 +454,8 @@ local function onSpellSucceeded(unit,castGUID)
     local cast=R.casts[castGUID];if not cast then return end
     R.casts[castGUID]=nil
     local now=A.Clock();if now-cast.at>R.CAST_TTL then return end
-    R.engaged[cast.key]=now;if cast.guid then R.engagedGuid[cast.guid]=now end
+    R.engaged[cast.key]={at=now,guid=cast.guid,name=cast.name,short=cast.short~=cast.name and cast.short or nil}
+    if cast.guid then R.engagedGuid[cast.guid]=now end
 end
 
 -- Turns a client format string ("%1$s has defeated %2$s in a duel") into a Lua pattern plus argument order.
@@ -411,7 +483,7 @@ local function isMe(name)
     local key=identify(name);if not key then return false end
     if key==identify(Z.me.target)then return true end
     local short=A.Call(UnitName,"player")
-    return identify(short)==key
+    return identify(short)==key or identify(compose(short))==key
 end
 -- Duel results are announced to everyone nearby; only a message naming the player counts.
 local function onSystemMessage(text)
@@ -427,11 +499,24 @@ local function onSystemMessage(text)
             local kind,opponent=won and"W"or"L",won and loser or winner
             local info={name=opponent};local wanted=identify(opponent)
             if not wanted then return end
+            local matched=false
             for _,token in ipairs(ENEMY_UNITS)do
                 if A.Call(UnitIsPlayer,token)==true then
-                    local _,full=A.UnitIdentity(token);local short=A.Call(UnitName,token)
-                    if identify(full)==wanted or identify(short)==wanted then describeUnit(token,info);break end
+                    local short=A.Call(UnitName,token);local _,full=A.UnitIdentity(token)
+                    if not full then full=compose(short)end
+                    if identify(full)==wanted or identify(short)==wanted then describeUnit(token,info);matched=true;break end
                 end
+            end
+            -- The message may carry the first name only: use the one known opponent with that first name.
+            if not matched and not opponent:find(" ",1,true)and not profile(R.char.rivals[wanted])then
+                local prefix,found,several=wanted.." ",nil,false
+                for key,raw in pairs(R.char.rivals)do
+                    if type(key)=="string"and key:sub(1,#prefix)==prefix and type(raw)=="table"then
+                        if found then several=true;break end
+                        found=raw
+                    end
+                end
+                if found and not several and type(found.name)=="string"then info.name=found.name end
             end
             local at=A.Now();if at==0 then return end
             local row,key,isNew=upsert(info);if not row then return end
@@ -489,23 +574,31 @@ function R.OnEvent(event,...)
     if not R.char then return end
     if event=="PARTY_KILL"then onPartyKill(...)
     elseif event=="UNIT_DIED"then onUnitDied(...)
+    elseif event=="UNIT_HEALTH"or event=="UNIT_FLAGS"then onUnitState(...)
+    elseif event=="CHAT_MSG_COMBAT_HONOR_GAIN"then onHonor(...)
     elseif event=="UNIT_SPELLCAST_SENT"then onSpellSent(...)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED"then onSpellSucceeded(...)
     elseif event=="CHAT_MSG_SYSTEM"then onSystemMessage(...)end
 end
+-- Registered while the file loads: Forever protects event registration afterwards. The handler stays
+-- idle until the character's history is ready.
 local function registerEvents()
     if R.frame or type(CreateFrame)~="function"then return end
     local f=CreateFrame("Frame");R.frame=f
-    for _,event in ipairs({"PARTY_KILL","UNIT_DIED","CHAT_MSG_SYSTEM"})do pcall(f.RegisterEvent,f,event)end
+    for _,event in ipairs({"PARTY_KILL","UNIT_DIED","CHAT_MSG_SYSTEM","CHAT_MSG_COMBAT_HONOR_GAIN"})do pcall(f.RegisterEvent,f,event)end
     for _,event in ipairs({"UNIT_SPELLCAST_SENT","UNIT_SPELLCAST_SUCCEEDED"})do
         local ok,result=pcall(f.RegisterUnitEvent,f,event,"player")
         if not ok or result==false then pcall(f.RegisterEvent,f,event)end
     end
+    -- Target and focus only; never the health of every unit in a battleground.
+    for _,event in ipairs({"UNIT_HEALTH","UNIT_FLAGS"})do pcall(f.RegisterUnitEvent,f,event,"target","focus")end
     f:SetScript("OnEvent",function(_,event,...)
+        if not R.char then return end
         local ok,err=pcall(R.OnEvent,event,...)
         if not ok then R.lastError=err end
     end)
 end
+registerEvents()
 
 -- Meeting a known opponent again: one line in the unit tooltip with the record so far.
 -- Returns the line and the marker (nemesis or rival), nil for players without a shared history.
@@ -551,7 +644,7 @@ function R.Initialize()
     if type(store.zones)~="table"then store.zones={}end
     if type(store.characters)~="table"then store.characters={}end
     R.store=store;R.char=adoptCharacter(store)
-    invalidate();registerEvents();registerTooltip()
+    invalidate();registerTooltip()
     return true
 end
 function R.Enabled()return R.char~=nil end
