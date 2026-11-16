@@ -333,6 +333,26 @@ function U.Create()
     -- returns to normal as soon as you stand still. Flight paths do not count as moving.
     U.MOVING_ALPHA = 0.55
     U.frameAlpha = 1
+    -- In combat the client hands out the speed as a secret value, and comparing one raises an error. Such a
+    -- value is never touched: IsPlayerMoving, which is not restricted, answers instead. Whatever stays
+    -- unreadable counts as standing, so the window is then fully visible.
+    local function readable(value)
+        return type(canaccessvalue) ~= 'function' or canaccessvalue(value) == true
+    end
+    local function playerMoving()
+        if type(GetUnitSpeed) ~= 'function' then
+            return false
+        end
+        local speed = GetUnitSpeed('player')
+        if readable(speed) then
+            return type(speed) == 'number' and speed > 0
+        end
+        if type(IsPlayerMoving) ~= 'function' then
+            return false
+        end
+        local moving = IsPlayerMoving()
+        return readable(moving) and moving == true
+    end
     local fader, sinceCheck = CreateFrame('Frame', nil, f), 0
     U.moveFader = fader
     fader:SetScript('OnUpdate', function(_, elapsed)
@@ -341,9 +361,8 @@ function U.Create()
             return
         end
         sinceCheck = 0
-        local speed = type(GetUnitSpeed) == 'function' and GetUnitSpeed('player') or 0
         local taxi = type(UnitOnTaxi) == 'function' and UnitOnTaxi('player') == true
-        local target = type(speed) == 'number' and speed > 0 and not taxi and U.MOVING_ALPHA or 1
+        local target = playerMoving() and not taxi and U.MOVING_ALPHA or 1
         if U.frameAlpha ~= target then
             -- Short fade instead of a hard switch.
             local step = math.max(-0.12, math.min(0.12, target - U.frameAlpha))
