@@ -28,7 +28,7 @@ local MAIN_TAB_NAMES = {
     tr('Start'),
     tr('Activities'),
     tr('Settings'),
-    tr('Rivalry'),
+    tr('PvP'),
 }
 S.MAIN_TAB_NAMES = MAIN_TAB_NAMES
 local NAV_ICONS = T and T.assets and T.assets.icons or {}
@@ -49,7 +49,7 @@ local PAGE_SUBTITLES = {
     'Who is online and what is open in the community right now',
     'Groups, events and PvP help from the community',
     'Display, privacy, tools and data',
-    'Kills, deaths and duels against other players',
+    'PvP help and your record against other players',
 }
 S.PAGE_SUBTITLES = PAGE_SUBTITLES
 local PVP, DUNGEONS, RAIDS = Z.GroupFinder.Activities.PVP, Z.GroupFinder.Activities.DUNGEON, Z.GroupFinder.Activities.RAID

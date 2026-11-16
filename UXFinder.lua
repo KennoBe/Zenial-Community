@@ -1692,7 +1692,7 @@ function U.CreateFinder()
     F.linkSets = {
         pvp = {
             { text = 'Open PvP Help', width = 170, click = function()
-                U.Navigate('groups', 'pvp')
+                U.Navigate('pvp', 'help')
             end },
         },
         quests = {

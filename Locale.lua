@@ -1603,7 +1603,7 @@ DE["REVENGE"]="REVANCHE"
 DE["FIRST MEETING"]="ERSTE BEGEGNUNG"
 DE["Drag to move the banner"]="Ziehen, um das Banner zu verschieben"
 -- ZENIAL Rivalry: main-window page and settings view.
-DE["Kills, deaths and duels against other players"]="Kills, Tode und Duelle gegen andere Spieler"
+DE["PvP help and your record against other players"]="PvP-Hilfe und deine Bilanz gegen andere Spieler"
 DE["Opponents"]="Gegner"
 DE["This character"]="Dieser Charakter"
 DE["Deaths"]="Tode"

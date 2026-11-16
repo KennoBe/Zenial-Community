@@ -146,7 +146,7 @@ function U.ApplyResponsiveLayout(activePage)
         U.RefreshMembersPageLayout()
     end
     if U.LayoutStart and(not activePage or activePage==U.pages[9])then U.LayoutStart()end
-    if U.LayoutPvPHelp and(not activePage or activePage==U.pages[3])then U.LayoutPvPHelp()end
+    if U.LayoutPvPHelp and(not activePage or activePage==U.pages[12])then U.LayoutPvPHelp()end
     if U.LayoutProfileCharacters and(not activePage or activePage==U.pages[6])then U.LayoutProfileCharacters()end
     if U.LayoutActivityBoard and(not activePage or activePage==U.pages[10])then U.LayoutActivityBoard()end
     if U.LayoutFinder and(not activePage or activePage==U.pages[10])then U.LayoutFinder()end

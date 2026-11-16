@@ -1,16 +1,16 @@
 local Z,L=ZenialCommunity,ZenialCommunity.Logic
 local S={VERSION=5};Z.UIState=S
 
-local SECTIONS={members=true,craft=true,groups=true,quests=true,trade=true,history=true,profile=true,addons=true,today=true,activities=true,settings=true,rivalry=true}
+local SECTIONS={members=true,craft=true,groups=true,quests=true,trade=true,history=true,profile=true,addons=true,today=true,activities=true,settings=true,pvp=true}
 local SUBVIEWS={
     craft={search=true,mine=true,orders=true,materials=true},
-    groups={browse=true,mine=true,outgoing=true,follow=true,pvp=true,today=true,scheduled=true},
+    groups={browse=true,mine=true,outgoing=true,follow=true,today=true,scheduled=true},
     quests={shared=true,questgroups=true,browse=true,mine=true,outgoing=true},
     trade={browse=true,mine=true,rules=true,manage=true},
     profile={public=true,characters=true,display=true,network=true},
-    rivalry={overview=true,rivals=true},
+    pvp={help=true,rivalry=true,rivals=true},
 }
-local DEFAULT_SUBVIEW={craft="search",groups="browse",quests="shared",trade="browse",profile="public",rivalry="overview"}
+local DEFAULT_SUBVIEW={craft="search",groups="browse",quests="shared",trade="browse",profile="public",pvp="rivalry"}
 local function text(v,max)return type(v)=="string"and#v<=max and not v:find("[%z\1-\31\127|]")and v or""end
 local function copyDraft(raw)
     local out={};if type(raw)~="table"then return out end
@@ -44,7 +44,7 @@ function S.Initialize(root,characterKey,legacy)
         ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications)}
         end
     end
-    ui.characters[characterKey]=ui.characters[characterKey]or{section="today",memberStatus="ALL",subviews={craft="search",groups="browse",quests="shared",trade="browse",profile="public",rivalry="overview"},drafts={}}
+    ui.characters[characterKey]=ui.characters[characterKey]or{section="today",memberStatus="ALL",subviews={craft="search",groups="browse",quests="shared",trade="browse",profile="public",pvp="rivalry"},drafts={}}
     ui.characters[characterKey].section="today"
     ui.characters[characterKey].questCategories=ui.characters[characterKey].questCategories or{}
     S.activityInputs={};root.ui=ui;Z.ui=ui;Z.uiCharacter=ui.characters[characterKey];return ui

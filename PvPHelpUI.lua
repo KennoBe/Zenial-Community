@@ -13,8 +13,9 @@ local function state(r)
 end
 function U.LayoutPvPHelp()
     if not U.pvpUnified then return end
-    local width=U.pages[3]:GetWidth();local height=math.max(414,U.pages[3]:GetHeight()-48);local col=(width-16)/2
-    U.groupPvpFrame:SetSize(width,height)
+    -- The help lives on page 12 ("PvP") below the row of switches.
+    local page=U.pages[12];local width=page:GetWidth();local height=math.max(414,page:GetHeight()-38);local col=(width-16)/2
+    place(U.groupPvpFrame,0,-38);U.groupPvpFrame:SetSize(width,height)
     place(U.pvpMinePanel,0,0,col,174);U.pvpMineBase:SetSize(col,174)
     U.pvpMineStatus:SetWidth(col-24);U.pvpMineStatus:SetHeight(90)
     place(U.pvpStart,0,-100,math.min(230,col-24),26)
@@ -87,7 +88,7 @@ function U.RefreshPvPPage()
     H.rows(U.pvpCallDetailList,details,40);U.pvpCallDetail:Hide();U.UpdateBadges()
 end
 function U.CreatePvPHelpPage(helpers)
-    H=helpers;U.pvpUnified=true;U.groupPvpFrame.zenialOwnLayout=true
+    H=helpers;U.pvpUnified=true;U.groupPvpFrame.zenialOwnLayout=true;U.groupPvpFrame:SetParent(U.pages[12])
     U.pvpSignupPanel=H.panel(U.groupPvpFrame);U.pvpSignupTitle=H.label(U.pvpSignupPanel,'Offer PvP help',12,-12,380,'GameFontNormal')
     U.pvpReceive:SetParent(U.pvpSignupPanel);U.pvpReceive.text:SetParent(U.pvpSignupPanel)
     U.pvpReceive.text:SetText(tr('I want to help. Notify me when someone needs help.'));U.pvpReceive.text:SetWordWrap(true)

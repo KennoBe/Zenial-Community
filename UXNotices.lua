@@ -99,6 +99,7 @@ function U.UpdateBadges()
         0,
         gu + pu + updates('groups') + qu + updates('quests'),
         0,
+        pu + updates('groups', 'pvp'),
     }
     U.unreadTotal = totals[2] + totals[3] + totals[4] + totals[5]
     for i, tab in ipairs(U.tabs or {}) do

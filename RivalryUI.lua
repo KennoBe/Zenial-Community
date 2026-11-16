@@ -5,7 +5,7 @@ local Z,U=ZenialCommunity,ZenialCommunity.UI
 local T,K=Z.Theme,Z.Kit
 if type(T)~='table'or type(K)~='table'then return U end
 local H
-local PAGE,TOP,SIDE,GAP=12,38,300,16
+local PAGE,TOP,SIDE,GAP,SWITCH=12,38,300,16,110
 local LIST_ROW,FACT_ROW,CARD_ROWS,CARD_ROW=44,24,5,24
 local function tr(s,...)return Z.T(s,...)end
 local function R()return Z.Rivalry end
@@ -80,7 +80,7 @@ local TILES={
     {key='assists',label='Assists',icon='members'},{key='kd',label='K/D',icon='layers'},
     {key='duels',label='Duels',icon='activities'},{key='opponents',label='Opponents',icon='characters'},
 }
-local function openOpponent(key)if key then U.Navigate('rivalry','rivals',key)end end
+local function openOpponent(key)if key then U.Navigate('pvp','rivals',key)end end
 local function newCardRow(parent)
     local b=CreateFrame('Button',nil,parent);b:SetHeight(CARD_ROW)
     b.hover=b:CreateTexture(nil,'BACKGROUND');b.hover:SetAllPoints();T.Tint(b.hover,'SetColorTexture','hover');b.hover:Hide()
@@ -324,30 +324,54 @@ function U.LayoutRivalry()
     local page=U.rivalryPage;if not page then return end
     local W,Hh=page:GetWidth(),page:GetHeight();if not(W and W>0 and Hh and Hh>0)then W,Hh=856,500 end
     local bannerButton=U.rivalryBannerSettings;local scope=U.rivalryScopeSelector
-    place(U.rivalryTabs,0,0)
+    -- One row: PvP help | Rivalry, then Overview | Opponents (Rivalry only); scope and banner settings at the right edge.
+    place(U.pvpSwitch,0,0);place(U.rivalryTabs,2*SWITCH+GAP,0)
     place(bannerButton,W-150,0,150,26)
     scope:SetWidth(170);place(scope.button,W-150-8-170,0,170,26)
     for _,frame in ipairs({U.rivalryOverview,U.rivalryOpponents})do place(frame,0,-TOP,W,Hh-TOP)end
     place(U.rivalryEmpty,math.floor((W-520)/2),-(TOP+120),520)
     U.LayoutRivalryOverview();U.LayoutRivalryOpponents()
 end
-function U.SetRivalryView(view,key)
-    if not U.rivalryPage then return end
-    view=view=='rivals'and'rivals'or'overview'
-    U.rivalryView=view
-    if key then
-        if not R().Get(U.RivalryScope(),key)and#characters()>1 and R().Get('ALL',key)then
-            U.rivalryScope='ALL';U.rivalryScopeSelector:SetText('ALL')
-        end
-        U.SelectRivalryKey(key);U.rivalryScrollTo=key
-    end
-    U.rivalryTabs:Select(view)
-    if Z.UIState then Z.UIState.Route('rivalry',view)end
-    U.rivalrySig=nil;U.RefreshRivalryPage()
+-- Page 12 "PvP" has two parts: the PvP help (the existing frame) and Rivalry. view: help, rivalry (overview) or rivals.
+local function currentTab()
+    return U.pvpPart=='help'and'help'or U.rivalryView=='rivals'and'rivals'or'rivalry'
 end
--- Draws the page now (no check whether it is the visible one).
+function U.SetPvPTab(view,key)
+    if not U.rivalryPage then return end
+    view=view or currentTab()
+    if view=='help'then U.pvpPart='help'
+    else
+        U.pvpPart='rivalry';U.rivalryView=view=='rivals'and'rivals'or'overview'
+        if key then
+            if not R().Get(U.RivalryScope(),key)and#characters()>1 and R().Get('ALL',key)then
+                U.rivalryScope='ALL';U.rivalryScopeSelector:SetText('ALL')
+            end
+            U.SelectRivalryKey(key);U.rivalryScrollTo=key
+        end
+        U.rivalryTabs:Select(U.rivalryView)
+    end
+    U.pvpSwitch:Select(U.pvpPart)
+    if Z.UIState then Z.UIState.Route('pvp',currentTab())end
+    U.rivalrySig=nil;U.RefreshPvPTab()
+end
+function U.SetRivalryView(view,key)U.SetPvPTab(view=='rivals'and'rivals'or'rivalry',key)end
+-- Draws the visible part of page 12 now (no check whether the page is the visible one).
+function U.RefreshPvPTab()
+    U.RefreshRivalryPage()
+    if U.pvpPart=='help'and U.RefreshPvPPage then U.RefreshPvPPage()end
+end
 function U.RefreshRivalryPage()
     local page=U.rivalryPage;if not page then return end
+    local help=U.pvpPart=='help'
+    U.pvpSwitch:Select(U.pvpPart)
+    if U.groupPvpFrame then U.groupPvpFrame:SetShown(help)end
+    U.rivalryTabs:SetShown(not help);U.rivalryBannerSettings:SetShown(not help)
+    if help then
+        U.rivalryScopeSelector.button:Hide();U.rivalryScopeSelector.popup:Hide()
+        U.rivalryOverview:Hide();U.rivalryOpponents:Hide();U.rivalryEmpty:Hide()
+        U.rivalrySig=nil;U.LayoutRivalry()
+        return
+    end
     local r=R();local chars=characters();local multi=#chars>1
     if not multi then U.rivalryScope=nil;U.rivalryScopeSelector:SetText('CURRENT')end
     local o=overview();local filled=hasHistory(o)
@@ -368,22 +392,25 @@ function U.RefreshRivalryPage()
     if filled and U.rivalryView=='overview'then U.RefreshRivalryOverview(o)
     elseif filled then U.RefreshRivalryOpponents()end
 end
--- Called by the core after every recorded event: does nothing unless the page is on screen.
+-- Called by the core after every recorded event: does nothing unless the Rivalry part of page 12 is on screen.
 function U.RefreshRivalry()
-    if not U.rivalryPage or not U.frame or not U.frame:IsShown()or U.page~=PAGE then return end
+    if not U.rivalryPage or not U.frame or not U.frame:IsShown()or U.page~=PAGE or U.pvpPart~='rivalry'then return end
     U.RefreshRivalryPage()
 end
 function U.OpenRivalry(view,key)
     U.Create();if not U.frame:IsShown()then U.frame:Show()end
-    return U.Navigate('rivalry',view or'overview',key)
+    return U.Navigate('pvp',view=='rivals'and'rivals'or'rivalry',key)
 end
 function U.CreateRivalry(helpers)
     H=helpers;local page=U.pages and U.pages[PAGE];if not page then return end
     U.rivalryPage=page;page.zenialOwnLayout=true
-    local state=Z.uiCharacter;local saved=state and state.subviews and state.subviews.rivalry
+    local state=Z.uiCharacter;local saved=state and state.subviews and state.subviews.pvp
+    U.pvpPart=saved=='help'and'help'or'rivalry'
     U.rivalryView=saved=='rivals'and'rivals'or'overview'
+    U.pvpSwitch=K.Segmented(page,{{key='help',label=tr('PvP Help')},{key='rivalry',label=tr('Rivalry')}},function(key)U.SetPvPTab(key=='help'and'help'or U.rivalryView=='rivals'and'rivals'or'rivalry')end)
+    U.pvpSwitch:SetSegmentWidth(SWITCH);U.pvpSwitch:Select(U.pvpPart)
     U.rivalryTabs=K.Segmented(page,{{key='overview',label=tr('Overview')},{key='rivals',label=tr('Opponents')}},function(key)U.SetRivalryView(key)end)
-    U.rivalryTabs:SetSegmentWidth(120);U.rivalryTabs:Select(U.rivalryView)
+    U.rivalryTabs:SetSegmentWidth(SWITCH);U.rivalryTabs:Select(U.rivalryView)
     U.rivalryScopeSelector=H.selector(page,'',0,0,170,{'CURRENT','ALL'},function(value)
         U.rivalryScope=value=='ALL'and'ALL'or nil;U.rivalryConfirm=false;U.rivalrySig=nil;U.RefreshRivalryPage()
     end,function(v)return tr(v=='ALL'and'All characters'or'This character')end)
@@ -393,5 +420,6 @@ function U.CreateRivalry(helpers)
     U.rivalryEmpty=K.EmptyState(page,{icon='pvp',title='',hint='',width=520})
     U.LayoutRivalry()
     U.rivalryOverview:Hide();U.rivalryOpponents:Hide();U.rivalryEmpty:Hide()
+    if U.groupPvpFrame then U.groupPvpFrame:SetShown(U.pvpPart=='help')end
 end
 return U

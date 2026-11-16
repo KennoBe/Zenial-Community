@@ -305,6 +305,11 @@ S.refreshGroupOutgoing = function()
     U.groupOutgoingWithdraw:SetEnabled(chosen.row.state == 'applied' or chosen.row.state == 'invited')
 end
 function U.SetGroupView(v)
+    -- PvP help lives on its own page now.
+    if v == 'pvp' then
+        U.Navigate('pvp', 'help')
+        return
+    end
     U.groupView = v
     U.groupBrowseFrame:SetShown(v == 'browse')
     U.groupMineFrame:SetShown(v == 'mine')
@@ -312,9 +317,6 @@ function U.SetGroupView(v)
         U.groupOutgoingFrame:SetShown(v == 'outgoing')
     end
     U.groupFollowFrame:SetShown(v == 'follow')
-    if U.groupPvpFrame then
-        U.groupPvpFrame:SetShown(v == 'pvp')
-    end
     if U.scheduledFrame then
         U.scheduledFrame:SetShown(v == 'scheduled')
         selectNav(U.scheduledTab, v == 'scheduled')
@@ -326,7 +328,6 @@ function U.SetGroupView(v)
     selectNav(U.groupMineTab, v == 'mine')
     selectNav(U.groupOutgoingTab, v == 'outgoing')
     selectNav(U.groupFollowTab, v == 'follow')
-    selectNav(U.pvpTab, v == 'pvp')
     updateNavPath()
     if Z.UIState then
         Z.UIState.Route('groups', v)

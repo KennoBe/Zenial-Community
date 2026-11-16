@@ -599,6 +599,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="companion"then Z.Companion.Show()
     elseif text=="diary"or text=="tagebuch"then if Z.UI and Z.UI.OpenSocialDiaryForUnit then Z.UI.OpenSocialDiaryForUnit("target")end
     elseif text=="rivalry"or text=="rivalen"then if Z.UI and Z.UI.OpenRivalry then Z.UI.OpenRivalry()end
+    elseif text=="pvp"then if Z.UI and Z.UI.OpenPvPHelp then Z.UI.OpenPvPHelp()end
     elseif text=="alts"or text=="twinks"or text=="account"then if Z.UI and Z.UI.OpenMyCharacters then Z.UI.OpenMyCharacters()end
     elseif text=="setup advanced"then Z.NetworkSetup.ShowAdvanced()
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()

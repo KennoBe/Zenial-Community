@@ -246,7 +246,7 @@ function U.Create()
         p:SetSize(856, 500)
         p:Hide()
         U.pages[i] = p
-        local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'rivalry' }
+        local routes = { 'members', 'craft', 'groups', 'quests', 'trade', 'characters', 'history', 'addons', 'today', 'activities', 'settings', 'pvp' }
         U.tabs[i] = navButton(U.sidebar, name, 0, 0, 150, function()
             if U.Navigation.UnsavedInput() then
                 U.Navigation.Fail('unsaved-input')
@@ -499,7 +499,8 @@ function U.Create()
     if T then
         T.suppressMotion = true
     end
-    U.groupView = state.subviews and state.subviews.groups or 'browse'
+    -- PvP help moved to its own page; a saved "pvp" view of the groups page falls back to the list.
+    U.groupView = state.subviews and state.subviews.groups ~= 'pvp' and state.subviews.groups or 'browse'
     U.craftView = state.subviews and state.subviews.craft or 'search'
     U.tradeView = state.subviews and state.subviews.trade or 'browse'
     local savedProfileView = state.subviews and state.subviews.profile

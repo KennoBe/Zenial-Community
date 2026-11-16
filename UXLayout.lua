@@ -312,7 +312,7 @@ function U.FinishResize()
 end
 
 local PAGE_BY_KEY =
-    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11, rivalry = 12 }
+    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11, pvp = 12 }
 function S.applyRoute(route)
     local section, subview = route.legacy.section, route.legacy.subview
     U.Page(route.page)
@@ -333,8 +333,8 @@ function S.applyRoute(route)
         U.SetSettingsView(subview)
     elseif section == 'addons' then
         U.SetAddonView(route.selection or U.addonIndex or 1)
-    elseif section == 'rivalry' then
-        U.SetRivalryView(route.view, route.selection)
+    elseif section == 'pvp' then
+        U.SetPvPTab(route.view, route.selection)
     end
     if Z.UIState then
         Z.UIState.Route(section, subview)
@@ -383,7 +383,7 @@ function U.Page(n)
         selectNav(U.tabs[i], mainTabSelected(i, n))
     end
     updateNavPath()
-    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings', 'rivalry' })[n]
+    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings', 'pvp' })[n]
     if key and Z.UIState then
         Z.UIState.Route(key)
     end
@@ -401,7 +401,7 @@ function U.Page(n)
     end
 end
 local function timedRoute()
-    return table.concat({ U.page or 0, U.craftView or '', U.groupView or '', U.questView or '', U.tradeView or '', U.pvpView or '' }, ':')
+    return table.concat({ U.page or 0, U.craftView or '', U.groupView or '', U.questView or '', U.tradeView or '', U.pvpView or '', U.pvpPart or '' }, ':')
 end
 local function scheduleTimedRefresh()
     local clock, now = A.Clock(), A.Now()
@@ -445,16 +445,15 @@ local function scheduleTimedRefresh()
                 at(row.at + 86401)
             end
         end
-        if U.groupView == 'pvp' and Z.PvPHelp and Z.PvPHelp.store then
-            local store = Z.PvPHelp.store
-            expiry(store.own, true)
-            at(store.lastCallAt + 600)
-            for _, death in ipairs(store.deaths) do
-                at(death.at + 3600)
-            end
-            for _, call in pairs(store.received) do
-                expiry(call, true)
-            end
+    elseif U.page == 12 and U.pvpPart == 'help' and Z.PvPHelp and Z.PvPHelp.store then
+        local store = Z.PvPHelp.store
+        expiry(store.own, true)
+        at(store.lastCallAt + 600)
+        for _, death in ipairs(store.deaths) do
+            at(death.at + 3600)
+        end
+        for _, call in pairs(store.received) do
+            expiry(call, true)
         end
     elseif U.page == 4 then
         expiry(Z.db.quest, true)
@@ -648,8 +647,8 @@ function U.Refresh(all, revisionDriven)
             U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
         end
     end
-    if U.page == 12 and U.RefreshRivalryPage then
-        U.RefreshRivalryPage()
+    if U.page == 12 and U.RefreshPvPTab then
+        U.RefreshPvPTab()
     end
     if all or U.page == HISTORY_PAGE then
         U.RefreshHistory()
