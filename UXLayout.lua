@@ -47,10 +47,11 @@ function U.LayoutMainTabs()
                 y = y - pitch
             end
         end
+        -- The entries at the foot keep their normal spacing.
         local foot = -(height - bottom - entry)
         positions[11] = foot
         if addons then
-            foot = foot + pitch
+            foot = foot + entry + (M.navGap or 2)
             positions[ADDON_PAGE] = foot
         end
         if y + gap >= foot + 12 then
