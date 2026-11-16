@@ -74,6 +74,7 @@ ThemeCommunity.lua
 UIKit.lua
 UI.lua
 NoticeUI.lua
+RivalryBanner.lua
 UX.lua
 UXAddons.lua
 UXNotices.lua
