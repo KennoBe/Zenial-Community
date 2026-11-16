@@ -110,6 +110,7 @@ SocialDiaryUI.lua
 AccountOverviewUI.lua
 NotificationInboxUI.lua
 PvPHelpUI.lua
+RivalryUI.lua
 ResponsiveUI.lua
 ProfessionHistoryUI.lua
 NetworkSetup.lua

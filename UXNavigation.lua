@@ -77,6 +77,10 @@ local ROUTES = {
     ['settings'] = r('settings', nil, 11, 'settings', nil),
     ['addons'] = r('settings', 'addons', ADDON_PAGE, 'addons', nil, 'addon'),
     ['history'] = r('settings', nil, 7, 'history', nil),
+    ['settings/rivalry'] = r('settings', 'rivalry', 11, 'settings', 'rivalry'),
+    ['rivalry'] = r('rivalry', 'overview', 12, 'rivalry', 'overview', 'opponent'),
+    ['rivalry/overview'] = r('rivalry', 'overview', 12, 'rivalry', 'overview', 'opponent'),
+    ['rivalry/rivals'] = r('rivalry', 'rivals', 12, 'rivalry', 'rivals', 'opponent'),
 }
 local KNOWN_SECTIONS = {}
 for key in pairs(ROUTES) do
@@ -104,6 +108,11 @@ function N.Resolve(section, subview, selection)
     if selection ~= nil then
         if def[6] == 'addon' then
             if type(selection) ~= 'number' or selection % 1 ~= 0 or selection < 1 or selection > #S.ADDON_CATALOG then
+                return nil, 'invalid-selection'
+            end
+            route.selection = selection
+        elseif def[6] == 'opponent' then
+            if type(selection) ~= 'string' or selection == '' or #selection > 200 then
                 return nil, 'invalid-selection'
             end
             route.selection = selection
@@ -241,6 +250,9 @@ function N.Open(route, opts)
         if not found then
             return false, 'target-unavailable'
         end
+    end
+    if route.selection and route.page == 12 and not (U.RivalryCanSelect and U.RivalryCanSelect(route.selection)) then
+        return false, 'target-unavailable'
     end
     if not (opts and opts.skipGuard) and N.UnsavedInput() then
         return false, 'unsaved-input'

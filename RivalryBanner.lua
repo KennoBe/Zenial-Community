@@ -36,11 +36,20 @@ local function place()
     root:ClearAllPoints()
     root:SetPoint("CENTER",UIParent,"CENTER",(pos and pos.x or B.DEFAULT_X)/scale,(pos and pos.y or B.DEFAULT_Y)/scale)
 end
+-- The main window sits on DIALOG. A preview or the move handle must stay visible above it; banners of real
+-- events keep the lower layer.
+local function layer()
+    local root=B.root;if not root then return end
+    local raised=B.unlocked==true
+    for slot=1,B.SLOTS do local a=B.active[slot];if a and a.data.preview then raised=true end end
+    local strata=raised and"TOOLTIP"or"HIGH"
+    if B.strata~=strata then B.strata=strata;try(root,"SetFrameStrata",strata)end
+end
 local function ensureRoot()
     if B.root or type(CreateFrame)~="function"or not UIParent then return B.root end
     local root=CreateFrame("Frame",nil,UIParent)
-    try(root,"SetFrameStrata","HIGH");try(root,"SetClampedToScreen",true);try(root,"EnableMouse",false)
-    B.root=root;place()
+    try(root,"SetClampedToScreen",true);try(root,"EnableMouse",false)
+    B.root=root;layer();place()
     return root
 end
 local function text(parent,font,role,colorKey)
@@ -140,12 +149,13 @@ local function start(slot,data,now)
     if not f then f=buildRow(slot);B.rows[slot]=f end
     layoutRow(f,s.style);fill(f,data,s.style)
     B.active[slot]={data=data,at=now,hold=s.duration,animate=s.animation}
-    f:SetAlpha(s.animation and 0 or 1);f:Show()
+    f:SetAlpha(s.animation and 0 or 1);f:Show();layer()
     if s.sound and not data.silent then playSound(KIND[data.kind]or KIND.K,now)end
 end
 local function finish(slot)
     B.active[slot]=nil
     local f=B.rows[slot];if f then f:Hide();f.shine:Hide()end
+    layer()
 end
 local function onUpdate()B.Tick(A.Clock())end
 -- Advances the fades, frees finished slots and starts waiting banners.
@@ -235,13 +245,14 @@ function B.Unlock()
         end)
         B.mover=m
     end
-    B.unlocked=true;B.mover:Show()
+    B.unlocked=true;B.mover:Show();layer()
     return true
 end
 function B.Lock()
     B.unlocked=false
     if B.mover then B.mover:Hide()end
     if B.root then try(B.root,"SetMovable",false)end
+    layer()
     return true
 end
 return B

@@ -42,6 +42,7 @@ function U.CreateSettings(helpers)
         { 'privacy', 'Connection and privacy', 148, 210 },
         { 'tools', 'Integrations', 366, 150 },
         { 'data', 'History and categories', 524, 210 },
+        { 'rivalry', 'Rivalry', 742, 114 },
     }
     U.settingsTabs = {}
     for _, spec in ipairs(tabs) do
@@ -197,6 +198,118 @@ function U.CreateSettings(helpers)
     plate(U.settingsDataFrame, 0, 0, 850, 96)
     heading(U.settingsDataFrame, 'History and categories', 16, -14, 400)
     button(U.settingsDataFrame, tr('History'), 16, -52, 240, function() U.OpenHistory() end)
+    -- Rivalry: banner of the private PvP history and deleting this character's history (Rivalry.lua, RivalryBanner.lua).
+    U.settingsRivalryFrame = CreateFrame('Frame', nil, p)
+    U.settingsRivalryFrame:SetPoint('TOPLEFT', 0, -42)
+    U.settingsRivalryFrame:SetSize(856, 414)
+    if Z.Rivalry then
+        local RF = U.settingsRivalryFrame
+        plate(RF, 0, 0, 850, 214)
+        plate(RF, 0, 226, 850, 120)
+        heading(RF, 'Banner', 16, -14, 400)
+        U.rivalryChecks = {}
+        local function option(name, text, x, y, width)
+            U.rivalryChecks[name] = checkbox(RF, text, x, y, width, function(self)
+                Z.Rivalry.SetSetting(name, self:GetChecked() == true)
+            end)
+        end
+        option('banner', 'Show banner', 12, -38, 400)
+        for index, spec in ipairs({ { 'kills', 'Kills' }, { 'deaths', 'Deaths' }, { 'assists', 'Assists' }, { 'duels', 'Duels' }, { 'animation', 'Animation' }, { 'sound', 'Sound' } }) do
+            option(spec[1], spec[2], 12 + (index - 1) * 138, -68, 130)
+        end
+        local SIZES, TIMES = { '0.8', '0.9', '1', '1.1', '1.25', '1.5' }, { '2', '3', '4', '5', '6', '8' }
+        U.rivalryStyle = helpers.selector(RF, 'Style', 16, -108, 200, { 'standard', 'compact' }, function(value)
+            Z.Rivalry.SetSetting('style', value)
+        end, function(value)
+            return tr(value == 'compact' and 'Compact' or 'Standard')
+        end)
+        U.rivalrySize = helpers.selector(RF, 'Size', 232, -108, 200, SIZES, function(value)
+            Z.Rivalry.SetSetting('scale', tonumber(value))
+        end, function(value)
+            return math.floor(tonumber(value) * 100 + 0.5) .. ' %'
+        end)
+        U.rivalryDuration = helpers.selector(RF, 'Display time', 448, -108, 200, TIMES, function(value)
+            Z.Rivalry.SetSetting('duration', tonumber(value))
+        end, function(value)
+            return value .. ' s'
+        end)
+        local previewKinds, previewIndex = { 'K', 'D', 'A', 'W' }, 0
+        U.rivalryPreview = button(RF, tr('Preview'), 16, -168, 150, function()
+            previewIndex = previewIndex % #previewKinds + 1
+            Z.Rivalry.Preview(previewKinds[previewIndex])
+        end)
+        U.rivalryMove = button(RF, tr('Move banner'), 176, -168, 190, function()
+            local banner = Z.RivalryBanner
+            if banner and banner.IsUnlocked then
+                if banner.IsUnlocked() then
+                    banner.Lock()
+                else
+                    banner.Unlock()
+                end
+            end
+            U.RefreshRivalrySettings()
+        end)
+        U.rivalryResetPosition = button(RF, tr('Reset position'), 376, -168, 190, function()
+            Z.Rivalry.SetPosition(nil)
+        end)
+        heading(RF, 'PvP history', 16, -240, 400)
+        option('tooltip', 'Show record in player tooltips', 12, -262, 400)
+        U.rivalryReset = button(RF, tr("Delete this character's history"), 16, -298, 300, function()
+            if not U.rivalryResetConfirm then
+                U.rivalryResetConfirm = true
+                U.RefreshRivalrySettings()
+                return
+            end
+            U.rivalryResetConfirm = false
+            if Z.Rivalry.ResetCharacter() then
+                U.Message(tr('History deleted.'))
+            end
+            U.RefreshRivalrySettings()
+        end, 'danger')
+        U.rivalryResetCancel = button(RF, tr('Cancel'), 324, -298, 110, function()
+            U.rivalryResetConfirm = false
+            U.RefreshRivalrySettings()
+        end)
+        local function nearest(options, value)
+            local best, distance = options[1], math.huge
+            for _, option in ipairs(options) do
+                local gap = math.abs(tonumber(option) - (tonumber(value) or 0))
+                if gap < distance then
+                    best, distance = option, gap
+                end
+            end
+            return best
+        end
+        function U.RefreshRivalrySettings()
+            local values = Z.Rivalry.Settings()
+            for name, control in pairs(U.rivalryChecks) do
+                control:SetChecked(values[name] == true)
+            end
+            U.rivalryStyle:SetText(values.style)
+            U.rivalrySize:SetText(nearest(SIZES, values.scale))
+            U.rivalryDuration:SetText(nearest(TIMES, values.duration))
+            local banner = Z.RivalryBanner
+            U.rivalryMove:SetText(tr(banner and banner.IsUnlocked and banner.IsUnlocked() and 'Lock position' or 'Move banner'))
+            U.rivalryReset:SetText(tr(U.rivalryResetConfirm and 'Confirm deletion' or "Delete this character's history"))
+            U.rivalryResetCancel:SetShown(U.rivalryResetConfirm == true)
+        end
+        -- The banner can only be moved while this view is open; leaving it (or closing the window) locks it again.
+        function U.LockRivalryBanner()
+            local banner = Z.RivalryBanner
+            if banner and banner.IsUnlocked and banner.IsUnlocked() then
+                banner.Lock()
+            end
+            U.rivalryResetConfirm = false
+            if U.rivalryMove then
+                U.RefreshRivalrySettings()
+            end
+        end
+        RF:HookScript('OnShow', U.RefreshRivalrySettings)
+        RF:HookScript('OnHide', U.LockRivalryBanner)
+        p:HookScript('OnHide', U.LockRivalryBanner)
+        U.frame:HookScript('OnHide', U.LockRivalryBanner)
+        U.RefreshRivalrySettings()
+    end
     U.profileDisplayFrame:SetParent(p)
     U.profileNetworkFrame:SetParent(p)
     U.SetSettingsView('display', true)
@@ -214,12 +327,13 @@ function U.RefreshSettingsCompanionSummary()
 end
 
 function U.SetSettingsView(v, skipRoute)
-    local allowed = { display = true, privacy = true, tools = true, data = true }
+    local allowed = { display = true, privacy = true, tools = true, data = true, rivalry = true }
     U.settingsView = allowed[v] and v or 'display'
     U.settingsDisplayFrame:SetShown(U.settingsView == 'display')
     U.settingsPrivacyFrame:SetShown(U.settingsView == 'privacy')
     U.settingsToolsFrame:SetShown(U.settingsView == 'tools')
     U.settingsDataFrame:SetShown(U.settingsView == 'data')
+    U.settingsRivalryFrame:SetShown(U.settingsView == 'rivalry')
     for name, tab in pairs(U.settingsTabs) do
         U.Shared.selectNav(tab, U.settingsView == name)
     end
@@ -229,6 +343,9 @@ function U.SetSettingsView(v, skipRoute)
     U.RefreshSettingsCompanionSummary()
     if U.RefreshCrossFactionSettings then
         U.RefreshCrossFactionSettings()
+    end
+    if U.settingsView == 'rivalry' and U.RefreshRivalrySettings then
+        U.RefreshRivalrySettings()
     end
     U.LayoutSettings()
     if not skipRoute and Z.UIState then

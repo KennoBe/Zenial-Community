@@ -11,7 +11,7 @@ local refreshCharacters = S.refreshCharacters
 -- Sidebar order from the top: numbers are page indices, 'group' starts the next labelled group
 -- (U.navGroupLabels: Play, Community, Economy, Account). Settings and the optional Addon Manager sit
 -- at the bottom of the sidebar.
-local NAV_ORDER = { 9, 'group', 10, 4, 'group', 1, 'group', 2, 5, 'group', 6 }
+local NAV_ORDER = { 9, 'group', 10, 4, 12, 'group', 1, 'group', 2, 5, 'group', 6 }
 function U.LayoutMainTabs()
     if not U.tabs or not U.frame then
         return
@@ -312,7 +312,7 @@ function U.FinishResize()
 end
 
 local PAGE_BY_KEY =
-    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11 }
+    { members = 1, craft = 2, groups = 3, quests = 4, trade = 5, profile = 6, history = 7, addons = 8, today = 9, activities = 10, settings = 11, rivalry = 12 }
 function S.applyRoute(route)
     local section, subview = route.legacy.section, route.legacy.subview
     U.Page(route.page)
@@ -333,6 +333,8 @@ function S.applyRoute(route)
         U.SetSettingsView(subview)
     elseif section == 'addons' then
         U.SetAddonView(route.selection or U.addonIndex or 1)
+    elseif section == 'rivalry' then
+        U.SetRivalryView(route.view, route.selection)
     end
     if Z.UIState then
         Z.UIState.Route(section, subview)
@@ -381,7 +383,7 @@ function U.Page(n)
         selectNav(U.tabs[i], mainTabSelected(i, n))
     end
     updateNavPath()
-    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings' })[n]
+    local key = ({ 'members', 'craft', 'groups', 'quests', 'trade', 'profile', 'history', 'addons', 'today', 'activities', 'settings', 'rivalry' })[n]
     if key and Z.UIState then
         Z.UIState.Route(key)
     end
@@ -645,6 +647,9 @@ function U.Refresh(all, revisionDriven)
         if U.settingsView == 'privacy' and U.profileNetworkText then
             U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
         end
+    end
+    if U.page == 12 and U.RefreshRivalryPage then
+        U.RefreshRivalryPage()
     end
     if all or U.page == HISTORY_PAGE then
         U.RefreshHistory()
