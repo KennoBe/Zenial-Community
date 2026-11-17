@@ -27,11 +27,24 @@ local function addonState(entry)
     if versionOK and type(value) == 'string' then
         version = value
     end
-    local enabledOK, enabledState = addonCall('GetAddOnEnableState', entry.addon)
+    -- The state of this character decides. Without a character the client answers for all characters, and an
+    -- addon switched off only here would count as enabled.
+    local character = type(UnitName) == 'function' and UnitName('player') or nil
+    local enabledOK, enabledState
+    if type(character) == 'string' and character ~= '' then
+        enabledOK, enabledState = addonCall('GetAddOnEnableState', entry.addon, character)
+    end
+    if not enabledOK then
+        enabledOK, enabledState = addonCall('GetAddOnEnableState', entry.addon)
+    end
+    local disabled = { kind = 'disabled', text = tr('Installiert, aber deaktiviert'), version = version }
     if enabledOK and tonumber(enabledState) == 0 then
-        return { kind = 'disabled', text = tr('Installiert, aber deaktiviert'), version = version }
+        return disabled
     end
     local infoOK, _, _, _, loadable, reason = addonCall('GetAddOnInfo', entry.addon)
+    if infoOK and loadable == false and reason == 'DISABLED' then
+        return disabled
+    end
     if infoOK and loadable == false then
         return { kind = 'unavailable', text = tr('Nicht ladbar') .. (type(reason) == 'string' and reason ~= '' and ': ' .. reason or ''), version = version }
     end
