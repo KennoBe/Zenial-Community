@@ -4,8 +4,9 @@
 -- not deliver yet or delivers in an unexpected shape stays unknown; nothing is guessed. Results live in
 -- memory only: they never enter Z.db, the activity board, a network message or the companion export.
 --
--- The file has two parts: reading (capabilities, languages, activities, one result) and search control
--- (signature, start, waiting time, timeout, blocked calls, foreign searches). The result store follows.
+-- The file has three parts: reading (capabilities, languages, activities, one result), search control
+-- (signature, start, waiting time, timeout, blocked calls, foreign searches) and the result store (rows per
+-- query, late updates of single results, figures for the tiles).
 local Z, A = ZenialCommunity, ZenialCommunity.Adapter
 local M = Z.PublicLFGMap
 local P = {}
@@ -279,6 +280,7 @@ end
 -- waiting time. A search without an answer and a failed search are states of their own, never "no groups".
 local WAIT, TIMEOUT, LIMIT = 5, 30, 100
 P.WAIT, P.TIMEOUT, P.LIMIT = WAIT, TIMEOUT, LIMIT
+local store = {}               -- result store, filled in at the end of the file
 
 local state = { phase = 'IDLE', runId = 0 }
 local runs = 0
@@ -441,6 +443,7 @@ function P.Search(query)
     end
     lastCall, foreignCall = A.Clock(), nil
     state = { phase = 'SEARCHING', runId = runs, signature = signature(q), query = q, startedAt = lastCall }
+    store.release()
     return true
 end
 
@@ -489,6 +492,7 @@ local function onResults()
     if own then
         if ids then
             results(state, ids, total)
+            store.take()
         else
             state.phase, state.reason = 'FAILED', 'UNREADABLE'
         end
@@ -503,12 +507,14 @@ local function onResults()
             runs = runs + 1
             state = { runId = runs, foreign = true, signature = signature(q), query = q }
             results(state, ids, total)
+            store.take()
         else
             -- A list nobody announced: what we hold is no longer the list of the client.
             if state.phase == 'SEARCHING' then
                 state = { phase = 'FAILED', runId = state.runId, signature = state.signature, reason = 'REPLACED' }
             end
             state.stale, state.foreign = true, true
+            store.release()
         end
     end
     Z.MarkDirty()
@@ -530,17 +536,20 @@ function P.OnEvent(event, ...)
         onResults()
     elseif event == 'LFG_LIST_SEARCH_FAILED' then
         onFailed(...)
+    elseif event == 'LFG_LIST_SEARCH_RESULT_UPDATED' then
+        store.touch((...))
     end
 end
 
--- From the quarter-second step of Main.lua. Works only while a search is waiting for its answer.
+-- From the quarter-second step of Main.lua. Works only while a search is waiting for its answer or the
+-- result store has something to read again.
 function P.Tick()
-    if state.phase ~= 'SEARCHING' then
-        return
-    end
-    if A.Clock() - state.startedAt >= TIMEOUT then
+    if state.phase == 'SEARCHING' and A.Clock() - state.startedAt >= TIMEOUT then
         state.phase, state.reason = 'TIMEOUT', nil
         Z.MarkDirty()
+    end
+    if store.busy then
+        store.work()
     end
 end
 
@@ -561,6 +570,308 @@ end
 -- Result ids of the current list, nil when there is none (for the result store).
 function P.ResultIds()
     return state.phase == 'READY' and not state.stale and state.ids or nil
+end
+
+---------------------------------------------------------------------------------------------------
+-- Result store
+---------------------------------------------------------------------------------------------------
+-- Results are taken over once, when a list arrives, into rows of our own. A list is kept per query
+-- (signature): the search over a whole category feeds the tiles, the search for one instance feeds its
+-- overview, and going back and forth costs no new search. Only the newest list is "live": it is the list
+-- the client holds, so single results can still be read again when the client reports a change (leader
+-- names arrive that way). Every other list is a snapshot with its age. Nothing here is saved or sent.
+local ROW_LIMIT, SET_LIMIT, KEEP = 300, 8, 900
+local RETRY = { 0.25, 1, 3 }
+P.ROW_LIMIT, P.KEEP = ROW_LIMIT, KEEP
+
+local sets = {}                -- [signature] = set
+local live                     -- the set that is the current list of the client
+local dirty, dirtyCount = {}, 0
+local revision = 0
+local memo = { rows = {} }
+
+local function windowShown()
+    local ui = Z.UI
+    return ui ~= nil and ui.frame ~= nil and ui.frame:IsShown() == true
+end
+
+local function reindex(set)
+    set.byId, set.byKey = {}, {}
+    for index, row in ipairs(set.rows) do
+        set.byId[row.resultId], set.byKey[row.key] = index, row
+    end
+end
+
+local function hasPending(set)
+    for _, row in ipairs(set.rows) do
+        if row.pending then
+            return true
+        end
+    end
+    return false
+end
+
+-- Plans the next reading of rows whose activity facts are missing: 0.25 s, then 1 s, then 3 s later.
+local function arm(set)
+    set.retryAt = nil
+    if set.live and set.attempts < #RETRY and hasPending(set) then
+        set.retryAt = A.Clock() + RETRY[set.attempts + 1]
+        store.busy = true
+    end
+end
+
+local function prune()
+    local now, list = A.Clock(), {}
+    for key, set in pairs(sets) do
+        if now - set.receivedAt > KEEP then
+            sets[key] = nil
+        else
+            list[#list + 1] = set
+        end
+    end
+    table.sort(list, function(a, b) return a.receivedAt > b.receivedAt end)
+    for index = SET_LIMIT + 1, #list do
+        sets[list[index].signature] = nil
+    end
+end
+
+-- The list of the client is no longer ours to read (new search, foreign list): the live set becomes a snapshot.
+function store.release()
+    if live then
+        live.live, live.retryAt = false, nil
+        revision = revision + 1
+    end
+    live, dirty, dirtyCount, store.busy = nil, {}, 0, false
+end
+
+-- Takes the list of the current state over as the live set.
+function store.take()
+    store.release()
+    local set = {
+        signature = state.signature, query = state.query, runId = state.runId, receivedAt = state.receivedAt, total = state.total,
+        truncated = state.truncated == true, foreign = state.foreign == true, rows = {}, wanted = {}, live = true, attempts = 0, unreadable = 0,
+    }
+    for _, id in ipairs(state.query.activities) do
+        set.wanted[id] = true
+    end
+    for _, id in ipairs(state.ids or {}) do
+        if #set.rows >= ROW_LIMIT then
+            set.truncated = true
+            break
+        end
+        local row = P.ReadRow(id, set.runId)
+        if row then
+            set.rows[#set.rows + 1] = row
+            if row.restricted and #row.activityIds == 0 then
+                set.unreadable = set.unreadable + 1
+            end
+        end
+    end
+    reindex(set)
+    sets[set.signature] = set
+    live = set
+    prune()
+    arm(set)
+    revision = revision + 1
+end
+
+-- LFG_LIST_SEARCH_RESULT_UPDATED: only noted here; the reading happens once in the next step.
+function store.touch(id)
+    if not live or not A.Safe(id) or type(id) ~= 'number' then
+        return
+    end
+    if not dirty[id] then
+        dirty[id] = true
+        dirtyCount = dirtyCount + 1
+    end
+    store.busy = true
+end
+
+local function update(set, id, row, why)
+    local index = set.byId[id]
+    if row then
+        if index then
+            set.rows[index] = row
+        elseif #set.rows < ROW_LIMIT then
+            set.rows[#set.rows + 1] = row
+        else
+            return false
+        end
+        reindex(set)
+        return true
+    end
+    if not index then
+        return false
+    end
+    if why == 'OWN' then
+        table.remove(set.rows, index)
+        reindex(set)
+        return true
+    end
+    -- The client has nothing about the result any more: the listing is gone.
+    local old = set.rows[index]
+    if old.gone then
+        return false
+    end
+    old.gone, old.delisted = true, true
+    return true
+end
+
+-- The work of one step: read the results the client reported as changed, then the rows that still wait for
+-- activity facts. Local reads only; a search is never started from here.
+function store.work()
+    local changed = false
+    if live and dirtyCount > 0 then
+        local ids = dirty
+        dirty, dirtyCount = {}, 0
+        for id in pairs(ids) do
+            local row, why = P.ReadRow(id, live.runId)
+            changed = update(live, id, row, why) or changed
+        end
+    end
+    if live and live.retryAt then
+        if not windowShown() then
+            -- Nobody is looking: stop; P.Rows plans it again when the rows are asked for.
+            live.retryAt = nil
+        elseif A.Clock() >= live.retryAt then
+            live.attempts = live.attempts + 1
+            for index, row in ipairs(live.rows) do
+                if row.pending then
+                    local fresh = P.ReadRow(row.resultId, live.runId)
+                    if fresh then
+                        live.rows[index] = fresh
+                        changed = changed or not fresh.pending
+                    end
+                end
+            end
+            reindex(live)
+            arm(live)
+        end
+    end
+    store.busy = live ~= nil and (dirtyCount > 0 or live.retryAt ~= nil)
+    if changed then
+        revision = revision + 1
+        Z.MarkDirty()
+    end
+end
+
+-- The newest list that was searched for one of these activities.
+local function covering(ids)
+    local best, now = nil, A.Clock()
+    for _, set in pairs(sets) do
+        if now - set.receivedAt <= KEEP and (not best or set.receivedAt > best.receivedAt) then
+            for _, id in ipairs(ids) do
+                if set.wanted[id] then
+                    best = set
+                    break
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function describe(set, complete)
+    return {
+        signature = set.signature, runId = set.runId, receivedAt = set.receivedAt, live = set.live == true, complete = complete,
+        truncated = set.truncated, foreign = set.foreign, total = set.total, unreadable = set.unreadable,
+    }
+end
+
+-- Rows of one catalogue activity from the newest list that was searched for it, and facts about that list:
+-- { signature, runId, receivedAt, live, complete, truncated, foreign, total, unreadable }.
+-- complete: the list was searched for every activity of the catalogue entry and was not cut off.
+-- Returns {}, nil when no list covers the activity. The returned tables belong to the store: do not change them.
+function P.Rows(activity)
+    local ids = M.Activities(activity)
+    local set = ids and covering(ids)
+    if not set then
+        return {}, nil
+    end
+    if set.live and not set.retryAt and set.attempts < #RETRY and hasPending(set) then
+        arm(set)
+    end
+    local cache = memo.rows[activity]
+    if not cache or cache.revision ~= revision or cache.set ~= set then
+        local wanted, rows, complete = {}, {}, not set.truncated
+        for _, id in ipairs(ids) do
+            wanted[id] = true
+            complete = complete and set.wanted[id] == true
+        end
+        for _, row in ipairs(set.rows) do
+            for _, id in ipairs(row.activityIds) do
+                if wanted[id] then
+                    rows[#rows + 1] = row
+                    break
+                end
+            end
+        end
+        cache = { revision = revision, set = set, rows = rows, info = describe(set, complete) }
+        memo.rows[activity] = cache
+    end
+    return cache.rows, cache.info
+end
+
+-- One row by its key, from any list that is still kept.
+function P.Row(key)
+    for _, set in pairs(sets) do
+        if set.byKey[key] then
+            return set.byKey[key]
+        end
+    end
+    return nil
+end
+
+-- Figures per catalogue activity for the tiles: { [activity] = { groups, seekers, capped, at } }.
+-- Each activity takes its figures from the newest list that was searched for it. capped: that list was cut
+-- off, so the figures are a sample and never a total. Listings that are gone or unreadable do not count.
+function P.Counts()
+    local now = A.Clock()
+    local cache = memo.counts
+    if cache and cache.revision == revision and now < cache.validUntil then
+        return cache.map
+    end
+    local list, validUntil = {}, math.huge
+    for _, set in pairs(sets) do
+        if now - set.receivedAt <= KEEP then
+            list[#list + 1] = set
+            validUntil = math.min(validUntil, set.receivedAt + KEEP)
+        end
+    end
+    table.sort(list, function(a, b) return a.receivedAt > b.receivedAt end)
+    local map, owner = {}, {}
+    for _, set in ipairs(list) do
+        for id in pairs(set.wanted) do
+            local activity = M.ActivityOf(id)
+            if activity and not owner[activity] then
+                owner[activity] = set
+                map[activity] = { groups = 0, seekers = 0, capped = set.truncated, at = set.receivedAt }
+            end
+        end
+        for _, row in ipairs(set.rows) do
+            if not row.delisted and not row.restricted then
+                for _, activity in ipairs(row.activities) do
+                    if owner[activity] == set then
+                        local entry = map[activity]
+                        if row.solo then
+                            entry.seekers = entry.seekers + 1
+                        else
+                            entry.groups = entry.groups + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    memo.counts = { revision = revision, validUntil = validUntil, map = map }
+    return map
+end
+
+-- Drops every list that was read.
+function P.Clear()
+    store.release()
+    sets, memo = {}, { rows = {} }
+    revision = revision + 1
 end
 
 return P
