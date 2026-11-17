@@ -256,6 +256,24 @@ local ADDON_CATALOG = {
         slash = 'ZENIALUTILITY',
         icon = 'Interface\\AddOns\\ZenialUtility\\Media\\Icon.tga',
     },
+    -- ownWindow: listed here, but not embedded; the button opens the addon's own settings window with slashArg.
+    {
+        addon = 'ZenialChat',
+        label = 'Chat',
+        description = 'Messenger with conversations and a shared local history.',
+        slash = 'ZENIALCHAT',
+        slashArg = 'settings',
+        ownWindow = true,
+        icon = 'Interface\\AddOns\\ZenialChat\\Media\\Icon.tga',
+    },
+    {
+        addon = 'ZenialUI',
+        label = 'UI',
+        description = 'Unit frames, action bars, nameplates and cast bars with a layout editor.',
+        slash = 'ZENIALUI',
+        ownWindow = true,
+        icon = 'Interface\\AddOns\\ZenialUI\\Media\\Icon.tga',
+    },
 }
 S.ADDON_CATALOG = ADDON_CATALOG
 U.AddonCatalog = ADDON_CATALOG

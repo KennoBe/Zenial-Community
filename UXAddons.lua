@@ -55,6 +55,10 @@ local function addonState(entry)
     if loadedOK and not loaded then
         return { kind = 'reload', text = tr('Installiert · nach /reload verfügbar'), version = version }
     end
+    -- An entry with its own window is never embedded and never asks for an update.
+    if entry.ownWindow then
+        return { kind = 'window', text = tr('Installiert und geladen'), version = version }
+    end
     local provider = _G.ZenialAddonPanels and _G.ZenialAddonPanels[entry.addon]
     if type(provider) == 'table' and provider.apiVersion == 1 and type(provider.CreatePanel) == 'function' then
         return { kind = 'ready', text = tr('Installiert und geladen'), version = version, provider = provider }
@@ -159,7 +163,13 @@ function U.RefreshAddonManager()
         U.HideAddonPanels()
     end
     if U.addonSelector then U.addonSelector:SetText(entry.addon) end
-    if state.kind == 'legacy' and type(SlashCmdList[entry.slash]) == 'function' then
+    if state.kind == 'window' and type(SlashCmdList[entry.slash]) == 'function' then
+        U.addonAction:SetText(tr('Open settings'))
+        U.addonAction:SetScript('OnClick', function()
+            SlashCmdList[entry.slash](entry.slashArg or '')
+        end)
+        U.addonAction:Show()
+    elseif state.kind == 'legacy' and type(SlashCmdList[entry.slash]) == 'function' then
         U.addonAction:SetText(tr('Open addon window'))
         U.addonAction:SetScript('OnClick', function()
             SlashCmdList[entry.slash]('')
