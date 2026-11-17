@@ -92,10 +92,16 @@ function D.SizeText(row)
     local size=row.size;local text=size<1024 and string.format("%d B",size)or size<1048576 and string.format("%.1f KB",size/1024)or string.format("%.1f MB",size/1048576)
     return(row.truncated and"≥ "or"~ ")..text
 end
+-- Public group search of the client: which parts it provides (see PublicLFG.lua).
+local function publicSearch()
+    local p=Z.PublicLFG;if not p then return"" end
+    local c=p.Capabilities();local function yes(v)return v and"yes"or"no"end
+    return"\nPublic group search: "..yes(p.Available()).." · search: "..yes(c.search).." · results: "..yes(c.results).." · role slots: "..yes(c.counts).." · languages: "..yes(c.languages).." · own listing: "..yes(c.listing)
+end
 function D.Capabilities()
     local t=C_TradeSkillUI or{};local k=C_SkillInfo or{};local v,b,_,i=A.Call(GetBuildInfo)
     local function has(fn)return type(fn)=="function"and"yes"or"no"end
-    return "Client: "..tostring(v or"?").." / "..tostring(b or"?").." / "..tostring(i or"?").."\nSkill indices: "..has(k.GetSkillLineInfo).." · full recipes: "..has(t.GetAllRecipeIDs).." · filtered recipes: "..has(t.GetFilteredRecipeIDs).." · own/linked check: "..has(t.IsTradeSkillLinked)
+    return "Client: "..tostring(v or"?").." / "..tostring(b or"?").." / "..tostring(i or"?").."\nSkill indices: "..has(k.GetSkillLineInfo).." · full recipes: "..has(t.GetAllRecipeIDs).." · filtered recipes: "..has(t.GetFilteredRecipeIDs).." · own/linked check: "..has(t.IsTradeSkillLinked)..publicSearch()
 end
 function D.Lines()
     local s=D.State();local lines={s.label,tr("Mode: direct network without channel"),tr("Confirmed reachable")..": "..s.reachable.." · "..tr("Reported in network")..": "..s.reported,tr("Queue")..": "..s.queue.." / "..s.queueBytes.." Bytes · "..tr("Inbound")..": "..s.inbound.." · "..tr("fragments")..": "..s.assemblies}
