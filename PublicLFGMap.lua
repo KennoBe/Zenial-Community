@@ -4,6 +4,9 @@
 --
 -- The client offers each character only a part of the activities (no raids below their level, one level
 -- bracket per battleground). Where the client says what it offers, the assignment is cut down to that.
+--
+-- Extra activities: dungeons, raids and battlegrounds of the game data the catalogue of GroupFinder.lua does
+-- not have. The catalogue takes one in as soon as the client offers it (GroupFinderCatalog, C.SyncExtras).
 local Z, L, A = ZenialCommunity, ZenialCommunity.Logic, ZenialCommunity.Adapter
 local D = Z.PublicLFGMapData
 local M = { build = D.build, none = D.none }
@@ -105,6 +108,55 @@ function M.CategoryActivities(kind)
     end
     table.sort(out)
     return out
+end
+
+local KIND_WORD = { DUNGEON = 'Dungeon', RAID = 'Raid', PVP = 'PvP' }
+
+-- Facts of an extra activity: { id, kind, min, max, size, twin }, nil for every other activity.
+function M.Extra(activity)
+    local row = D.extra[activity]
+    if not row then
+        return nil
+    end
+    return { id = activity, kind = row[1], min = row[2], max = row[3], size = row[4], twin = row[5] == true }
+end
+
+-- Extra activities of one kind the client offers this character right now, sorted. Empty while the client
+-- does not say what it offers: an activity nobody can enter gets no tile.
+function M.Extras(kind)
+    local found, out = offer(kind), {}
+    if not found then
+        return out
+    end
+    for activity, row in pairs(D.extra) do
+        if row[1] == kind then
+            for _, id in ipairs(D.catalog[activity]) do
+                if found.set[id] then
+                    out[#out + 1] = activity
+                    break
+                end
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+-- Name of an extra activity in the language of the client, the English id while the client has no name.
+function M.ExtraName(activity)
+    local row = D.extra[activity]
+    if not row then
+        return nil
+    end
+    local read = Z.PublicLFG and Z.PublicLFG.Activity
+    -- The ids the client offers first: that is the name the player sees in the group search.
+    for _, id in ipairs(read and (M.Activities(activity) or D.catalog[activity]) or {}) do
+        local facts = read(id)
+        if facts then
+            return row[5] and facts.name .. ' (' .. Z.T(KIND_WORD[row[1]]) .. ')' or facts.name
+        end
+    end
+    return activity
 end
 
 -- The client announced a change of what it offers.

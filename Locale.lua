@@ -1484,7 +1484,13 @@ end
 function I.Role(value)return I.Text(({TANK="Tank",HEALER="Healer",DAMAGER="Damage"})[value]or value or"")end
 function I.PeerState(value)local token=Z.Logic.PeerState(value);return token and I.Text(({reached="Reached",unreachable="Not reachable",saved="Saved data"})[token])or value or""end
 function I.State(value)return I.Text(({applied="Applied",invited="Invited",rejected="Rejected",joined="Joined",withdrawn="Withdrawn"})[value]or value or"")end
-function I.Activity(value)local id=Z.Logic and Z.Logic.ActivityID(value)or value;return german and(ACTIVITY_DE[id]or id)or id or""end
+-- An extra activity of the group finder (PublicLFGMap) has no entry here: the client names it in its own language.
+function I.Activity(value)
+    local id=Z.Logic and Z.Logic.ActivityID(value)or value
+    local extra=Z.PublicLFGMap and not ACTIVITY_DE[id]and Z.PublicLFGMap.ExtraName(id)
+    if extra then return extra end
+    return german and(ACTIVITY_DE[id]or id)or id or""
+end
 function I.Class(value,token)
     local id=token or value;local english=({WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"})[id]
     if not english then return value or I.Text("Unknown")end

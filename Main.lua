@@ -524,6 +524,7 @@ local function initializeGameplayModules(d)
     if Z.Network3 then Z.Network3.Initialize()end
     if Z.TradeManager then Z.TradeManager.Initialize()end
     if Z.GroupFinder then Z.GroupFinder.Initialize()end
+    if Z.GroupFinderCatalog then Z.GroupFinderCatalog.SyncExtras()end
     if Z.GroupFinderCatalog then Z.GroupFinderCatalog.Resume()end
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
@@ -627,6 +628,7 @@ local function register(event) local ok,r=pcall(frame.RegisterEvent,frame,event)
 Z.bnetReceiveEvent=register("BN_CHAT_MSG_ADDON");register("INITIAL_CLUBS_LOADED")
 for _,event in ipairs({"BN_CONNECTED","BN_DISCONNECTED","BN_FRIEND_INFO_CHANGED","CLUB_ADDED","CLUB_REMOVED","CLUB_UPDATED","CLUB_MEMBERS_UPDATED","CLUB_MEMBER_ADDED","CLUB_MEMBER_REMOVED","CLUB_MEMBER_UPDATED","CLUB_MEMBER_PRESENCE_UPDATED","PLAYER_ENTERING_WORLD"})do register(event)end
 register("PLAYER_LOGIN")
+register("LFG_LIST_AVAILABILITY_UPDATE")
 register("PLAYER_LEVEL_UP")
 register("ADDON_LOADED")
 Z.receiveEvent=register("CHAT_MSG_ADDON")
@@ -711,6 +713,11 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end
         A.DiscoveryTick(true)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
+    elseif event=="LFG_LIST_AVAILABILITY_UPDATE"then
+        -- The client changed which activities of its group search it offers this character.
+        if Z.PublicLFGMap then Z.PublicLFGMap.Reset()end
+        if Z.PublicLFG then Z.PublicLFG.Reset()end
+        if Z.db and Z.GroupFinderCatalog and Z.GroupFinderCatalog.SyncExtras()then Z.MarkDirty()end
     elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
     elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end

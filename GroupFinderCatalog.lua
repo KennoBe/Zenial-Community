@@ -86,16 +86,48 @@ for id, e in pairs(ENTRIES) do
 end
 C.entries = ENTRIES
 
+-- Extra activities: dungeons, raids and battlegrounds the client offers this character and the list above
+-- does not have (PublicLFGMap). One becomes a catalogue activity of the session the moment the client offers
+-- it: it joins the activity list of its kind in GroupFinder.lua, so tiles, forms and the kind of a group all
+-- see it. Level range and size come from the game data; there is no zone and no picture (neutral tile).
+local extras = {}
+local function find(id)
+    return ENTRIES[id] or extras[id]
+end
+
+-- Takes in the extra activities the client offers by now. Returns true when the catalogue grew.
+function C.SyncExtras()
+    local M, G = Z.PublicLFGMap, Z.GroupFinder
+    if not M or not G then
+        return false
+    end
+    local changed = false
+    for _, kind in ipairs({ D, R, P }) do
+        for _, id in ipairs(M.Extras(kind)) do
+            local x = not find(id) and M.Extra(id)
+            if x then
+                local e = entry(kind, x.min, x.max, x.size, nil, nil)
+                e.id, e.public = id, true
+                extras[id] = e
+                table.insert(G.Activities[kind], id)
+                changed = true
+            end
+        end
+    end
+    return changed
+end
+
 function C.Get(activity)
-    return activity and ENTRIES[L.ActivityID(activity)] or nil
+    return activity and find(L.ActivityID(activity)) or nil
 end
 
 -- Catalogue entries of one kind (DUNGEON, RAID, PVP).
 function C.List(kind)
+    C.SyncExtras()
     local out, order = {}, {}
     for index, id in ipairs(Z.GroupFinder.Activities[kind] or {}) do
-        if ENTRIES[id] then
-            out[#out + 1] = ENTRIES[id]
+        if find(id) then
+            out[#out + 1] = find(id)
             order[id] = index
         end
     end
@@ -199,7 +231,7 @@ function C.Snapshot()
                         if r.own then
                             sb.ownSearch = true
                         end
-                        local category = index == 1 and (r.category or 'CUSTOM') or ENTRIES[activity].kind
+                        local category = index == 1 and (r.category or 'CUSTOM') or find(activity).kind
                         if not counted[category] then
                             counted[category] = true
                             local st = total(category)
@@ -269,7 +301,7 @@ function C.SearchActivities(g)
     if more then
         for name in more:gmatch('[^;]+') do
             local id = L.ActivityID(name)
-            if ENTRIES[id] and not seen[id] and #out < C.MAX_SEARCH then
+            if find(id) and not seen[id] and #out < C.MAX_SEARCH then
                 out[#out + 1], seen[id] = id, true
             end
         end
@@ -348,7 +380,7 @@ function C.StartSearch(activities, roles, note, minutes)
     end
     if #list > 1 then
         for _, id in ipairs(list) do
-            if not ENTRIES[id] then
+            if not find(id) then
                 return nil, 'Only dungeons, raids and battlegrounds can be combined in a search.'
             end
         end
@@ -368,7 +400,7 @@ function C.StartSearch(activities, roles, note, minutes)
     if not L.Text(have, 64) then
         return nil, 'Only dungeons, raids and battlegrounds can be combined in a search.'
     end
-    local e = ENTRIES[list[1]]
+    local e = find(list[1])
     local level = math.max(1, math.min(100, math.floor(tonumber(Z.me and Z.me.level) or 1)))
     local g = {
         id = current and current.id or nil,
