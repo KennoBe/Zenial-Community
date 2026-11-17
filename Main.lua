@@ -525,6 +525,7 @@ local function initializeGameplayModules(d)
     if Z.TradeManager then Z.TradeManager.Initialize()end
     if Z.GroupFinder then Z.GroupFinder.Initialize()end
     if Z.GroupFinderCatalog then Z.GroupFinderCatalog.SyncExtras()end
+    if Z.PublicLFG then Z.PublicLFG.Initialize()end
     if Z.GroupFinderCatalog then Z.GroupFinderCatalog.Resume()end
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
@@ -629,6 +630,8 @@ Z.bnetReceiveEvent=register("BN_CHAT_MSG_ADDON");register("INITIAL_CLUBS_LOADED"
 for _,event in ipairs({"BN_CONNECTED","BN_DISCONNECTED","BN_FRIEND_INFO_CHANGED","CLUB_ADDED","CLUB_REMOVED","CLUB_UPDATED","CLUB_MEMBERS_UPDATED","CLUB_MEMBER_ADDED","CLUB_MEMBER_REMOVED","CLUB_MEMBER_UPDATED","CLUB_MEMBER_PRESENCE_UPDATED","PLAYER_ENTERING_WORLD"})do register(event)end
 register("PLAYER_LOGIN")
 register("LFG_LIST_AVAILABILITY_UPDATE")
+-- Public group search (PublicLFG.lua). Results arrive in bursts of single updates, so these events never reach the general refresh below.
+for _,event in ipairs({"LFG_LIST_SEARCH_RESULTS_RECEIVED","LFG_LIST_SEARCH_FAILED","LFG_LIST_SEARCH_RESULT_UPDATED","LFG_LIST_UPDATE_SEARCH_RESULTS"})do register(event)end
 register("PLAYER_LEVEL_UP")
 register("ADDON_LOADED")
 Z.receiveEvent=register("CHAT_MSG_ADDON")
@@ -667,6 +670,10 @@ register("ADDON_ACTION_BLOCKED");register("ADDON_ACTION_FORBIDDEN")
 register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
 register("CHAT_MSG_WHISPER");register("CHAT_MSG_WHISPER_INFORM")
 frame:SetScript("OnEvent",function(_,event,...)
+    if event=="LFG_LIST_SEARCH_RESULTS_RECEIVED"or event=="LFG_LIST_SEARCH_FAILED"or event=="LFG_LIST_SEARCH_RESULT_UPDATED"or event=="LFG_LIST_UPDATE_SEARCH_RESULTS"then
+        if Z.db and Z.PublicLFG then pcall(Z.PublicLFG.OnEvent,event,...)end
+        return
+    end
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
     if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
@@ -718,7 +725,9 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.PublicLFGMap then Z.PublicLFGMap.Reset()end
         if Z.PublicLFG then Z.PublicLFG.Reset()end
         if Z.db and Z.GroupFinderCatalog and Z.GroupFinderCatalog.SyncExtras()then Z.MarkDirty()end
-    elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
+    elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then
+        if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
+        if Z.PublicLFG then Z.PublicLFG.OnBlocked()end
     elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
 end)
@@ -754,6 +763,7 @@ local function tickQuarterSecond()
     if Z.CraftOrders then Z.CraftOrders.Tick()end
     if Z.PvPHelp then Z.PvPHelp.Tick()end
     if Z.Items then Z.Items.Tick()end
+    if Z.PublicLFG then Z.PublicLFG.Tick()end
     A.DiscoveryTick(false)
     if uiDirty and Z.UI and Z.UI.frame and Z.UI.frame:IsShown()then
         uiDirty=false
