@@ -70,8 +70,9 @@ CompanionQuestAreas.lua
 DeckBindings.lua
 Theme.lua
 ThemeTokens.lua
+ThemeSkin.lua
+ThemeKit.lua
 ThemeCommunity.lua
-UIKit.lua
 UI.lua
 NoticeUI.lua
 RivalryBanner.lua

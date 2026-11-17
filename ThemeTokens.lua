@@ -1,14 +1,15 @@
--- Design tokens of the ZENIAL Community visual overhaul ("Obsidian & Gold").
--- Loaded after the shared Theme.lua and before ThemeCommunity.lua. Community-only: the shared
--- Theme.lua copy stays byte-identical to _dev/shared; this file re-points its named palette and adds
--- the spacing, type and metric scales every Community surface reads. No frames are created here.
+-- Design tokens of the shared ZENIAL design ("Obsidian & Gold").
+-- Shared source: canonical in _dev/shared/, copied byte-identically into every addon by
+-- _dev/tools/sync_shared.py. Do not edit the copies. Loaded after the shared Theme.lua and before
+-- ThemeSkin.lua; it re-points the named palette and adds the spacing, type and metric scales every
+-- surface reads. No frames are created here.
 --
--- Rules for later changes (see _dev/addons/ZenialCommunity/UI-VISUAL-OVERHAUL-PLAN.md, section D):
+-- Rules for later changes (see _dev/shared/README.md):
 --   * a colour is a palette key, never a literal in a UI file;
 --   * a distance is T.space.*, a text size is T.type.*, a shell size is T.metrics.*.
-local Z = ZenialCommunity
-local T = Z and Z.Theme
-if type(T) ~= "table" or type(T.palette) ~= "table" or type(T.PaletteColor) ~= "function" then return end
+local addonName, private = ...
+local T = type(private) == "table" and private.Theme or nil
+if type(addonName) ~= "string" or type(T) ~= "table" or type(T.palette) ~= "table" or type(T.PaletteColor) ~= "function" then return end
 
 local function hex(value, alpha)
     local r, g, b = value:match("^#?(%x%x)(%x%x)(%x%x)$")
@@ -114,7 +115,7 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- Icon atlas (Media/Icons.tga, 8 x 4 cells; drawn by _dev/tools/generate_community_icons.py)
 -- ---------------------------------------------------------------------------------------------
-T.assets.iconAtlas = "Interface\\AddOns\\ZenialCommunity\\Media\\Icons.tga"
+T.assets.iconAtlas = "Interface\\AddOns\\" .. addonName .. "\\Media\\Icons.tga"
 T.iconCells = { today = 0, activities = 1, quests = 2, members = 3, craft = 4, trade = 5, characters = 6, addons = 7,
     settings = 8, bell = 9, pvp = 10, discord = 11, search = 12, plus = 13, close = 14, check = 15,
     chevronRight = 16, chevronDown = 17, star = 18, clock = 19, calendar = 20, filter = 21, refresh = 22, whisper = 23,
@@ -140,4 +141,4 @@ function T.IconSpec(name)
     return { file = T.assets.iconAtlas, texCoord = { column / 8, (column + 1) / 8, row / 4, (row + 1) / 4 } }
 end
 
-Z.ThemeTokensLoaded = true
+private.ThemeTokensLoaded = true

@@ -1,4 +1,5 @@
--- ZENIAL Community component kit. Small building blocks on top of the skin (ThemeCommunity.lua) and the
+-- Shared ZENIAL component kit. Shared source: canonical in _dev/shared/, copied byte-identically into every
+-- addon by _dev/tools/sync_shared.py; do not edit the copies. Small building blocks on top of the skin (ThemeSkin.lua) and the
 -- tokens (ThemeTokens.lua). Every block is a plain frame with a few documented methods; nothing here
 -- knows about pages, data or navigation. Colours are palette keys, sizes are token roles.
 --
@@ -23,11 +24,11 @@
 --   K.InfoBlock(list)                             a list that only shows facts: no sunken well, reads as plain text
 --   K.Lines(text[, firstKey, restKey])            multi-line row text: first line bright, the lines below receding
 --   K.Facts(text)                                 multi-line facts: "Label: value" lines get a dimmed label
-local Z = ZenialCommunity
-local T = Z and Z.Theme
-if type(T) ~= "table" or type(T.Font) ~= "function" then return end
+local addonName, private = ...
+local T = type(private) == "table" and private.Theme or nil
+if type(addonName) ~= "string" or type(T) ~= "table" or type(T.Font) ~= "function" then return end
 local K = {}
-Z.Kit = K
+private.Kit = K
 
 local function call(object, method, ...)
     local fn = object and object[method]
@@ -463,4 +464,5 @@ function K.DialogHeader(dialog, title, onClose)
     return header
 end
 
+private.ThemeKitLoaded = true
 return K
