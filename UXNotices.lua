@@ -112,9 +112,10 @@ function U.UpdateBadges()
     badge(U.groupMineTab, gu + updates('groups', 'mine'))
     badge(U.groupOutgoingTab, updates('groups', 'outgoing'))
     badge(U.scheduledTab, updates('groups', 'scheduled'))
-    badge(U.activityScopeOrganized, gu + updates('groups', 'mine'))
-    badge(U.activityScopeApplications, updates('groups', 'outgoing'))
-    badge(U.activityScopePlanned, updates('groups', 'scheduled'))
+    for _, row in ipairs(U.Finder and U.Finder.rows or {}) do
+        badge(row.tabs.requests, updates('groups', 'outgoing'))
+        badge(row.tabs.events, updates('groups', 'scheduled'))
+    end
     badge(U.groupBrowseTab, updates('groups', 'browse'))
     badge(U.questMineTab, qu + updates('quests', 'mine'))
     badge(U.questOutgoingTab, updates('quests', 'outgoing'))

@@ -482,10 +482,13 @@ function M.Tick()
     if clock>=M.nextBatch then
         M.nextBatch=clock+2
         for group,list in pairs(groups)do flush(group,list)end
+        -- A record stays queued until enough neighbours of every group have it. Scheduled groups go to every
+        -- neighbour (up to eight) instead of four: a new event then reaches the whole mesh by passing on alone,
+        -- not minutes later through the inventory round (owner, 2026-11-18: planned for 1000 members).
         for id,p in pairs(M.pending)do
             local complete=true;local any=false
             for _,list in pairs(groups)do
-                local n,required=0,math.min(p.row.kind=="P"and 3 or 4,#list);for _,route in ipairs(list)do if route.target==p.source or p.sent[route.target]then n=n+1 end end
+                local n,required=0,math.min(scheduled and 8 or p.row.kind=="P"and 3 or 4,#list);for _,route in ipairs(list)do if route.target==p.source or p.sent[route.target]then n=n+1 end end
                 if n<required then complete=false end;any=true
             end
             if complete and any then removePending(id)end

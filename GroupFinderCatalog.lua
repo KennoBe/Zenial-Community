@@ -317,19 +317,34 @@ local CODE_CLASS = {}
 for class, code in pairs(CLASS_CODE) do
     CODE_CLASS[code] = class
 end
--- Role part of a `have` value and the preferred classes in the order of C.CLASSES.
+-- Play style of a group and "new players welcome" travel in the same list as further codes ("w=ma.wr.sb.nw"):
+-- every client since 6.2 skips codes it does not know there, so older ones simply do not show them.
+-- The style is a position in the order of the game: 1 learning, 2 relaxed, 3 competitive, 4 carry offered.
+local STYLE_CODE = { 'sa', 'sb', 'sc', 'sd' }
+local CODE_STYLE = {}
+for index, code in ipairs(STYLE_CODE) do
+    CODE_STYLE[code] = index
+end
+local BEGINNERS_CODE = 'nw'
+-- Role part of a `have` value, the preferred classes in the order of C.CLASSES, and the manner of the group
+-- { style = 0..4, beginners = bool }.
 function C.SplitHave(have)
+    local manner = { style = 0, beginners = false }
     if type(have) ~= 'string' then
-        return '', {}
+        return '', {}, manner
     end
     local roles, codes = have:match('^(.-);w=([a-z%.]*)$')
     if not roles then
-        return have, {}
+        return have, {}, manner
     end
     local set, out = {}, {}
     for code in codes:gmatch('[a-z]+') do
         if CODE_CLASS[code] then
             set[CODE_CLASS[code]] = true
+        elseif CODE_STYLE[code] then
+            manner.style = CODE_STYLE[code]
+        elseif code == BEGINNERS_CODE then
+            manner.beginners = true
         end
     end
     for _, class in ipairs(C.CLASSES) do
@@ -337,9 +352,9 @@ function C.SplitHave(have)
             out[#out + 1] = class
         end
     end
-    return roles, out
+    return roles, out, manner
 end
-function C.JoinHave(roles, classes)
+function C.JoinHave(roles, classes, manner)
     local set, codes = {}, {}
     for _, class in ipairs(type(classes) == 'table' and classes or {}) do
         set[class] = true
@@ -350,10 +365,30 @@ function C.JoinHave(roles, classes)
         end
     end
     roles = type(roles) == 'string' and roles or ''
-    if #codes == 0 or #codes == #C.CLASSES then
+    -- Every class means no preference.
+    if #codes == #C.CLASSES then
+        codes = {}
+    end
+    if type(manner) == 'table' then
+        if STYLE_CODE[manner.style or 0] then
+            codes[#codes + 1] = STYLE_CODE[manner.style]
+        end
+        if manner.beginners == true then
+            codes[#codes + 1] = BEGINNERS_CODE
+        end
+    end
+    if #codes == 0 then
         return roles
     end
     return roles .. ';w=' .. table.concat(codes, '.')
+end
+-- Play style and "new players welcome" of a group; a search of a single player has none.
+function C.Manner(g)
+    if type(g) ~= 'table' or g.mode == 'LFG' then
+        return { style = 0, beginners = false }
+    end
+    local _, _, manner = C.SplitHave(g.have)
+    return manner
 end
 function C.WantedClasses(g)
     if type(g) ~= 'table' or g.mode == 'LFG' then

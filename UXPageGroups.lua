@@ -11,11 +11,7 @@ local makeModal = S.makeModal
 
 function S.createGroupsPage(f)
     local p = U.pages[3]
-    U.activityScopeDiscover = navButton(p, 'Discover', 0, 0, 112, function() U.Navigate('activities') end)
-    U.activityScopeOrganized = navButton(p, 'Organized', 118, 0, 112, function() U.Navigate('activities', 'mine') end)
-    U.activityScopeApplications = navButton(p, 'Applications', 236, 0, 126, function() U.Navigate('groups', 'outgoing') end)
-    U.activityScopePlanned = navButton(p, 'Planned', 368, 0, 112, function() U.Navigate('activities', 'planned') end)
-    U.activityScopeArchive = navButton(p, 'Archive', 486, 0, 112, U.OpenActivityArchive)
+    -- The row of tabs on top of this page is the one of the finder (UXFinder.lua, F.row3).
     U.groupBrowseTab = navButton(p, 'Group Search', 0, 0, 150, function()
         U.SetGroupView('browse')
     end)

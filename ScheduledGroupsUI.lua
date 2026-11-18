@@ -152,7 +152,7 @@ function U.CreateScheduledGroups(parent,helpers)
     H=helpers;local label,button,list,edit,selector=H.label,H.button,H.list,H.edit,H.selector
     local f=CreateFrame('Frame',nil,parent);U.scheduledFrame=f;f:SetPoint('TOPLEFT',0,-36);f:SetSize(856,414)
     U.scheduledFilter=selector(f,'Events',0,0,250,{'ALL_EVENTS','MY_EVENTS','MY_APPLICATIONS'},function()U.scheduledPage=1;U.RefreshScheduledGroups()end,function(v)return tr(({ALL_EVENTS='All scheduled events',MY_EVENTS='My scheduled events',MY_APPLICATIONS='My scheduled applications'})[v])end)
-    U.scheduledCount=label(f,'',0,-47,260);U.scheduledList=list(f,0,-72,238,218)
+    U.scheduledCount=label(f,'',0,-47,150);U.scheduledArchiveOpen=button(f,tr('Archive'),158,-48,92,function()U.OpenActivityArchive()end);U.scheduledArchiveOpen:SetHeight(22);U.scheduledList=list(f,0,-72,238,218)
     U.scheduledPrev=button(f,tr('Previous'),0,-304,118,function()U.scheduledPage=(U.scheduledPage or 1)-1;U.scheduledOwner,U.scheduledID,U.scheduledParticipant,U.scheduledParticipantRevision=nil,nil,nil,nil;U.RefreshScheduledGroups()end)
     U.scheduledNext=button(f,tr('Next'),132,-304,118,function()U.scheduledPage=(U.scheduledPage or 1)+1;U.scheduledOwner,U.scheduledID,U.scheduledParticipant,U.scheduledParticipantRevision=nil,nil,nil,nil;U.RefreshScheduledGroups()end)
     U.scheduledArchive=H.checkbox(f,'Show archived events',0,-335,260,function()U.scheduledPage=1;U.RefreshScheduledGroups()end)

@@ -595,6 +595,9 @@ function U.Refresh(all, revisionDriven)
         end
     end
     if all or U.page == 3 then
+        if U.RefreshFinderTabs then
+            U.RefreshFinderTabs()
+        end
         local v = U.groupView
         if all or v == 'browse' then
             S.refreshGroupBrowse()

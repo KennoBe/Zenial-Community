@@ -105,9 +105,25 @@ local function className(class, colored)
     local hex = colored and T.ClassColorHex(class)
     return hex and ('|cff' .. hex .. name .. '|r') or name
 end
--- Present roles plus preferred classes, as the record stores them.
+-- Play style of the group and "new players welcome": { style = 0..4, beginners = bool }.
+G.manner = { style = 0, beginners = false }
+-- Present roles plus preferred classes and the manner of the group, as the record stores them.
 function G.Have()
-    return C.JoinHave(A.GroupRoles(), classList())
+    return C.JoinHave(A.GroupRoles(), classList(), G.manner)
+end
+-- A click on one of the play styles (the chosen one again clears it) or on "new players welcome". The choice
+-- is remembered for the character and is the start of its next group.
+function U.SetGroupFormManner(style, beginners)
+    if style ~= nil then
+        G.manner.style = G.manner.style == style and 0 or style
+    end
+    if beginners ~= nil then
+        G.manner.beginners = beginners == true
+    end
+    if Z.uiCharacter then
+        Z.uiCharacter.finderPlaystyle, Z.uiCharacter.finderBeginners = G.manner.style, G.manner.beginners
+    end
+    U.CaptureGroupDraft()
 end
 function U.ToggleGroupFormClass(class)
     G.classes[class] = not G.classes[class] or nil
@@ -315,6 +331,16 @@ local function layout()
         end
     end
     y = y - 16
+    -- Play style of the group and "new players welcome": shown on its card and carried by its listing in the game.
+    local styleX = LEFT
+    for index, option in ipairs(G.styles) do
+        place(option, styleX, y, option.zenialWidth, 24)
+        option:SetChecked(G.manner.style == index)
+        styleX = styleX + option.zenialWidth + 4
+    end
+    place(G.beginners, LEFT + WIDTH - 190, y, 190, 24)
+    G.beginners:SetChecked(G.manner.beginners == true)
+    y = y - 34
     -- Public group search: the choice to list the group in the group search of the game as well, right above
     -- the button that creates it.
     local listing = U.FinderPublic and U.FinderPublic.FormChip and U.FinderPublic.FormChip(form, (currentActivity()))
@@ -322,14 +348,6 @@ local function layout()
         place(listing.hint, LEFT, y + 2, WIDTH - 202, 28)
         place(listing, LEFT + WIDTH - 190, y, 190, 24)
         y = y - 36
-        -- Play style and "new players welcome" of the public listing.
-        local x = LEFT
-        for _, option in ipairs(listing.styles) do
-            place(option, x, y, option.zenialWidth, 24)
-            x = x + option.zenialWidth + 4
-        end
-        place(listing.beginners, LEFT + WIDTH - 190, y, 190, 24)
-        y = y - 34
     end
     -- Foot: back and discard on the left, the one primary action on the right; saving a template belongs to
     -- the optional part.
@@ -490,6 +508,20 @@ function U.StyleGroupForm()
         chip.text:SetPoint('RIGHT', -5, 0)
         G.chips[index] = chip
     end
+    -- Play style: one of four or none, in the words of the game where it has them.
+    G.styles = {}
+    local styles = Z.PublicLFG and Z.PublicLFG.Playstyles and Z.PublicLFG.Playstyles() or {}
+    for index, word in ipairs({ 'Learning', 'Relaxed', 'Competitive', 'Carry offered' }) do
+        local name = styles[index] and styles[index].label or tr(word)
+        local chip = T.Chip(form, name, 64, 24, function()
+            U.SetGroupFormManner(index)
+        end)
+        chip.zenialWidth = math.max(64, math.ceil(textWidth(chip.text, name)) + 22)
+        G.styles[index] = chip
+    end
+    G.beginners = T.Chip(form, tr('New players welcome'), 190, 24, function(self)
+        U.SetGroupFormManner(nil, self:GetChecked() and true or false)
+    end)
     G.noteBox = createNoteBox(form, fields.note)
     place(G.noteBox, LEFT, -400, WIDTH, 40)
     place(fields.note, LEFT, -400, WIDTH, 40)
@@ -507,7 +539,7 @@ function U.StyleGroupForm()
         capture(...)
         local draft = U.groupEditing and not U.Shared.restoringDraft and Z.UIState and Z.UIState.ActivityInput('group')
         if draft then
-            draft.classes = C.JoinHave('', classList())
+            draft.classes = C.JoinHave('', classList(), G.manner)
             draft.more = G.more
         end
         U.RefreshGroupForm()
@@ -516,6 +548,12 @@ function U.StyleGroupForm()
     U.OpenGroupEditor = function(g, ...)
         local draft = not g and Z.UIState and Z.UIState.ActivityInput('group')
         local classes = g and C.WantedClasses(g) or draft and select(2, C.SplitHave(draft.classes)) or {}
+        -- The manner of the group: its own when it is edited, the draft's, else what the character chose last.
+        local manner = g and C.Manner(g) or draft and draft.classes and select(3, C.SplitHave(draft.classes))
+        if not manner then
+            manner = { style = Z.uiCharacter and Z.uiCharacter.finderPlaystyle or 0, beginners = Z.uiCharacter ~= nil and Z.uiCharacter.finderBeginners == true }
+        end
+        G.manner = { style = manner.style or 0, beginners = manner.beginners == true }
         G.classes = {}
         for _, class in ipairs(classes) do
             G.classes[class] = true

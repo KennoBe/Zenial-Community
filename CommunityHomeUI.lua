@@ -404,7 +404,6 @@ function U.CreateCommunityHome(helpers)
     end
     -- Existing details retain their actions, with one route back to the shared board.
     for _,tab in ipairs({U.groupBrowseTab,U.groupMineTab,U.groupOutgoingTab,U.groupFollowTab,U.scheduledTab,U.pvpTab})do tab:Hide()end
-    button(U.pages[3],tr('Create activity'),630,0,220,U.OpenActivityCreator)
     button(U.pages[4],tr('Back to today'),630,-444,220,function()U.Navigate('today')end)
     button(U.pages[7],tr('Settings'),690,-444,160,function()U.Navigate('settings')end)
     button(U.craftOrderFilterBar,tr('All shopping lists'),650,0,200,function()U.SetCraftView('materials')end)

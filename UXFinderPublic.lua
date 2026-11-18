@@ -1102,49 +1102,14 @@ function FP.FormChip(parent, activity)
         if chip then
             chip:Hide()
             chip.hint:Hide()
-            for _, option in ipairs(chip.styles) do
-                option:Hide()
-            end
-            chip.beginners:Hide()
         end
         return nil
     end
     if not chip then
-        local function sync()
-            local on = FP.ListsPublicly()
-            local style = Z.uiCharacter and Z.uiCharacter.finderPlaystyle or 0
-            for _, option in ipairs(chip.styles) do
-                option:SetChecked(style == option.zenialValue)
-                option:SetEnabled(on)
-            end
-            chip.beginners:SetChecked(Z.uiCharacter ~= nil and Z.uiCharacter.finderBeginners == true)
-            chip.beginners:SetEnabled(on)
-        end
         chip = T.Chip(parent, tr('List publicly'), 190, 24, function(self)
             if Z.uiCharacter then
                 Z.uiCharacter.finderPublish = self:GetChecked() and true or false
             end
-            sync()
-        end)
-        chip.zenialSync = sync
-        -- Play style of the listing, as in the window of the game: one of four or none.
-        chip.styles = {}
-        for index, style in ipairs(P.Playstyles()) do
-            local width = math.max(64, #style.label * 7 + 22)
-            local option = T.Chip(parent, style.label, width, 24, function(self)
-                if Z.uiCharacter then
-                    Z.uiCharacter.finderPlaystyle = self:GetChecked() and style.value or 0
-                end
-                sync()
-            end)
-            option.zenialValue, option.zenialWidth = style.value, width
-            chip.styles[index] = option
-        end
-        chip.beginners = T.Chip(parent, tr('New players welcome'), 190, 24, function(self)
-            if Z.uiCharacter then
-                Z.uiCharacter.finderBeginners = self:GetChecked() and true or false
-            end
-            sync()
         end)
         chip:HookScript('OnEnter', listingTooltip)
         chip:HookScript('OnLeave', function()
@@ -1163,11 +1128,6 @@ function FP.FormChip(parent, activity)
     chip:SetChecked(FP.ListsPublicly())
     chip:Show()
     chip.hint:Show()
-    for _, option in ipairs(chip.styles) do
-        option:Show()
-    end
-    chip.beginners:Show()
-    chip.zenialSync()
     return chip
 end
 

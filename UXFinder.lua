@@ -18,8 +18,14 @@ local F = { view = 'now', filters = { level = false, groups = false, seekers = f
 U.Finder = F
 
 local VIEWS = { 'now', 'dungeons', 'raids', 'pvp', 'quests', 'other' }
-local VIEW_LABEL = { now = 'Happening now', dungeons = 'Dungeons', raids = 'Raids', pvp = 'PvP', quests = 'Questing and levelling', other = 'Miscellaneous' }
-local VIEW_WIDTH = { now = 92, dungeons = 108, raids = 86, pvp = 76, quests = 100, other = 108 }
+local VIEW_LABEL = { now = 'Live', dungeons = 'Dungeons', raids = 'Raids', pvp = 'PvP', quests = 'Levelling', other = 'Miscellaneous' }
+local VIEW_WIDTH = { now = 76, dungeons = 94, raids = 68, pvp = 58, quests = 88, other = 110 }
+-- The row of tabs is shared with page 3 (events and own requests): the six views of the finder, then two
+-- more places with a little room between. Width of "Create group" included, the row ends before it at 856.
+local EXTRA_TABS = { 'events', 'requests' }
+local EXTRA_LABEL = { events = 'Events', requests = 'Requests' }
+local EXTRA_WIDTH = { events = 68, requests = 92 }
+local TAB_GAP, EXTRA_GAP, CREATE_WIDTH, LIST_VIEW_WIDTH = 2, 14, 150, 120
 local VIEW_KIND = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP' }
 local VIEW_CATEGORY = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP', quests = 'QUEST', other = 'CUSTOM' }
 local KIND_VIEW = { DUNGEON = 'dungeons', RAID = 'raids', PVP = 'pvp' }
@@ -605,6 +611,18 @@ local function describe(r, context)
         local levels = g.min == g.max and Z.T('Level %d', g.min) or Z.T('Level %d–%d', g.min, g.max)
         d.title = context.named and name or owner
         d.meta = (context.named and not r.own and r.ownerName .. ' · ' or '') .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels
+        -- Play style and "new players welcome" of the group, as on the card of a public group.
+        local manner, mannerWords = C.Manner(g), {}
+        local styles = Z.PublicLFG and Z.PublicLFG.Playstyles and Z.PublicLFG.Playstyles() or {}
+        if styles[manner.style] then
+            mannerWords[#mannerWords + 1] = paint('success', styles[manner.style].label)
+        end
+        if manner.beginners then
+            mannerWords[#mannerWords + 1] = tr('New players welcome')
+        end
+        if #mannerWords > 0 then
+            d.meta = d.meta .. paint('dim', ' · ') .. table.concat(mannerWords, paint('dim', ' · '))
+        end
         local wanted = {}
         for _, role in ipairs(ROLES) do
             local n = g[ROLE_FIELD[role]] or 0
@@ -637,6 +655,9 @@ local function describe(r, context)
         d.hover = { title = owner, lines = { name .. ' · ' .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels } }
         if #facts > 0 then
             d.hover.pair = { owner, table.concat(facts, ' · ') }
+        end
+        if #mannerWords > 0 then
+            d.hover.lines[#d.hover.lines + 1] = table.concat(mannerWords, paint('dim', ' · '))
         end
         -- Preferred classes lead the comment line, in their class colours.
         local classes = C.WantedClasses(g)
@@ -1613,10 +1634,8 @@ local function renderDetail(snap, top, width, height)
     renderStream(detail.right, columnWidth, listHeight, right, 1, { named = false, thumbs = false })
 end
 
--- Own group, own search or own requests: always one line above the content.
-local function renderStatus(snap, width)
-    local status = F.status
-    local group, search = snap.own.group, snap.own.search
+-- Own requests that still wait for an answer (status line and the "Requests" tab).
+local function countRequests(snap)
     local requests = 0
     for _, rows in ipairs({ snap.groups, snap.planned }) do
         for _, r in ipairs(rows) do
@@ -1626,6 +1645,87 @@ local function renderStatus(snap, width)
             end
         end
     end
+    return requests
+end
+
+-- The row of tabs of the finder; page 3 (events, own requests) carries the same row.
+-- selected: view name, 'events' or 'requests'; nil marks no tab.
+local function layoutTabRow(row, width, selected, snap)
+    local x = 0
+    for _, view in ipairs(VIEWS) do
+        local tab = row.tabs[view]
+        local category = VIEW_CATEGORY[view]
+        local n = category and (snap.totals[category] and snap.totals[category].groups or 0) or #snap.groups
+        tab:SetText(tr(VIEW_LABEL[view]) .. (n > 0 and '  ' .. paint('success', tostring(n)) or ''))
+        tab:ClearAllPoints()
+        tab:SetPoint('TOPLEFT', x, 0)
+        T.SetSelected(tab, selected == view)
+        x = x + VIEW_WIDTH[view] + TAB_GAP
+    end
+    x = x - TAB_GAP + EXTRA_GAP
+    local requests = countRequests(snap)
+    for _, name in ipairs(EXTRA_TABS) do
+        local tab = row.tabs[name]
+        tab:SetText(tr(EXTRA_LABEL[name]) .. (name == 'requests' and requests > 0 and '  ' .. paint('success', tostring(requests)) or ''))
+        tab:ClearAllPoints()
+        tab:SetPoint('TOPLEFT', x, 0)
+        T.SetSelected(tab, selected == name)
+        x = x + EXTRA_WIDTH[name] + TAB_GAP
+    end
+    row.create:ClearAllPoints()
+    row.create:SetPoint('TOPRIGHT', row.parent, 'TOPLEFT', width, -2)
+    row.line:ClearAllPoints()
+    row.line:SetPoint('TOPLEFT', 0, -31)
+    row.line:SetSize(width, 1)
+end
+local function buildTabRow(parent, onCreate)
+    local row = { parent = parent, tabs = {} }
+    local function open(name)
+        return function()
+            if name == 'events' then
+                if U.Navigate('groups', 'scheduled') and U.scheduledArchive then
+                    U.scheduledArchive:SetChecked(false)
+                    U.RefreshScheduledGroups()
+                end
+            elseif name == 'requests' then
+                U.Navigate('groups', 'outgoing')
+            else
+                U.Navigate('activities', name)
+            end
+        end
+    end
+    for _, view in ipairs(VIEWS) do
+        row.tabs[view] = T.Button(parent, tr(VIEW_LABEL[view]), VIEW_WIDTH[view], 30, open(view), 'tab')
+    end
+    for _, name in ipairs(EXTRA_TABS) do
+        row.tabs[name] = T.Button(parent, tr(EXTRA_LABEL[name]), EXTRA_WIDTH[name], 30, open(name), 'tab')
+    end
+    for _, tab in pairs(row.tabs) do
+        T.SetSelected(tab, false)
+    end
+    row.line = parent:CreateTexture(nil, 'ARTWORK')
+    T.Tint(row.line, 'SetColorTexture', 'lineSoft')
+    row.create = T.Button(parent, tr('Create group'), CREATE_WIDTH, 26, onCreate, 'primary')
+    F.rows = F.rows or {}
+    F.rows[#F.rows + 1] = row
+    return row
+end
+-- Page 3 (events, own requests, and the views reached from the notices): same row, nothing marked except the
+-- two places that live there.
+function U.RefreshFinderTabs()
+    local row = F.row3
+    if not row or U.page ~= 3 then
+        return
+    end
+    local width = size()
+    layoutTabRow(row, width, U.groupView == 'scheduled' and 'events' or U.groupView == 'outgoing' and 'requests' or nil, C.Snapshot())
+end
+
+-- Own group, own search or own requests: always one line above the content.
+local function renderStatus(snap, width)
+    local status = F.status
+    local group, search = snap.own.group, snap.own.search
+    local requests = countRequests(snap)
     local actions = {}
     if group then
         local g = group.data
@@ -1719,24 +1819,8 @@ function U.RefreshFinder()
         F.activity = nil
     end
     -- Tabs with the open groups of their category.
-    local x = 0
-    for _, view in ipairs(VIEWS) do
-        local tab = F.tabs[view]
-        local category = VIEW_CATEGORY[view]
-        local n = category and (snap.totals[category] and snap.totals[category].groups or 0) or #snap.groups
-        tab:SetText(tr(VIEW_LABEL[view]) .. (n > 0 and '  ' .. paint('success', tostring(n)) or ''))
-        tab:ClearAllPoints()
-        tab:SetPoint('TOPLEFT', x, 0)
-        T.SetSelected(tab, F.view == view)
-        x = x + VIEW_WIDTH[view] + 2
-    end
-    F.create:ClearAllPoints()
-    F.create:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width, -2)
-    F.tabLine:ClearAllPoints()
-    F.tabLine:SetPoint('TOPLEFT', 0, -31)
-    F.tabLine:SetSize(width, 1)
+    layoutTabRow(F.row, width, F.view, snap)
     local top = 40 + renderStatus(snap, width)
-    local footer = 34
     local detailed = F.activity ~= nil
     local gridView = VIEW_KIND[F.view] ~= nil and not detailed
     local filters = gridView and F.view ~= 'pvp'
@@ -1755,8 +1839,13 @@ function U.RefreshFinder()
     end
     F.search:ClearAllPoints()
     F.search:SetPoint('TOPLEFT', chipX + 6, -(top + 1))
+    -- The old list stays one click away at the right end of the tool row of "Live".
+    local listView = not detailed and F.view == 'now'
+    F.listView:SetShown(listView)
+    F.listView:ClearAllPoints()
+    F.listView:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width - 2, -(top + 1))
     F.summary:ClearAllPoints()
-    F.summary:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width - 2, -(top + 6))
+    F.summary:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width - 2 - (listView and LIST_VIEW_WIDTH + 8 or 0), -(top + 6))
     oneLine(F.summary, 330, 14)
     F.summary:SetJustifyH('RIGHT')
     for _, link in ipairs(F.links) do
@@ -1776,7 +1865,7 @@ function U.RefreshFinder()
             linkX = linkX + spec.width + 6
         end
     end
-    local contentTop = detailed and top or top + ((filters or links) and 34 or 24)
+    local contentTop = detailed and top or top + ((filters or links or listView) and 34 or 24)
     -- Public group search: one row with its search field below the tool row (the overview of an instance
     -- places it itself).
     local FP = U.FinderPublic
@@ -1787,7 +1876,7 @@ function U.RefreshFinder()
             contentTop = contentTop + FP.LayoutBar(contentTop, width)
         end
     end
-    local contentHeight = math.max(80, height - contentTop - footer)
+    local contentHeight = math.max(80, height - contentTop)
     F.grid:SetShown(gridView)
     F.gridEmpty:Hide()
     F.stream:SetShown(not gridView and not detailed)
@@ -1800,13 +1889,6 @@ function U.RefreshFinder()
         renderNow(snap, contentTop, width, contentHeight)
     else
         renderCategory(snap, contentTop, width, contentHeight)
-    end
-    -- Foot row: the former sub pages stay one click away.
-    local footX = 0
-    for _, button in ipairs(F.footer) do
-        button:ClearAllPoints()
-        button:SetPoint('TOPLEFT', footX, -(height - 26))
-        footX = footX + button.zenialWidth + 6
     end
     if U.FinderAssistant then
         U.FinderAssistant.Refresh()
@@ -1935,19 +2017,13 @@ function U.CreateFinder()
     frame.fill:SetPoint('BOTTOMRIGHT', 8, -6)
     T.Tint(frame.fill, 'SetColorTexture', 'bg')
 
-    F.tabs = {}
-    for _, view in ipairs(VIEWS) do
-        local tab = T.Button(frame, tr(VIEW_LABEL[view]), VIEW_WIDTH[view], 30, function()
-            U.Navigate('activities', view)
-        end, 'tab')
-        T.SetSelected(tab, false)
-        F.tabs[view] = tab
-    end
-    F.tabLine = frame:CreateTexture(nil, 'ARTWORK')
-    T.Tint(F.tabLine, 'SetColorTexture', 'lineSoft')
-    F.create = T.Button(frame, tr('Create group'), 170, 26, function()
+    F.row = buildTabRow(frame, function()
         U.OpenFinderCreate(F.activity)
-    end, 'primary')
+    end)
+    -- The same row on page 3 (events, own requests): the change reads as a change of tab.
+    F.row3 = buildTabRow(U.pages[3], function()
+        U.OpenActivityCreator()
+    end)
 
     local status = K.Card(frame, 'raised')
     K.Accent(status, 'gold')
@@ -1982,6 +2058,10 @@ function U.CreateFinder()
         end
     end)
     F.summary = K.Text(frame, '', 'caption', 'dim')
+    F.listView = T.Button(frame, tr('List view'), LIST_VIEW_WIDTH, 24, function()
+        U.Navigate('activities', 'list')
+    end, 'secondary')
+    F.listView:Hide()
 
     -- Links of the views without a tile grid of their own subject.
     F.links = {}
@@ -2101,27 +2181,6 @@ function U.CreateFinder()
     detail.right = createStream(detail)
     detail:Hide()
 
-    -- Three ways to the other views of the activities. Planning a group goes through "Create group", the
-    -- archive is reached from the events; both were here a second time.
-    F.footer = {}
-    for _, spec in ipairs({
-        { 'My requests', 130, function()
-            U.Navigate('groups', 'outgoing')
-        end },
-        { 'Events', 110, function()
-            if U.Navigate('groups', 'scheduled') and U.scheduledArchive then
-                U.scheduledArchive:SetChecked(false)
-                U.RefreshScheduledGroups()
-            end
-        end },
-        { 'List view', 120, function()
-            U.Navigate('activities', 'list')
-        end },
-    }) do
-        local button = T.Button(frame, tr(spec[1]), spec[2], 24, spec[3], 'secondary')
-        button.zenialWidth = spec[2]
-        F.footer[#F.footer + 1] = button
-    end
     if U.FinderPublic then
         U.FinderPublic.Create(frame)
     end
