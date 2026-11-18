@@ -160,6 +160,9 @@ function S.createGroupsPage(f)
         if g and Z.CloseGroup(g.id) then
             U.groupApplicantKey = nil
             U.Publish()
+            if U.SyncPublicListing then
+                U.SyncPublicListing()
+            end
         end
     end)
     U.groupOwnTemplate = button(U.groupMineSummary, tr('Als Vorlage speichern'), 270, -78, 190, function()
@@ -284,6 +287,10 @@ function S.createGroupsPage(f)
             U.groupEditing = false
             U.groupForm:Hide()
             U.Publish()
+            -- Saved with a click: a public listing of the group follows where the player chose that.
+            if U.SyncPublicListing then
+                U.SyncPublicListing()
+            end
         else
             U.Message(err)
         end

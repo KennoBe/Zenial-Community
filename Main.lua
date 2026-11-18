@@ -540,6 +540,7 @@ local function initializeGameplayModules(d)
         -- Public group search: on unless the player switched it off (account-wide).
         if Z.SetPublicLFG then Z.SetPublicLFG(not Z.ui or Z.ui.finderPublic~=false)end
         if Z.PublicLFGContact then Z.PublicLFGContact.Initialize()end
+        if Z.PublicLFGListing then Z.PublicLFGListing.Initialize()end
         Z.Notifications.Initialize()
     end
     if H then H.Initialize(ZenialCommunityDB,Z.me)end
@@ -634,9 +635,11 @@ register("PLAYER_LOGIN")
 register("LFG_LIST_AVAILABILITY_UPDATE")
 -- Public group search (PublicLFG.lua). Its events are registered only while it is switched on. Results arrive in
 -- bursts of single updates, so these events never reach the general refresh below.
+local PUBLIC_LFG_EVENTS={LFG_LIST_SEARCH_RESULTS_RECEIVED="search",LFG_LIST_SEARCH_FAILED="search",LFG_LIST_SEARCH_RESULT_UPDATED="search",LFG_LIST_UPDATE_SEARCH_RESULTS="search",
+    LFG_LIST_ACTIVE_ENTRY_UPDATE="listing",LFG_LIST_ENTRY_CREATION_FAILED="listing",LFG_LIST_ENTRY_EXPIRED_TIMEOUT="listing",LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS="listing"}
 function Z.SetPublicLFG(on)
     on=on~=false
-    for _,event in ipairs({"LFG_LIST_SEARCH_RESULTS_RECEIVED","LFG_LIST_SEARCH_FAILED","LFG_LIST_SEARCH_RESULT_UPDATED","LFG_LIST_UPDATE_SEARCH_RESULTS"})do
+    for event in pairs(PUBLIC_LFG_EVENTS)do
         if on then register(event)else pcall(frame.UnregisterEvent,frame,event)end
     end
     if Z.PublicLFG then
@@ -682,8 +685,11 @@ register("ADDON_ACTION_BLOCKED");register("ADDON_ACTION_FORBIDDEN")
 register("CHAT_MSG_SAY");register("CHAT_MSG_YELL")
 register("CHAT_MSG_WHISPER");register("CHAT_MSG_WHISPER_INFORM")
 frame:SetScript("OnEvent",function(_,event,...)
-    if event=="LFG_LIST_SEARCH_RESULTS_RECEIVED"or event=="LFG_LIST_SEARCH_FAILED"or event=="LFG_LIST_SEARCH_RESULT_UPDATED"or event=="LFG_LIST_UPDATE_SEARCH_RESULTS"then
-        if Z.db and Z.PublicLFG then pcall(Z.PublicLFG.OnEvent,event,...)end
+    local publicLFG=PUBLIC_LFG_EVENTS[event]
+    if publicLFG then
+        if publicLFG=="search"then
+            if Z.db and Z.PublicLFG then pcall(Z.PublicLFG.OnEvent,event,...)end
+        elseif Z.db and Z.PublicLFGListing then pcall(Z.PublicLFGListing.OnEvent,event,...)end
         return
     end
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
@@ -742,6 +748,7 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then
         if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
         if Z.PublicLFG then Z.PublicLFG.OnBlocked()end
+        if Z.PublicLFGListing then Z.PublicLFGListing.OnBlocked()end
     elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
 end)

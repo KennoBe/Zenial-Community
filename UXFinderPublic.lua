@@ -13,7 +13,7 @@
 -- See _dev/addons/ZenialCommunity/PUBLIC-LFG-INTEGRATION-PLAN.md.
 local Z = ZenialCommunity
 local U, L, A, T, K = Z.UI, Z.Logic, Z.Adapter, Z.Theme, Z.Kit
-local C, P, M, Q, X = Z.GroupFinderCatalog, Z.PublicLFG, Z.PublicLFGMap, Z.PublicLFGMatch, Z.PublicLFGContact
+local C, P, M, Q, X, Y = Z.GroupFinderCatalog, Z.PublicLFG, Z.PublicLFGMap, Z.PublicLFGMatch, Z.PublicLFGContact, Z.PublicLFGListing
 if type(U) ~= 'table' or type(U.Finder) ~= 'table' or type(P) ~= 'table' or type(M) ~= 'table' or type(Q) ~= 'table' or type(X) ~= 'table' then
     return
 end
@@ -702,6 +702,135 @@ function FP.CategoryRows()
         end
     end
     return out, info ~= nil
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- The player's own public listing
+-- ---------------------------------------------------------------------------------------------
+local REASON_LISTING = {
+    NO_ACTIVITY = 'The group search of the game does not know this activity.',
+    TOO_MANY = 'These are too many activities for one public listing.',
+    NOT_LEADER = 'Only the leader can list the group publicly.',
+    GROUP_FULL = 'Your group is already full.',
+    COMBAT = 'Not possible in combat.',
+    LOCKDOWN = 'Not possible right now.',
+    BLOCKED = 'The game refused the public listing.',
+    FAILED = 'The public listing failed.',
+}
+
+-- Whether the player wants own groups and searches listed publicly too. Kept per character, off at first.
+function FP.ListsPublicly()
+    return Z.uiCharacter ~= nil and Z.uiCharacter.finderListPublic == true
+end
+
+local function listingMessage(ok, reason, done)
+    U.Message(tr(ok and done or REASON_LISTING[reason] or 'The public listing is unavailable.'))
+end
+
+-- The switch in the status line of the own group or search. Runs from a click.
+function FP.ToggleListing()
+    if not Y or not Y.Available() then
+        return
+    end
+    local state = Y.State()
+    if state.phase == 'PENDING' then
+        return
+    end
+    if state.phase == 'LISTED' and state.matches then
+        local ok, reason = Y.Remove()
+        if ok and Z.uiCharacter then
+            Z.uiCharacter.finderListPublic = false
+        end
+        listingMessage(ok, reason, 'Your public listing was removed.')
+    else
+        local ok, reason = Y.Publish(Z.db.lfg[1])
+        if ok and Z.uiCharacter then
+            Z.uiCharacter.finderListPublic = true
+        end
+        listingMessage(ok, reason, 'Listed publicly. Your note is not shown there.')
+    end
+    U.RefreshFinder()
+end
+
+-- After the player changed the own group or search with a click: the public listing follows. A new or
+-- changed record is listed when the player chose that; a closed record takes a listing made here with it.
+-- Never called from a timer or an event, because the client takes these calls only from a click.
+function FP.SyncListing()
+    if not Y or not Y.Available() then
+        return
+    end
+    local group, state = Z.db and Z.db.lfg[1], Y.State()
+    if not group then
+        if state.own and (state.phase == 'LISTED' or state.phase == 'PENDING') then
+            Y.Remove()
+        end
+        return
+    end
+    if FP.ListsPublicly() and not (state.phase == 'LISTED' and state.matches) and state.phase ~= 'PENDING' then
+        local ok, reason = Y.Publish(group)
+        if not ok and reason ~= 'NO_ACTIVITY' then
+            listingMessage(false, reason)
+        end
+    end
+end
+
+local function listingTooltip(chip)
+    if not GameTooltip or not GameTooltip.SetOwner then
+        return
+    end
+    GameTooltip:SetOwner(chip, 'ANCHOR_BOTTOM')
+    GameTooltip:AddLine(tr('Public listing'), 1, 0.85, 0.42)
+    GameTooltip:AddLine(tr('Others find your group in the group search of the game and whisper you. Your note is not shown there.'), 0.78, 0.8, 0.85, true)
+    if A.GroupState().total <= 1 then
+        GameTooltip:AddLine(tr('Without a group you appear there as a single player.'), 0.78, 0.8, 0.85, true)
+    end
+    GameTooltip:AddLine(tr('The game ends a public listing after 30 minutes.'), 0.5, 0.52, 0.58, true)
+    GameTooltip:Show()
+end
+
+-- Places the switch in the status line of the own group or search, left of its buttons. Returns the room
+-- now taken on the right.
+function FP.LayoutListing(status, right, record)
+    local chip = FP.listing
+    if not chip then
+        chip = T.Chip(status, '', 150, 24, function()
+            FP.ToggleListing()
+        end)
+        chip:HookScript('OnEnter', listingTooltip)
+        chip:HookScript('OnLeave', function()
+            if GameTooltip and GameTooltip.Hide then
+                GameTooltip:Hide()
+            end
+        end)
+        FP.listing = chip
+    end
+    if not record or not Y or not Y.Available() then
+        chip:Hide()
+        return right
+    end
+    local state = Y.State()
+    local possible, reason = Y.CanPublish(record.data)
+    local listed = state.phase == 'LISTED'
+    local text = 'List publicly'
+    if state.phase == 'PENDING' then
+        text = 'Listing publicly …'
+    elseif listed and state.matches then
+        text = 'Listed publicly'
+    elseif listed then
+        text = 'Public listing differs'
+    elseif state.phase == 'EXPIRED' then
+        text = 'List publicly again'
+    end
+    chip.text:SetText(tr(text))
+    chip:SetChecked(listed and state.matches)
+    chip:SetEnabled(state.phase ~= 'PENDING' and (listed or possible or (reason ~= 'NO_ACTIVITY' and reason ~= 'UNAVAILABLE')))
+    chip:SetShown(listed or reason ~= 'NO_ACTIVITY')
+    if not chip:IsShown() then
+        return right
+    end
+    chip:ClearAllPoints()
+    chip:SetPoint('RIGHT', status, 'RIGHT', -right, 0)
+    return right + 150 + 6
 end
 
 -- ---------------------------------------------------------------------------------------------

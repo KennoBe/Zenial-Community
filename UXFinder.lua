@@ -978,6 +978,13 @@ function U.InviteFinderSeeker(key)
     U.Message(ok and tr('Invitation submitted; awaiting response.') or tr(why))
     return ok and true or false
 end
+-- The own group or search changed through a click: a public listing of it follows (UXFinderPublic.lua).
+local function syncListing()
+    if U.FinderPublic then
+        U.FinderPublic.SyncListing()
+    end
+end
+U.SyncPublicListing = syncListing
 function U.StartFinderSearch(activity, roles, note)
     local id, why = C.StartSearch(activity, roles, note)
     if not id then
@@ -987,6 +994,7 @@ function U.StartFinderSearch(activity, roles, note)
     F.searchOpen = false
     U.Message(Z.T('You are now looking for a group for %s.', activityName(activity)))
     U.Publish()
+    syncListing()
     return true
 end
 function U.AddFinderSearch(activity)
@@ -997,6 +1005,7 @@ function U.AddFinderSearch(activity)
     end
     U.Message(Z.T('%s added to your search (%d/%d).', activityName(activity), #C.SearchActivities(Z.db.lfg[1]), C.MAX_SEARCH))
     U.Publish()
+    syncListing()
     return true
 end
 function U.RemoveFinderSearch(activity)
@@ -1006,12 +1015,14 @@ function U.RemoveFinderSearch(activity)
     local g = Z.db.lfg[1]
     U.Message(g and C.IsSearch(g) and Z.T('%s removed from your search.', activityName(activity)) or tr('Search ended.'))
     U.Publish()
+    syncListing()
     return true
 end
 function U.StopFinderSearch()
     if C.StopSearch() then
         U.Message(tr('Search ended.'))
         U.Publish()
+        syncListing()
         return true
     end
     return false
@@ -1466,6 +1477,10 @@ local function renderStatus(snap, width)
             button:SetPoint('RIGHT', status, 'RIGHT', -right, 0)
             right = right + action.width + 6
         end
+    end
+    -- Public group search: the switch that also lists the own group or search in the game.
+    if U.FinderPublic then
+        right = U.FinderPublic.LayoutListing(status, right, group or search)
     end
     oneLine(status.line, math.max(80, width - right - 24), 15)
     status:Show()

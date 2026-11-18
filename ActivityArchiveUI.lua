@@ -29,6 +29,7 @@ function U.ConfirmActivityArchive()
     if not ok then U.Message(tr(why or'This activity is no longer available.'));return end
     U.CloseDialogs()
     if request.kind~='EVENT'then U.Publish()else U.Refresh()end
+    if request.kind=='LIVE'and U.SyncPublicListing then U.SyncPublicListing()end
     U.Message(tr('Activity archived.'))
 end
 function U.ConfigureActivityEditor(body,record)
