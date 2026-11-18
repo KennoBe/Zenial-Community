@@ -25,15 +25,18 @@ end
 -- The roles the player looks with. In this order: what was chosen in the finder, the role of the profile,
 -- the roles set in the group search of the game, the roles the class can play, every role.
 -- Returns the roles and where they come from: 'CHOSEN' | 'PROFILE' | 'GAME' | 'CLASS' | 'ALL'.
-function Q.OwnRoles()
-    local chosen = Z.uiCharacter and Z.uiCharacter.finderRoles
-    if any(chosen) then
-        return { TANK = chosen.TANK == true, HEALER = chosen.HEALER == true, DAMAGER = chosen.DAMAGER == true }, 'CHOSEN'
-    end
-    local profile = Z.db and L.Role(Z.db.roles)
-    if profile and ROLE_FIELD[profile] then
-        return { TANK = profile == 'TANK', HEALER = profile == 'HEALER', DAMAGER = profile == 'DAMAGER' }, 'PROFILE'
-    end
+-- What the game answers is remembered for ten seconds: the finder asks on every refresh, and a refresh must
+-- not call into the group search of the game. Q.Forget() drops what was remembered.
+local MEMO = 10
+local memo
+function Q.Forget()
+    memo = nil
+end
+local function remember(roles, origin)
+    memo = { at = A.Clock(), roles = { TANK = roles.TANK == true, HEALER = roles.HEALER == true, DAMAGER = roles.DAMAGER == true }, origin = origin }
+    return roles, origin
+end
+local function fromGame()
     local api = C_LFGListRoles
     local game = type(api) == 'table' and A.Call(api.GetRoles) or nil
     if A.PublicTable(game) then
@@ -55,6 +58,21 @@ function Q.OwnRoles()
         end
     end
     return { TANK = true, HEALER = true, DAMAGER = true }, 'ALL'
+end
+function Q.OwnRoles()
+    local chosen = Z.uiCharacter and Z.uiCharacter.finderRoles
+    if any(chosen) then
+        return { TANK = chosen.TANK == true, HEALER = chosen.HEALER == true, DAMAGER = chosen.DAMAGER == true }, 'CHOSEN'
+    end
+    local profile = Z.db and L.Role(Z.db.roles)
+    if profile and ROLE_FIELD[profile] then
+        return { TANK = profile == 'TANK', HEALER = profile == 'HEALER', DAMAGER = profile == 'DAMAGER' }, 'PROFILE'
+    end
+    if memo and A.Clock() - memo.at < MEMO then
+        -- A copy: callers change what they get.
+        return { TANK = memo.roles.TANK, HEALER = memo.roles.HEALER, DAMAGER = memo.roles.DAMAGER }, memo.origin
+    end
+    return remember(fromGame())
 end
 
 -- Remembers the roles for this character. An empty choice goes back to the automatic roles.

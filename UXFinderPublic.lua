@@ -45,7 +45,7 @@ end
 
 -- Whether the public group search takes part in the finder: the client has it and the player left it on.
 function FP.Active()
-    return P.Available() == true
+    return not FP.broken and P.Available() == true
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -1087,5 +1087,70 @@ function FP.TileHint(activity)
     local found = plural('1 group', '%d groups', figures.groups) .. ' · ' .. plural('1 looking', '%d looking', figures.seekers)
     return Z.T(figures.capped and 'Public sample: %s' or 'Public: %s', found)
 end
+
+-- ---------------------------------------------------------------------------------------------
+-- Protection of the finder
+-- ---------------------------------------------------------------------------------------------
+-- UXFinder.lua calls into this file while it draws. An error here must not take the finder with it: the
+-- public part is switched off until the interface is loaded again, the error goes to the error handler of
+-- the client once (so it is not lost), and the finder goes on with the ZENIAL groups.
+local function hide()
+    for _, name in ipairs({ 'bar', 'panel', 'listing' }) do
+        local widget = FP[name]
+        if widget then
+            pcall(widget.Hide, widget)
+        end
+    end
+end
+local function fail(err)
+    if FP.broken then
+        return
+    end
+    FP.broken = tostring(err)
+    hide()
+    local handler = type(geterrorhandler) == 'function' and geterrorhandler()
+    if type(handler) == 'function' then
+        pcall(handler, 'ZENIAL Community, public group search: ' .. FP.broken)
+    end
+    -- Draw again without the public part.
+    Z.MarkDirty()
+end
+-- Wraps owner[name]: the fallback answers while the public part is off and after an error.
+function FP.Guard(owner, name, fallback)
+    local fn = owner[name]
+    owner[name] = function(...)
+        if FP.broken then
+            return fallback(...)
+        end
+        local ok, a, b, c = pcall(fn, ...)
+        if ok then
+            return a, b, c
+        end
+        fail(a)
+        return fallback(...)
+    end
+end
+local function nothing() end
+local function no() return false end
+FP.Guard(FP, 'Active', no)
+FP.Guard(FP, 'Create', nothing)
+FP.Guard(FP, 'Begin', nothing)
+FP.Guard(FP, 'OnOpen', nothing)
+FP.Guard(FP, 'SyncListing', nothing)
+FP.Guard(FP, 'PresetRoles', nothing)
+FP.Guard(FP, 'Figures', nothing)
+FP.Guard(FP, 'TileText', nothing)
+FP.Guard(FP, 'TileHint', nothing)
+FP.Guard(FP, 'CategoryRows', nothing)
+FP.Guard(FP, 'Candidates', function() return {} end)
+FP.Guard(FP, 'HidesCommunity', no)
+FP.Guard(FP, 'LayoutBar', function() hide() return 0 end)
+FP.Guard(FP, 'HideBar', hide)
+FP.Guard(FP, 'Merge', function(rows) return rows end)
+FP.Guard(FP, 'LayoutListing', function(_, right) hide() return right end)
+FP.Guard(FP, 'Mark', function(d) return d end)
+FP.Guard(FP, 'Describe', function(row)
+    return { actions = {}, title = type(row) == 'table' and type(row.leader) == 'string' and row.leader or '', meta = '' }
+end)
 
 return FP

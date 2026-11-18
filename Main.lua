@@ -635,6 +635,15 @@ register("PLAYER_LOGIN")
 register("LFG_LIST_AVAILABILITY_UPDATE")
 -- Public group search (PublicLFG.lua). Its events are registered only while it is switched on. Results arrive in
 -- bursts of single updates, so these events never reach the general refresh below.
+-- A call into the public group search never stops the event or the step it runs in. The first error is kept for
+-- the diagnosis and handed to the error handler of the client once, so it is not lost.
+local function publicCall(fn,...)
+    local ok,err=pcall(fn,...)
+    if ok or Z.publicLFGFault then return end
+    Z.publicLFGFault=tostring(err)
+    local handler=type(geterrorhandler)=="function"and geterrorhandler()
+    if type(handler)=="function"then pcall(handler,"ZENIAL Community, public group search: "..Z.publicLFGFault)end
+end
 local PUBLIC_LFG_EVENTS={LFG_LIST_SEARCH_RESULTS_RECEIVED="search",LFG_LIST_SEARCH_FAILED="search",LFG_LIST_SEARCH_RESULT_UPDATED="search",LFG_LIST_UPDATE_SEARCH_RESULTS="search",
     LFG_LIST_ACTIVE_ENTRY_UPDATE="listing",LFG_LIST_ENTRY_CREATION_FAILED="listing",LFG_LIST_ENTRY_EXPIRED_TIMEOUT="listing",LFG_LIST_ENTRY_EXPIRED_TOO_MANY_PLAYERS="listing"}
 function Z.SetPublicLFG(on)
@@ -688,14 +697,14 @@ frame:SetScript("OnEvent",function(_,event,...)
     local publicLFG=PUBLIC_LFG_EVENTS[event]
     if publicLFG then
         if publicLFG=="search"then
-            if Z.db and Z.PublicLFG then pcall(Z.PublicLFG.OnEvent,event,...)end
-        elseif Z.db and Z.PublicLFGListing then pcall(Z.PublicLFGListing.OnEvent,event,...)end
+            if Z.db and Z.PublicLFG then publicCall(Z.PublicLFG.OnEvent,event,...)end
+        elseif Z.db and Z.PublicLFGListing then publicCall(Z.PublicLFGListing.OnEvent,event,...)end
         return
     end
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
     -- Contact record of the public group search: the player's own whisper to a leader, a leader joining the group.
-    if(event=="CHAT_MSG_WHISPER_INFORM"or event=="GROUP_ROSTER_UPDATE")and Z.db and Z.PublicLFGContact then pcall(Z.PublicLFGContact.OnEvent,event,...)end
+    if(event=="CHAT_MSG_WHISPER_INFORM"or event=="GROUP_ROSTER_UPDATE")and Z.db and Z.PublicLFGContact then publicCall(Z.PublicLFGContact.OnEvent,event,...)end
     if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
     -- Presence messages (XF3-T06): greetings, pings to targets and whisper partners; a whisper event has no other consumer.
     local presence=Z.CrossFactionPresence
@@ -742,13 +751,13 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
     elseif event=="LFG_LIST_AVAILABILITY_UPDATE"then
         -- The client changed which activities of its group search it offers this character.
-        if Z.PublicLFGMap then Z.PublicLFGMap.Reset()end
-        if Z.PublicLFG then Z.PublicLFG.Reset()end
+        if Z.PublicLFGMap then publicCall(Z.PublicLFGMap.Reset)end
+        if Z.PublicLFG then publicCall(Z.PublicLFG.Reset)end
         if Z.db and Z.GroupFinderCatalog and Z.GroupFinderCatalog.SyncExtras()then Z.MarkDirty()end
     elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then
         if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
-        if Z.PublicLFG then Z.PublicLFG.OnBlocked()end
-        if Z.PublicLFGListing then Z.PublicLFGListing.OnBlocked()end
+        if Z.PublicLFG then publicCall(Z.PublicLFG.OnBlocked)end
+        if Z.PublicLFGListing then publicCall(Z.PublicLFGListing.OnBlocked)end
     elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end
     elseif Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
 end)
@@ -784,7 +793,7 @@ local function tickQuarterSecond()
     if Z.CraftOrders then Z.CraftOrders.Tick()end
     if Z.PvPHelp then Z.PvPHelp.Tick()end
     if Z.Items then Z.Items.Tick()end
-    if Z.PublicLFG then Z.PublicLFG.Tick()end
+    if Z.PublicLFG then publicCall(Z.PublicLFG.Tick)end
     A.DiscoveryTick(false)
     if uiDirty and Z.UI and Z.UI.frame and Z.UI.frame:IsShown()then
         uiDirty=false

@@ -90,13 +90,22 @@ function P.Enabled()
 end
 
 -- Search languages the client offers: { { code = 'deDE', label = 'Deutsch' }, ... }. Never a fixed list.
+-- Asked once and kept until the client announces a change (P.Reset): the finder reads them on every refresh.
+-- An empty answer is not kept, so a client that is not ready yet is asked again.
+local offered
 function P.Languages()
+    if offered then
+        return offered
+    end
     local list, out = one('GetAvailableLanguageSearchFilter'), {}
     for _, code in ipairs(list or {}) do
         if A.Safe(code) and type(code) == 'string' and code ~= '' then
             local label = _G['LFG_LIST_LANGUAGE_' .. string.upper(code)]
             out[#out + 1] = { code = code, label = A.Safe(label) and type(label) == 'string' and label ~= '' and label or code }
         end
+    end
+    if #out > 0 then
+        offered = out
     end
     return out
 end
@@ -280,7 +289,7 @@ end
 -- Forget what was read about activities and about the client's functions (the client announced a change of
 -- what it offers).
 function P.Reset()
-    activities, capable = {}, false
+    activities, capable, offered = {}, false, nil
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -693,7 +702,8 @@ function store.take()
     revision = revision + 1
 end
 
--- LFG_LIST_SEARCH_RESULT_UPDATED: only noted here; the reading happens once in the next step.
+-- LFG_LIST_SEARCH_RESULT_UPDATED: only noted here. The reading happens once, and only while someone is
+-- looking: in the next step while the window is open, otherwise the moment the rows are asked for.
 function store.touch(id)
     if not live or not A.Safe(id) or type(id) ~= 'number' then
         return
@@ -737,18 +747,32 @@ end
 
 -- The work of one step: read the results the client reported as changed, then the rows that still wait for
 -- activity facts. Local reads only; a search is never started from here.
+-- Reads the results the client reported as changed, each once. True when a row changed.
+local function readDirty()
+    local changed = false
+    local ids = dirty
+    dirty, dirtyCount = {}, 0
+    for id in pairs(ids) do
+        local row, why = P.ReadRow(id, live.runId)
+        changed = update(live, id, row, why) or changed
+    end
+    return changed
+end
+-- The rows are asked for (the finder draws): what was reported while nobody looked is read now.
+local function catchUp()
+    if live and dirtyCount > 0 and readDirty() then
+        revision = revision + 1
+    end
+end
+
 function store.work()
     local changed = false
-    if live and dirtyCount > 0 then
-        local ids = dirty
-        dirty, dirtyCount = {}, 0
-        for id in pairs(ids) do
-            local row, why = P.ReadRow(id, live.runId)
-            changed = update(live, id, row, why) or changed
-        end
+    local shown = windowShown()
+    if live and dirtyCount > 0 and shown then
+        changed = readDirty()
     end
     if live and live.retryAt then
-        if not windowShown() then
+        if not shown then
             -- Nobody is looking: stop; P.Rows plans it again when the rows are asked for.
             live.retryAt = nil
         elseif A.Clock() >= live.retryAt then
@@ -766,7 +790,7 @@ function store.work()
             arm(live)
         end
     end
-    store.busy = live ~= nil and (dirtyCount > 0 or live.retryAt ~= nil)
+    store.busy = live ~= nil and ((dirtyCount > 0 and shown) or live.retryAt ~= nil)
     if changed then
         revision = revision + 1
         Z.MarkDirty()
@@ -801,6 +825,7 @@ end
 -- complete: the list was searched for every activity of the catalogue entry and was not cut off.
 -- Returns {}, nil when no list covers the activity. The returned tables belong to the store: do not change them.
 function P.Rows(activity)
+    catchUp()
     local ids = M.Activities(activity)
     local set = ids and covering(ids)
     if not set then
@@ -833,6 +858,7 @@ end
 -- Rows and facts of the list of exactly one query (signature), e.g. the search over a whole category.
 -- Returns {}, nil when no such list is kept. The returned tables belong to the store.
 function P.List(wanted)
+    catchUp()
     local set = wanted and sets[wanted] or nil
     if not set or A.Clock() - set.receivedAt > KEEP then
         return {}, nil
@@ -854,6 +880,7 @@ end
 -- Each activity takes its figures from the newest list that was searched for it. capped: that list was cut
 -- off, so the figures are a sample and never a total. Listings that are gone or unreadable do not count.
 function P.Counts()
+    catchUp()
     local now = A.Clock()
     local cache = memo.counts
     if cache and cache.revision == revision and now < cache.validUntil then

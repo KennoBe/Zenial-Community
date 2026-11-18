@@ -164,4 +164,21 @@ function M.Reset()
     offered = {}
 end
 
+-- The catalogue and the activity names of the addon ask these three (GroupFinderCatalog.lua, Locale.lua), also
+-- while the public group search is switched off. An error in here must never reach them: they get "nothing".
+local function shield(name, empty)
+    local fn = M[name]
+    M[name] = function(...)
+        local ok, value = pcall(fn, ...)
+        if ok then
+            return value
+        end
+        Z.publicLFGFault = Z.publicLFGFault or tostring(value)
+        return empty and {} or nil
+    end
+end
+shield('Extra')
+shield('ExtraName')
+shield('Extras', true)
+
 return M
