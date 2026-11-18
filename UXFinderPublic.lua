@@ -19,13 +19,15 @@ if type(U) ~= 'table' or type(U.Finder) ~= 'table' or type(P) ~= 'table' or type
 end
 
 local F = U.Finder
-local FP = { filters = { fitting = false, open = false }, fits = {}, marks = {} }
+local FP = { filters = { fitting = false, open = false, hideSolo = false, minSize = 0 }, fits = {}, marks = {} }
 U.FinderPublic = FP
 
 local ROLES = Q.ROLES
 local VIEW_KIND = { dungeons = 'DUNGEON', raids = 'RAID', pvp = 'PVP', quests = 'QUEST', other = 'CUSTOM' }
 local SOURCES = { ALL = true, ZENIAL = true, PUBLIC = true }
 local ROW = 30
+local PROFILE_LIMIT = 5
+local SIZES = { 0, 3, 4 }
 local FRESH = 120 -- a complete list of an instance younger than this is not searched again when the instance opens
 local TIER_LABEL = {
     BEST = { 'Very fitting', 'success' }, GOOD = { 'Fitting', 'info' }, UNKNOWN = { 'Role unknown', 'neutral' }, FULL = { 'Full', 'neutral' },
@@ -292,7 +294,143 @@ local function layoutPanel()
     for index = #offered + 1, #panel.languages do
         panel.languages[index]:Hide()
     end
-    panel:SetSize(432, 136 + math.max(1, math.ceil(#offered / 4)) * 28)
+    -- Display: hide public single players, only groups from a size.
+    local y = 136 + math.max(1, math.ceil(#offered / 4)) * 28
+    panel.displayLabel:ClearAllPoints()
+    panel.displayLabel:SetPoint('TOPLEFT', 12, -y)
+    panel.sizeLabel:ClearAllPoints()
+    panel.sizeLabel:SetPoint('TOPLEFT', 222, -y)
+    panel.solo:ClearAllPoints()
+    panel.solo:SetPoint('TOPLEFT', 12, -(y + 18))
+    panel.solo:SetChecked(FP.filters.hideSolo == true)
+    panel.size:ClearAllPoints()
+    panel.size:SetPoint('TOPLEFT', 222, -(y + 17))
+    panel.size:Select(FP.filters.minSize or 0)
+    -- Search profiles.
+    y = y + 54
+    panel.profilesLabel:ClearAllPoints()
+    panel.profilesLabel:SetPoint('TOPLEFT', 12, -y)
+    local profiles = FP.Profiles()
+    for index, chip in ipairs(panel.profiles) do
+        local profile = profiles[index]
+        chip:SetShown(profile ~= nil)
+        if profile then
+            chip.text:SetText(profile.name)
+            chip:ClearAllPoints()
+            chip:SetPoint('TOPLEFT', 12 + (index - 1) * 82, -(y + 18))
+            chip:SetChecked(FP.profile == index)
+        end
+    end
+    local line = y + (#profiles > 0 and 48 or 18)
+    panel.profileName:ClearAllPoints()
+    panel.profileName:SetPoint('TOPLEFT', 14, -line)
+    panel.profileName.hint:SetShown((panel.profileName:GetText() or '') == '')
+    panel.profileSave:ClearAllPoints()
+    panel.profileSave:SetPoint('TOPLEFT', 180, -line)
+    panel.profileDelete:ClearAllPoints()
+    panel.profileDelete:SetPoint('TOPLEFT', 306, -line)
+    panel.profileDelete:SetEnabled(profiles[FP.profile or 0] ~= nil)
+    panel:SetSize(432, line + 34)
+end
+
+-- "I am looking for a group": the role chips of the search bar start with the roles chosen in "More filters",
+-- so the player does not choose them twice. Automatic roles leave the bar as it is.
+function FP.PresetRoles(chips)
+    if not FP.Active() then
+        return
+    end
+    local roles, origin = Q.OwnRoles()
+    if origin ~= 'CHOSEN' then
+        return
+    end
+    for role, chip in pairs(chips) do
+        chip:SetChecked(roles[role] == true)
+    end
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- Search profiles: several filters under one name. Loading one never searches.
+-- ---------------------------------------------------------------------------------------------
+function FP.Profiles()
+    if not Z.uiCharacter then
+        return {}
+    end
+    if type(Z.uiCharacter.finderProfiles) ~= 'table' then
+        Z.uiCharacter.finderProfiles = {}
+    end
+    return Z.uiCharacter.finderProfiles
+end
+
+-- Saves the current source, languages, roles and local filters under a name. A profile of that name is replaced.
+function FP.SaveProfile(name)
+    local profiles = FP.Profiles()
+    if not L.Text(name, 24) then
+        name = Z.T('Profile %d', #profiles + 1)
+    end
+    local roles, origin = Q.OwnRoles()
+    local languages, codes = FP.Languages(), {}
+    for code, on in pairs(languages.codes) do
+        if on == true then
+            codes[code] = true
+        end
+    end
+    local profile = { name = name, source = FP.Source(), mode = languages.mode, codes = codes, roles = origin == 'CHOSEN' and roles or nil,
+        fitting = FP.filters.fitting == true, open = FP.filters.open == true, hideSolo = FP.filters.hideSolo == true, minSize = FP.filters.minSize or 0 }
+    local index
+    for i, existing in ipairs(profiles) do
+        if existing.name == name then
+            index = i
+        end
+    end
+    if not index and #profiles >= PROFILE_LIMIT then
+        U.Message(tr('At most five search profiles.'))
+        return false
+    end
+    index = index or #profiles + 1
+    profiles[index] = profile
+    FP.profile = index
+    U.Message(tr('Profile saved.'))
+    U.RefreshFinder()
+    return true
+end
+
+-- Sets the filters of a profile. The public search is not started: the search field says that the filter changed.
+function FP.LoadProfile(index)
+    local profile = FP.Profiles()[index]
+    if not profile then
+        return false
+    end
+    if Z.uiCharacter then
+        Z.uiCharacter.finderSource = profile.source
+    end
+    if Z.ui then
+        local codes = {}
+        for code, on in pairs(profile.codes or {}) do
+            if on == true then
+                codes[code] = true
+            end
+        end
+        Z.ui.finderLanguages = { mode = profile.mode, codes = codes }
+    end
+    Q.SetOwnRoles(profile.roles or {})
+    FP.filters.fitting, FP.filters.open = profile.fitting == true, profile.open == true
+    FP.filters.hideSolo, FP.filters.minSize = profile.hideSolo == true, profile.minSize or 0
+    FP.profile = index
+    U.Message(tr('Profile loaded.'))
+    U.RefreshFinder()
+    return true
+end
+
+function FP.DeleteProfile(index)
+    local profiles = FP.Profiles()
+    if not profiles[index] then
+        return false
+    end
+    table.remove(profiles, index)
+    FP.profile = nil
+    U.Message(tr('Profile deleted.'))
+    U.RefreshFinder()
+    return true
 end
 
 -- Lays the bar out below y and returns its height; 0 while the public search is off.
@@ -313,7 +451,7 @@ function FP.LayoutBar(y, width, detailed)
     bar.source:ClearAllPoints()
     bar.source:SetPoint('TOPLEFT', 0, 0)
     bar.source:Select(source)
-    local x = 216
+    local x = 240
     for _, chip in ipairs(bar.chips) do
         chip:SetShown(detailed == true)
         if detailed then
@@ -325,6 +463,9 @@ function FP.LayoutBar(y, width, detailed)
     end
     bar.more:ClearAllPoints()
     bar.more:SetPoint('TOPLEFT', x, -1)
+    -- Filters that only show inside the panel are counted on the button, so a shortened list is explained.
+    local hidden = (FP.filters.hideSolo and 1 or 0) + ((FP.filters.minSize or 0) > 0 and 1 or 0)
+    bar.more:SetText(hidden > 0 and Z.T('More filters (%d)', hidden) or tr('More filters'))
     T.SetSelected(bar.more, FP.panelOpen == true)
     local text, enabled = FP.Status()
     bar.field:SetShown(public)
@@ -379,7 +520,7 @@ function FP.Create(frame)
     bar.source = K.Segmented(bar, { { key = 'ALL', label = tr('All') }, { key = 'ZENIAL', label = 'ZENIAL' }, { key = 'PUBLIC', label = tr('Public') } }, function(key)
         FP.SetSource(key)
     end)
-    bar.source:SetSegmentWidth(70)
+    bar.source:SetSegmentWidth(78)
     bar.chips = {}
     for _, spec in ipairs({ { 'fitting', 'Only fitting', 108 }, { 'open', 'Free places', 104 } }) do
         local chip = T.Chip(bar, tr(spec[2]), spec[3], 22, function(self)
@@ -405,6 +546,43 @@ function FP.Create(frame)
     bar.field = T.Button(bar, '', 340, 24, function()
         FP.Search()
     end, 'secondary')
+    local function tooltip(widget, title, lines)
+        widget:HookScript('OnEnter', function(self)
+            if not GameTooltip or not GameTooltip.SetOwner then
+                return
+            end
+            GameTooltip:SetOwner(self, 'ANCHOR_BOTTOMLEFT')
+            GameTooltip:AddLine(tr(title), 1, 0.85, 0.42)
+            for _, text in ipairs(lines) do
+                GameTooltip:AddLine(tr(text), 0.78, 0.8, 0.85, true)
+            end
+            GameTooltip:Show()
+        end)
+        widget:HookScript('OnLeave', function()
+            if GameTooltip and GameTooltip.Hide then
+                GameTooltip:Hide()
+            end
+        end)
+    end
+    tooltip(bar.field, 'Public group search', {
+        'One click searches the group search of the game for what you see here. Nothing is searched by itself.',
+        'The game returns at most 100 entries; a sample shows only part of them.',
+    })
+    tooltip(bar.assist, 'Contact fitting groups', {
+        'Goes through the groups that fit you, one at a time. You confirm every contact with a click.',
+    })
+    tooltip(bar.chips[1], 'Only fitting', {
+        'Very fitting: only your role is missing, or tank and healer are already there.',
+        'Fitting: there is a place for one of your roles.',
+        'Role unknown: the game does not tell which roles are missing.',
+        'Groups without a place for you and full groups are hidden.',
+    })
+    for _, button in ipairs(bar.source.segments) do
+        tooltip(button, 'Shown groups', {
+            'ZENIAL: groups of ZENIAL members. You apply with a click.',
+            'Public: groups from the group search of the game. You whisper their leader.',
+        })
+    end
     bar:Hide()
     FP.bar = bar
 
@@ -438,6 +616,42 @@ function FP.Create(frame)
     panel.mode:SetSegmentWidth(120)
     panel.mode:SetPoint('TOPLEFT', 12, -88)
     panel.languages = {}
+    panel.displayLabel = K.Text(panel, tr('Display'), 'overline', 'goldDim')
+    panel.sizeLabel = K.Text(panel, tr('Group size'), 'overline', 'goldDim')
+    panel.solo = T.Chip(panel, tr('Hide single players'), 200, 22, function(self)
+        FP.filters.hideSolo = self:GetChecked() and true or false
+        U.RefreshFinder()
+    end)
+    local sizes = {}
+    for index, size in ipairs(SIZES) do
+        sizes[index] = { key = size, label = size == 0 and tr('All') or Z.T('%d+', size) }
+    end
+    panel.size = K.Segmented(panel, sizes, function(key)
+        FP.filters.minSize = key
+        U.RefreshFinder()
+    end)
+    panel.size:SetSegmentWidth(64)
+    panel.profilesLabel = K.Text(panel, tr('Search profiles'), 'overline', 'goldDim')
+    panel.profiles = {}
+    for index = 1, PROFILE_LIMIT do
+        local chip = T.Chip(panel, '', 78, 22, function()
+            FP.LoadProfile(index)
+        end)
+        chip:Hide()
+        panel.profiles[index] = chip
+    end
+    panel.profileName = F.CreateEdit(panel, 158, 24, tr('Profile name'))
+    panel.profileName:SetScript('OnTextChanged', function(self)
+        self.hint:SetShown((self:GetText() or '') == '')
+    end)
+    panel.profileSave = T.Button(panel, tr('Save profile'), 120, 24, function()
+        if FP.SaveProfile(panel.profileName:GetText()) then
+            panel.profileName:SetText('')
+        end
+    end, 'secondary')
+    panel.profileDelete = T.Button(panel, tr('Delete profile'), 114, 24, function()
+        FP.DeleteProfile(FP.profile)
+    end, 'secondary')
     panel:Hide()
     FP.panel = panel
 end
@@ -676,8 +890,11 @@ function FP.Merge(rows, activity, sort)
             end
         end
     else
+        -- Players looking for a group: public single players can be hidden, ZENIAL members never are.
         for _, entry in ipairs(entries) do
-            out[#out + 1] = entry.row
+            if entry.zenial or not FP.filters.hideSolo then
+                out[#out + 1] = entry.row
+            end
         end
     end
     return out
@@ -697,7 +914,8 @@ function FP.CategoryRows()
     local rows, info = listing()
     local out = {}
     for _, row in ipairs(rows) do
-        if not row.restricted then
+        local hidden = row.solo and FP.filters.hideSolo or not row.solo and FP.filters.minSize > 0 and row.members ~= nil and row.members < FP.filters.minSize
+        if not row.restricted and not hidden then
             out[#out + 1] = row
         end
     end
@@ -793,7 +1011,7 @@ end
 function FP.LayoutListing(status, right, record)
     local chip = FP.listing
     if not chip then
-        chip = T.Chip(status, '', 150, 24, function()
+        chip = T.Chip(status, '', 150, 18, function()
             FP.ToggleListing()
         end)
         chip:HookScript('OnEnter', listingTooltip)
@@ -828,9 +1046,11 @@ function FP.LayoutListing(status, right, record)
     if not chip:IsShown() then
         return right
     end
+    -- Beside the caption of the line ("My group"), so the line itself keeps its full width for the roles.
+    local caption = status.over.GetStringWidth and tonumber(status.over:GetStringWidth()) or 0
     chip:ClearAllPoints()
-    chip:SetPoint('RIGHT', status, 'RIGHT', -right, 0)
-    return right + 150 + 6
+    chip:SetPoint('TOPLEFT', status, 'TOPLEFT', 14 + (caption > 0 and caption or 90) + 12, -3)
+    return right
 end
 
 -- ---------------------------------------------------------------------------------------------

@@ -1826,6 +1826,9 @@ function U.CreateFinder()
             U.AddFinderSearch(F.activity)
         else
             F.searchOpen = not F.searchOpen
+            if F.searchOpen and U.FinderPublic then
+                U.FinderPublic.PresetRoles(detail.searchBar.roles)
+            end
             U.RefreshFinder()
         end
     end, 'secondary')

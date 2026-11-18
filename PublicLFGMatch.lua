@@ -128,10 +128,14 @@ function Q.Fit(view, me)
     return fit
 end
 
--- Local filters. fitting: only groups that fit or might fit; open: no full groups.
+-- Local filters. fitting: only groups that fit or might fit; open: no full groups; minSize: only groups
+-- with at least that many members (a group of unknown size stays).
 function Q.Passes(view, fit, filters)
     if view.own then
         return true
+    end
+    if (filters.minSize or 0) > 0 and view.members ~= nil and view.members < filters.minSize then
+        return false
     end
     if filters.fitting and (fit.tier == 'POOR' or fit.tier == 'FULL') then
         return false
