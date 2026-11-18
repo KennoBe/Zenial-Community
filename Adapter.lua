@@ -428,20 +428,22 @@ function A.SetWaypoint(mapID,x,y)
     local ok=pcall(C_Map.SetUserWaypoint,point);if ok and type(C_SuperTrack)~="nil" and type(C_SuperTrack.SetSuperTrackedUserWaypoint)=="function" then pcall(C_SuperTrack.SetSuperTrackedUserWaypoint,true) end
     return ok,ok and nil or"Wegpunkt konnte nicht gesetzt werden."
 end
-function A.Whisper(target)
+-- text (optional): put into the chat box behind the recipient. Nothing is sent; the player presses Enter.
+function A.Whisper(target,text)
     if not A.Safe(target)or not L.Identity(target)then return false end
+    if text~=nil and not(A.Safe(text)and L.Text(text,255))then text=nil end
     -- Configure WHISPER directly so full Forever names and the selected chat
     -- window cannot change the recipient or choose another whisper channel.
     if ChatFrameUtil and type(ChatFrameUtil.ChooseBoxForSend)=="function"and type(ChatFrameUtil.ActivateChat)=="function"then
         local ok,box=pcall(ChatFrameUtil.ChooseBoxForSend)
         if ok and box and type(box.SetChatType)=="function"and type(box.SetTellTarget)=="function"and type(box.SetText)=="function"then
             return pcall(function()
-                box:SetChatType("WHISPER");box:SetTellTarget(target);box:SetText("")
+                box:SetChatType("WHISPER");box:SetTellTarget(target);box:SetText(text or"")
                 ChatFrameUtil.ActivateChat(box)
             end)
         end
     end
-    local command="/w "..target.." "
+    local command="/w "..target.." "..(text or"")
     if ChatFrameUtil and type(ChatFrameUtil.OpenChat)=="function"then return pcall(ChatFrameUtil.OpenChat,command)end
     if type(ChatFrame_OpenChat)=="function"then return pcall(ChatFrame_OpenChat,command)end
     return false

@@ -1579,6 +1579,9 @@ function U.RefreshFinder()
     F.notices:ClearAllPoints()
     F.notices:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width, -(height - 26))
     F.notices:SetChecked(not Z.ui or Z.ui.finderNotices ~= false)
+    if U.FinderAssistant then
+        U.FinderAssistant.Refresh()
+    end
 end
 function U.LayoutFinder()
     if F.frame and F.frame:IsShown() then
@@ -1894,6 +1897,8 @@ end
 
 -- Shared with the group form (GroupFormUI.lua).
 F.CreatePicture, F.SetRoleIcon = createPicture, setRoleIcon
+-- Shared with the assistant of the public group search (UXFinderAssistant.lua).
+F.CreateEdit = createEdit
 -- Shared with the start page (UXStart.lua).
 F.CreateTile, F.UpdateTile, F.CoverPage = createTile, updateTile, coverPage
 

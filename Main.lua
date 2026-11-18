@@ -539,6 +539,7 @@ local function initializeGameplayModules(d)
         Z.UIState.Initialize(ZenialCommunityDB,Z.storageKey,d)
         -- Public group search: on unless the player switched it off (account-wide).
         if Z.SetPublicLFG then Z.SetPublicLFG(not Z.ui or Z.ui.finderPublic~=false)end
+        if Z.PublicLFGContact then Z.PublicLFGContact.Initialize()end
         Z.Notifications.Initialize()
     end
     if H then H.Initialize(ZenialCommunityDB,Z.me)end
@@ -687,6 +688,8 @@ frame:SetScript("OnEvent",function(_,event,...)
     end
     if Z.db and Z.Social and Z.Social.OnGuildEvent then Z.Social.OnGuildEvent(event,...)end
     if event=="GUILD_ROSTER_UPDATE" then return end
+    -- Contact record of the public group search: the player's own whisper to a leader, a leader joining the group.
+    if(event=="CHAT_MSG_WHISPER_INFORM"or event=="GROUP_ROSTER_UPDATE")and Z.db and Z.PublicLFGContact then pcall(Z.PublicLFGContact.OnEvent,event,...)end
     if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
     -- Presence messages (XF3-T06): greetings, pings to targets and whisper partners; a whisper event has no other consumer.
     local presence=Z.CrossFactionPresence

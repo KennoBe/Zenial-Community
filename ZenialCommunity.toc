@@ -6,7 +6,7 @@
 ## Version: 6.6.0-beta.1
 ## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
 ## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
-## SavedVariables: ZenialCommunityDB, ZenialMinimapDB, ZenialRivalryDB
+## SavedVariables: ZenialCommunityDB, ZenialMinimapDB, ZenialRivalryDB, ZenialPublicLFGDB
 ## X-License: MIT
 Core.lua
 Adapter.lua
@@ -57,6 +57,7 @@ PublicLFGMapData.lua
 PublicLFGMap.lua
 PublicLFG.lua
 PublicLFGMatch.lua
+PublicLFGContact.lua
 DungeonJournalLink.lua
 GroupFinderArt.lua
 CompanionProtocol.lua
@@ -104,6 +105,7 @@ ScheduledGroupsUI.lua
 CommunityHomeUI.lua
 UXFinder.lua
 UXFinderPublic.lua
+UXFinderAssistant.lua
 GroupFormUI.lua
 ActivityFormsUI.lua
 UXStart.lua

@@ -13,8 +13,8 @@
 -- See _dev/addons/ZenialCommunity/PUBLIC-LFG-INTEGRATION-PLAN.md.
 local Z = ZenialCommunity
 local U, L, A, T, K = Z.UI, Z.Logic, Z.Adapter, Z.Theme, Z.Kit
-local C, P, M, Q = Z.GroupFinderCatalog, Z.PublicLFG, Z.PublicLFGMap, Z.PublicLFGMatch
-if type(U) ~= 'table' or type(U.Finder) ~= 'table' or type(P) ~= 'table' or type(M) ~= 'table' or type(Q) ~= 'table' then
+local C, P, M, Q, X = Z.GroupFinderCatalog, Z.PublicLFG, Z.PublicLFGMap, Z.PublicLFGMatch, Z.PublicLFGContact
+if type(U) ~= 'table' or type(U.Finder) ~= 'table' or type(P) ~= 'table' or type(M) ~= 'table' or type(Q) ~= 'table' or type(X) ~= 'table' then
     return
 end
 
@@ -332,14 +332,23 @@ function FP.LayoutBar(y, width, detailed)
     bar.field:SetEnabled(enabled)
     bar.field:ClearAllPoints()
     bar.summary:SetShown(detailed == true)
+    bar.assist:SetShown(detailed == true)
     local rows = 1
     if detailed then
-        -- Second line: what "More filters" is set to on the left, the search field on the right.
+        -- Second line: the assistant on the left, what "More filters" is set to beside it where there is
+        -- room, the search field on the right.
         rows = 2
+        local candidates = #FP.Candidates()
+        bar.assist:ClearAllPoints()
+        bar.assist:SetPoint('TOPLEFT', 0, -ROW)
+        bar.assist:SetText(Z.T('Contact fitting groups (%d)', candidates))
+        bar.assist:SetEnabled(candidates > 0)
+        local room = width - 236 - (public and 352 or 4)
+        bar.summary:SetShown(room >= 120)
         bar.summary:ClearAllPoints()
-        bar.summary:SetPoint('TOPLEFT', 2, -(ROW + 5))
+        bar.summary:SetPoint('TOPLEFT', 238, -(ROW + 5))
         bar.summary:SetText(FP.Summary())
-        bar.summary:SetWidth(math.max(60, width - (public and 352 or 4)))
+        bar.summary:SetWidth(math.max(60, room))
         bar.summary:SetHeight(14)
         bar.field:SetPoint('TOPRIGHT', bar, 'TOPRIGHT', 0, -ROW)
     else
@@ -383,6 +392,11 @@ function FP.Create(frame)
     bar.more = T.Button(bar, tr('More filters'), 120, 24, function()
         FP.panelOpen = not FP.panelOpen
         U.RefreshFinder()
+    end, 'secondary')
+    bar.assist = T.Button(bar, '', 230, 24, function()
+        if U.FinderAssistant then
+            U.FinderAssistant.Open()
+        end
     end, 'secondary')
     bar.summary = K.Text(bar, '', 'caption', 'dim')
     if bar.summary.SetWordWrap then
@@ -431,10 +445,35 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- Cards
 -- ---------------------------------------------------------------------------------------------
+local REASON_CONTACT = {
+    LOCKED = 'You wrote to this leader a short while ago.',
+    GONE = 'This listing is no longer available.',
+    NO_LEADER = 'The name of the leader is not known yet.',
+    UNAVAILABLE = 'Whisper is unavailable.',
+}
+local CONTACT_BADGE = { OPENED = { 'Chat opened', 'info' }, SENT = { 'Message sent', 'success' }, JOINED = { 'In the group', 'success' } }
+
+-- The player with the roles the finder looks with, for fit and for the message.
+function FP.Me()
+    return { roles = Q.OwnRoles(), level = tonumber(Z.me and Z.me.level) }
+end
+
+-- The message for a row: to the leader of a group, or to a single player with the name of the activity.
+function FP.Message(row)
+    local me = FP.Me()
+    me.activity = F.activity and Z.Locale.Activity(F.activity) or row.activityName
+    return X.Template(X.Language(FP.Languages()), row.solo and 'solo' or 'group', me)
+end
+
+-- Opens the chat box for the leader with the message in it. The player sends it.
+function FP.Contact(row, text)
+    local ok, reason = X.Prepare(row, text or FP.Message(row))
+    U.Message(tr(ok and 'The chat box is ready. Press Enter to send.' or REASON_CONTACT[reason] or 'Whisper is unavailable.'))
+    U.RefreshFinder()
+    return ok, reason
+end
 local function whisper(row)
-    if not row.leader or not A.Whisper(row.leader) then
-        U.Message(tr('Whisper is unavailable.'))
-    end
+    FP.Contact(row)
 end
 local function invite(row)
     local ok, why = false, nil
@@ -487,7 +526,7 @@ function FP.Describe(row, context)
         d.actions[1] = { text = tr('Invite'), enabled = not gone and row.leader ~= nil and A.GroupState().canInvite == true, click = function()
             invite(row)
         end }
-        d.actions[2] = { text = tr('Whisper'), enabled = not gone and row.leader ~= nil, click = function()
+        d.actions[2] = { text = tr('Whisper'), enabled = X.CanContact(row) == true, click = function()
             whisper(row)
         end }
     else
@@ -511,9 +550,14 @@ function FP.Describe(row, context)
             d.roles = paint('dim', tr('Role needs unknown'))
         end
         tierBadge(d, FP.fits[row.key])
-        d.actions[1] = { text = tr('Whisper'), enabled = not gone and row.leader ~= nil, click = function()
+        d.actions[1] = { text = tr('Whisper'), enabled = X.CanContact(row) == true, click = function()
             whisper(row)
         end }
+    end
+    -- What is known about a contact with this leader replaces the fit label.
+    local contact = CONTACT_BADGE[X.State(row)]
+    if contact then
+        d.badge, d.tone = tr(contact[1]), contact[2]
     end
     if mark and mark.zenial then
         parts[#parts + 1] = paint('goldBright', tr('ZENIAL member'))
@@ -563,19 +607,17 @@ end
 -- first. A group that a ZENIAL member also listed publicly is shown once, as the ZENIAL group.
 -- sort 'seekers': players looking for a group, ZENIAL first.
 -- While the public search is off the board rows come back unchanged.
-function FP.Merge(rows, activity, sort)
-    if not FP.Active() then
-        return rows
-    end
+-- Entries { row, view, fit, zenial } of one instance from both sources, in the order of the lists.
+local function collect(rows, activity, sort)
     local source = FP.Source()
     local e = C.Get(activity)
-    local me = { roles = Q.OwnRoles(), level = tonumber(Z.me and Z.me.level) }
+    local me = FP.Me()
     local entries, owners = {}, {}
     for _, r in ipairs(rows) do
         owners[r.owner] = true
         if r.own or source ~= 'PUBLIC' then
             local view = Q.FromBoard(r)
-            entries[#entries + 1] = { row = r, view = view, fit = Q.Fit(view, me) }
+            entries[#entries + 1] = { row = r, view = view, fit = Q.Fit(view, me), zenial = true }
         end
     end
     if source ~= 'ZENIAL' then
@@ -583,15 +625,50 @@ function FP.Merge(rows, activity, sort)
             local key = memberKey(row.leader)
             if (row.solo == true) == (sort == 'seekers') and not row.restricted and not (key and owners[key]) then
                 local view = Q.FromPublic(row, e and { levelMin = e.min, levelMax = e.max })
-                view.zenial = key ~= nil
+                view.zenial, view.contacted = key ~= nil, X.Contacted(row)
                 FP.marks[row.key] = { zenial = key ~= nil }
-                entries[#entries + 1] = { row = row, view = view, fit = Q.Fit(view, me) }
+                entries[#entries + 1] = { row = row, view = view, fit = Q.Fit(view, me), zenial = false }
             end
         end
     end
-    local out = {}
     if sort == 'groups' then
         Q.Sort(entries)
+    end
+    return entries
+end
+
+-- Groups of the open instance the assistant may offer: they fit or might fit, are not the player's own, were
+-- not contacted yet and can be contacted right now. Best first; the local filters do not apply.
+function FP.Candidates()
+    local out = {}
+    if not FP.Active() or not F.activity then
+        return out
+    end
+    local stats = F.snapshot and F.snapshot.by[F.activity]
+    for _, entry in ipairs(collect(stats and stats.rows.groups or {}, F.activity, 'groups')) do
+        local tier = entry.fit.tier
+        if not entry.view.own and not entry.view.contacted and (tier == 'BEST' or tier == 'GOOD' or tier == 'UNKNOWN') then
+            local ok
+            if entry.zenial then
+                ok = entry.fit.role == 'WANTED' and U.ActivityActionState(entry.row).join == true
+            else
+                ok = X.CanContact(entry.row) == true
+            end
+            if ok then
+                out[#out + 1] = entry
+            end
+        end
+    end
+    return out
+end
+
+function FP.Merge(rows, activity, sort)
+    if not FP.Active() then
+        return rows
+    end
+    local entries = collect(rows, activity, sort)
+    local out = {}
+    if sort == 'groups' then
         for _, entry in ipairs(entries) do
             if Q.Passes(entry.view, entry.fit, FP.filters) then
                 FP.fits[entry.view.key] = entry.fit
