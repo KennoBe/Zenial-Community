@@ -287,8 +287,10 @@ local function updateTile(tile, e, stats, width, height)
         end
     end
     local y = -6
+    -- While only public groups are shown the community marks stay away.
+    local publicOnly = U.FinderPublic and U.FinderPublic.HidesCommunity()
     for _, sort in ipairs({ 'groups', 'seekers', 'planned' }) do
-        local pill, n = tile.pills[sort], stats[sort]
+        local pill, n = tile.pills[sort], publicOnly and 0 or stats[sort]
         pill:SetShown(n > 0)
         if n > 0 then
             setBadge(pill, countText(sort, n))
@@ -1364,7 +1366,7 @@ local function renderDetail(snap, top, width, height)
     local FP = U.FinderPublic
     local groups, seekers = ownFirst(stats.rows.groups), ownFirst(stats.rows.seekers)
     if FP then
-        y = y + FP.LayoutBar(top + y, width)
+        y = y + FP.LayoutBar(top + y, width, true)
         groups, seekers = FP.Merge(groups, e.id, 'groups'), FP.Merge(seekers, e.id, 'seekers')
     end
     local columnWidth = math.floor((width - GAP) / 2)
@@ -1547,6 +1549,7 @@ function U.RefreshFinder()
     -- places it itself).
     local FP = U.FinderPublic
     if FP then
+        FP.Begin()
         FP.HideBar()
         if not detailed then
             contentTop = contentTop + FP.LayoutBar(contentTop, width)

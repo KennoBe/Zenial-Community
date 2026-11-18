@@ -23,6 +23,23 @@ local function copyDraft(raw)
     end
     return out
 end
+-- Group finder, public group search: which groups are shown (per character), the roles the player looks
+-- with (per character) and the languages of the public search (account).
+local function finderSource(value)return(value=="ZENIAL"or value=="PUBLIC")and value or"ALL"end
+local function finderRoles(raw)
+    if type(raw)~="table"then return nil end
+    local out={TANK=raw.TANK==true,HEALER=raw.HEALER==true,DAMAGER=raw.DAMAGER==true}
+    return(out.TANK or out.HEALER or out.DAMAGER)and out or nil
+end
+local function finderLanguages(raw)
+    local out={mode="DEFAULT",codes={}};if type(raw)~="table"then return out end
+    if raw.mode=="ALL"or raw.mode=="CUSTOM"then out.mode=raw.mode end
+    local count=0
+    for code,on in pairs(type(raw.codes)=="table"and raw.codes or{})do
+        if count<32 and on==true and type(code)=="string"and code:match("^%a%a%a%a$")then out.codes[code]=true;count=count+1 end
+    end
+    return out
+end
 local function questCategories(raw)
     local out,count={},0
     for name,collapsed in pairs(type(raw)=="table"and raw or{})do
@@ -33,7 +50,7 @@ end
 function S.Initialize(root,characterKey,legacy)
     local raw=type(root.ui)=="table"and root.ui or{};local window=type(raw.window)=="table"and raw.window or{}
     -- Account-wide navigation preference; existing installations show the manager by default.
-    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
+    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,finderLanguages=finderLanguages(raw.finderLanguages),window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
     ui.window.width=math.max(900,math.min(1280,math.floor(ui.window.width)));ui.window.height=math.max(610,math.min(860,math.floor(ui.window.height)))
     for key,value in pairs(type(raw.characters)=="table"and raw.characters or{})do
         if type(value)=="table"and L.ValidIdentityKey(key)then
@@ -41,7 +58,7 @@ function S.Initialize(root,characterKey,legacy)
         for area,allowed in pairs(SUBVIEWS)do local selected=type(value.subviews)=="table"and value.subviews[area];subviews[area]=allowed[selected]and selected or DEFAULT_SUBVIEW[area]end
         for kind,draft in pairs(type(value.drafts)=="table"and value.drafts or{})do if kind=="offer"or kind=="profile"then drafts[kind]=copyDraft(draft)end end
         section=section=="groups"and(subviews.groups=="today"and"today"or"activities")or section=="quests"and((subviews.quests=="shared"or subviews.quests=="questgroups")and"today"or"activities")or(section=="profile"or section=="history"or section=="addons")and"settings"or section
-        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications)}
+        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications),finderSource=finderSource(value.finderSource),finderRoles=finderRoles(value.finderRoles)}
         end
     end
     ui.characters[characterKey]=ui.characters[characterKey]or{section="today",memberStatus="ALL",subviews={craft="search",groups="browse",quests="shared",trade="browse",profile="public",rivalry="overview"},drafts={}}

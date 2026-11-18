@@ -56,6 +56,7 @@ GroupFinderCatalog.lua
 PublicLFGMapData.lua
 PublicLFGMap.lua
 PublicLFG.lua
+PublicLFGMatch.lua
 DungeonJournalLink.lua
 GroupFinderArt.lua
 CompanionProtocol.lua
