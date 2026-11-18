@@ -525,7 +525,6 @@ local function initializeGameplayModules(d)
     if Z.TradeManager then Z.TradeManager.Initialize()end
     if Z.GroupFinder then Z.GroupFinder.Initialize()end
     if Z.GroupFinderCatalog then Z.GroupFinderCatalog.SyncExtras()end
-    if Z.PublicLFG then Z.PublicLFG.Initialize()end
     if Z.GroupFinderCatalog then Z.GroupFinderCatalog.Resume()end
     if Z.Social then Z.Social.Initialize()end
     if Z.SocialCategories then Z.SocialCategories.Initialize()end
@@ -538,6 +537,8 @@ local function initializeGameplayModules(d)
     Z.RefreshLocation(false,true)
     if Z.UIState then
         Z.UIState.Initialize(ZenialCommunityDB,Z.storageKey,d)
+        -- Public group search: on unless the player switched it off (account-wide).
+        if Z.SetPublicLFG then Z.SetPublicLFG(not Z.ui or Z.ui.finderPublic~=false)end
         Z.Notifications.Initialize()
     end
     if H then H.Initialize(ZenialCommunityDB,Z.me)end
@@ -630,8 +631,18 @@ Z.bnetReceiveEvent=register("BN_CHAT_MSG_ADDON");register("INITIAL_CLUBS_LOADED"
 for _,event in ipairs({"BN_CONNECTED","BN_DISCONNECTED","BN_FRIEND_INFO_CHANGED","CLUB_ADDED","CLUB_REMOVED","CLUB_UPDATED","CLUB_MEMBERS_UPDATED","CLUB_MEMBER_ADDED","CLUB_MEMBER_REMOVED","CLUB_MEMBER_UPDATED","CLUB_MEMBER_PRESENCE_UPDATED","PLAYER_ENTERING_WORLD"})do register(event)end
 register("PLAYER_LOGIN")
 register("LFG_LIST_AVAILABILITY_UPDATE")
--- Public group search (PublicLFG.lua). Results arrive in bursts of single updates, so these events never reach the general refresh below.
-for _,event in ipairs({"LFG_LIST_SEARCH_RESULTS_RECEIVED","LFG_LIST_SEARCH_FAILED","LFG_LIST_SEARCH_RESULT_UPDATED","LFG_LIST_UPDATE_SEARCH_RESULTS"})do register(event)end
+-- Public group search (PublicLFG.lua). Its events are registered only while it is switched on. Results arrive in
+-- bursts of single updates, so these events never reach the general refresh below.
+function Z.SetPublicLFG(on)
+    on=on~=false
+    for _,event in ipairs({"LFG_LIST_SEARCH_RESULTS_RECEIVED","LFG_LIST_SEARCH_FAILED","LFG_LIST_SEARCH_RESULT_UPDATED","LFG_LIST_UPDATE_SEARCH_RESULTS"})do
+        if on then register(event)else pcall(frame.UnregisterEvent,frame,event)end
+    end
+    if Z.PublicLFG then
+        Z.PublicLFG.SetEnabled(on)
+        if on then Z.PublicLFG.Initialize()end
+    end
+end
 register("PLAYER_LEVEL_UP")
 register("ADDON_LOADED")
 Z.receiveEvent=register("CHAT_MSG_ADDON")

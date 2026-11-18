@@ -69,13 +69,24 @@ function P.Capabilities()
     }
 end
 
--- Whether the public group search can be used at all.
+-- Whether the public group search can be used at all: 'OFF' when the player switched it off, 'UNAVAILABLE'
+-- when the client lacks a part. Asked on every refresh, so a positive answer is remembered.
+local enabled, capable = true, false
 function P.Available()
-    local c = P.Capabilities()
-    if c.runtime and c.search and c.results and c.activities then
+    if not enabled then
+        return false, 'OFF'
+    end
+    if not capable then
+        local c = P.Capabilities()
+        capable = c.runtime and c.search and c.results and c.activities
+    end
+    if capable then
         return true
     end
     return false, 'UNAVAILABLE'
+end
+function P.Enabled()
+    return enabled
 end
 
 -- Search languages the client offers: { { code = 'deDE', label = 'Deutsch' }, ... }. Never a fixed list.
@@ -266,9 +277,10 @@ function P.ReadMembers(id, count)
     return out
 end
 
--- Forget what was read about activities (the client announced a change of what it offers).
+-- Forget what was read about activities and about the client's functions (the client announced a change of
+-- what it offers).
 function P.Reset()
-    activities = {}
+    activities, capable = {}, false
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -380,6 +392,9 @@ end
 
 -- A search call was made, by us or by someone else (Blizzard's window, another addon).
 local function onSearchCall(category, _, _, languages, _, _, ids)
+    if not enabled then
+        return
+    end
     lastCall = A.Clock()
     if calling then
         return
@@ -532,6 +547,9 @@ end
 
 -- Events of the group search, passed on by Main.lua.
 function P.OnEvent(event, ...)
+    if not enabled then
+        return
+    end
     if event == 'LFG_LIST_SEARCH_RESULTS_RECEIVED' then
         onResults()
     elseif event == 'LFG_LIST_SEARCH_FAILED' then
@@ -812,6 +830,16 @@ function P.Rows(activity)
     return cache.rows, cache.info
 end
 
+-- Rows and facts of the list of exactly one query (signature), e.g. the search over a whole category.
+-- Returns {}, nil when no such list is kept. The returned tables belong to the store.
+function P.List(wanted)
+    local set = wanted and sets[wanted] or nil
+    if not set or A.Clock() - set.receivedAt > KEEP then
+        return {}, nil
+    end
+    return set.rows, describe(set, not set.truncated)
+end
+
 -- One row by its key, from any list that is still kept.
 function P.Row(key)
     for _, set in pairs(sets) do
@@ -872,6 +900,16 @@ function P.Clear()
     store.release()
     sets, memo = {}, { rows = {} }
     revision = revision + 1
+end
+
+-- The player's switch. Off: no search, no reading, nothing kept; P.Available answers 'OFF'.
+function P.SetEnabled(on)
+    enabled = on ~= false
+    if not enabled then
+        P.Clear()
+        state = { phase = 'IDLE', runId = runs }
+        foreignCall = nil
+    end
 end
 
 return P

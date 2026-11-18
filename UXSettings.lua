@@ -187,6 +187,15 @@ function U.CreateSettings(helpers)
     U.homeAddonNavigationOption = checkbox(U.settingsToolsFrame, tr('Show Addon Manager in the left navigation'), 12, -134, 520, function(self)
         U.SetAddonManagerNavigation(self:GetChecked() == true)
     end)
+    U.publicGroupsOption = checkbox(U.settingsToolsFrame, tr('Show public groups of the game in the group finder'), 12, -160, 520, function(self)
+        local on = self:GetChecked() == true
+        if Z.ui then
+            Z.ui.finderPublic = on
+        end
+        Z.SetPublicLFG(on)
+        U.Message(tr(on and 'Public groups of the game are shown in the group finder.' or 'Public groups of the game are hidden.'))
+    end)
+    U.publicGroupsOption:SetChecked(not Z.ui or Z.ui.finderPublic ~= false)
     heading(U.settingsToolsFrame, 'Notifications', 16, -194, 300)
     label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 16, -216, 800, 'GameFontHighlightSmall')
     label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 16, -246, 800, 'GameFontHighlightSmall')

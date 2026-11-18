@@ -102,6 +102,7 @@ UXNavigation.lua
 ScheduledGroupsUI.lua
 CommunityHomeUI.lua
 UXFinder.lua
+UXFinderPublic.lua
 GroupFormUI.lua
 ActivityFormsUI.lua
 UXStart.lua

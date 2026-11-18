@@ -345,6 +345,15 @@ function A.Invite(target)
     if not ok or result==false then if tracked then guard.Undo(target)end;return false,"Einladen fehlgeschlagen."end
     return true
 end
+-- Invites a player by name who is no ZENIAL contact: a single player from the public group search.
+-- As in the group search of the game: only without a group or as its leader.
+function A.InviteName(target)
+    if not A.Safe(target)or not L.Identity(target)then return false,"Ungültiger Charakter." end
+    if not A.GroupState().canInvite then return false,"Du hast kein Einladungsrecht." end
+    local fn=C_PartyInfo and C_PartyInfo.InviteUnit or InviteUnit; if type(fn)~="function" then return false,"Einladen ist nicht verfügbar." end
+    if not pcall(fn,target)then return false,"Einladen ist nicht verfügbar." end
+    return true
+end
 function A.InvitePvp(target)
     local state=A.GroupState()
     if not state.canInvite then return false,"Du hast kein Einladungsrecht." end

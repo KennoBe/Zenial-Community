@@ -196,6 +196,10 @@ local function tileTooltip(tile)
         GameTooltip:AddLine(countText('groups', stats.groups) .. ' · ' .. countText('seekers', stats.seekers) .. ' · ' .. countText('planned', stats.planned), 0.78, 0.8, 0.85, true)
     end
     GameTooltip:AddLine(tr('Figures from the ZENIAL community'), 0.5, 0.52, 0.58, true)
+    local hint = U.FinderPublic and U.FinderPublic.TileHint(e.id)
+    if hint then
+        GameTooltip:AddLine(hint, 0.78, 0.8, 0.85, true)
+    end
     GameTooltip:Show()
 end
 local function createTile(parent)
@@ -225,6 +229,8 @@ local function createTile(parent)
     tile.flag:SetPoint('TOPLEFT', 6, -6)
     tile.bell = K.Icon(tile, 'bell', 14, 'goldBright')
     tile.pills = { groups = K.Badge(tile, '', 'success'), seekers = K.Badge(tile, '', 'info'), planned = K.Badge(tile, '', 'neutral') }
+    -- Groups of the public group search of the game: a mark of its own, never part of the community figures.
+    tile.public = K.Badge(tile, '', 'neutral')
     tile:SetScript('OnEnter', function(self)
         tileEdge(self, true)
         tileTooltip(self)
@@ -237,7 +243,7 @@ local function createTile(parent)
     end)
     tile:SetScript('OnClick', function(self)
         if self.entry then
-            U.OpenFinderActivity(self.entry.id)
+            U.OpenFinderActivity(self.entry.id, true)
         end
     end)
     return tile
@@ -290,6 +296,13 @@ local function updateTile(tile, e, stats, width, height)
             pill:SetPoint('TOPRIGHT', -6, y)
             y = y - 21
         end
+    end
+    local public = U.FinderPublic and U.FinderPublic.TileText(e.id)
+    tile.public:SetShown(public ~= nil)
+    if public then
+        setBadge(tile.public, public)
+        tile.public:ClearAllPoints()
+        tile.public:SetPoint('TOPRIGHT', -6, y)
     end
     tile.edgeKey = (stats.ownGroup or stats.ownSearch) and 'gold' or (stats.groups > 0 or stats.seekers > 0) and 'goldDim' or 'edgeDeep'
     tileEdge(tile, false)
@@ -629,6 +642,8 @@ local function createCard(parent)
     end
     card.badge = K.Badge(card, '', 'neutral')
     card.badge:SetPoint('TOPRIGHT', -8, -8)
+    -- Source of the entry (ZENIAL or public), shown while both sources stand side by side.
+    card.source = K.Badge(card, '', 'neutral')
     card.actions = {}
     for index = 1, 2 do
         card.actions[index] = T.Button(card, '', 116, 22, nil, 'secondary')
@@ -672,8 +687,20 @@ local function createCard(parent)
 end
 local function updateCard(card, item, width, context)
     local r = item.row
-    local d = item.partner and describePartner(item.partner) or describe(r, context)
-    card.row = r
+    local FP = U.FinderPublic
+    local d
+    if item.partner then
+        d = describePartner(item.partner)
+    elseif item.public then
+        -- A group of the public group search: its own description, nothing of the activity board.
+        d = FP.Describe(item.public, context)
+    else
+        d = describe(r, context)
+        if FP then
+            FP.Mark(d, r)
+        end
+    end
+    card.row, card.public = r, item.public
     card.zenialCommon = d.commonTitles
     card:SetSize(width, CARD_HEIGHT)
     card.zenialClick = d.click
@@ -694,6 +721,13 @@ local function updateCard(card, item, width, context)
     local badgeWidth = 0
     if d.badge then
         badgeWidth = setBadge(card.badge, d.badge, d.tone or 'neutral') + 10
+    end
+    card.source:SetShown(d.source ~= nil)
+    if d.source then
+        local sourceWidth = setBadge(card.source, d.source, d.sourceTone or 'neutral')
+        card.source:ClearAllPoints()
+        card.source:SetPoint('TOPRIGHT', -8 - (badgeWidth > 0 and badgeWidth - 4 or 0), -8)
+        badgeWidth = (badgeWidth > 0 and badgeWidth - 4 or 0) + sourceWidth + 10
     end
     local applying = r ~= nil and F.applyKey == r.key and d.apply == true
     local textWidth = width - left - 12
@@ -868,7 +902,7 @@ local function addSection(items, text, rows, emptyText, limit)
         if index > (limit or 60) then
             break
         end
-        items[#items + 1] = { type = 'card', row = row }
+        items[#items + 1] = row.source == 'PUBLIC' and { type = 'card', public = row } or { type = 'card', row = row }
     end
 end
 -- Copy of rows with the player's own entry first.
@@ -1231,6 +1265,14 @@ local function renderCategory(snap, top, width, height)
     if #planned > 0 then
         addSection(items, tr('Planned'), planned)
     end
+    -- Groups and single players of the public group search of the game in this category.
+    local public, loaded = nil, false
+    if U.FinderPublic then
+        public, loaded = U.FinderPublic.CategoryRows()
+    end
+    if public then
+        addSection(items, tr('Public groups'), public, tr(loaded and 'No public group is listed right now.' or 'Load the public groups to see what is listed in the game.'))
+    end
     F.stream:ClearAllPoints()
     F.stream:SetPoint('TOPLEFT', 0, -top)
     renderStream(F.stream, width, height, items, width >= 760 and 2 or 1, { named = true, thumbs = true })
@@ -1318,14 +1360,21 @@ local function renderDetail(snap, top, width, height)
         bar:SetSize(width, 42)
         y = y + 52
     end
+    -- Public group search: its field between the head and the lists, its rows behind the ZENIAL rows.
+    local FP = U.FinderPublic
+    local groups, seekers = ownFirst(stats.rows.groups), ownFirst(stats.rows.seekers)
+    if FP then
+        y = y + FP.LayoutBar(top + y, width)
+        groups, seekers = FP.Merge(groups, e.id, 'groups'), FP.Merge(seekers, e.id, 'seekers')
+    end
     local columnWidth = math.floor((width - GAP) / 2)
     local listHeight = math.max(60, height - y)
     local left, right = {}, {}
-    addSection(left, tr('Open groups'), ownFirst(stats.rows.groups), tr('No group is open for this instance. Create one, or look for a group and let others find you.'))
+    addSection(left, tr('Open groups'), groups, tr('No group is open for this instance. Create one, or look for a group and let others find you.'))
     if #stats.rows.planned > 0 then
         addSection(left, tr('Planned'), stats.rows.planned)
     end
-    addSection(right, tr('Players looking for a group'), ownFirst(stats.rows.seekers), tr('Nobody is looking for this instance right now.'))
+    addSection(right, tr('Players looking for a group'), seekers, tr('Nobody is looking for this instance right now.'))
     detail.left:ClearAllPoints()
     detail.left:SetPoint('TOPLEFT', 0, -y)
     renderStream(detail.left, columnWidth, listHeight, left, 1, { named = false, thumbs = false })
@@ -1494,6 +1543,15 @@ function U.RefreshFinder()
         end
     end
     local contentTop = detailed and top or top + ((filters or links) and 34 or 24)
+    -- Public group search: one row with its search field below the tool row (the overview of an instance
+    -- places it itself).
+    local FP = U.FinderPublic
+    if FP then
+        FP.HideBar()
+        if not detailed then
+            contentTop = contentTop + FP.LayoutBar(contentTop, width)
+        end
+    end
     local contentHeight = math.max(80, height - contentTop - footer)
     F.grid:SetShown(gridView)
     F.gridEmpty:Hide()
@@ -1576,7 +1634,8 @@ function U.SetFinderView(view, keepActivity)
     U.RefreshFinder()
 end
 -- Opens the group overview of one catalogue activity (from a tile, a notice or another page).
-function U.OpenFinderActivity(activity)
+-- clicked: the player clicked a tile; only then the public group search may start a search by itself.
+function U.OpenFinderActivity(activity, clicked)
     local e = C.Get(activity)
     if not e then
         return false
@@ -1586,6 +1645,9 @@ function U.OpenFinderActivity(activity)
     end
     F.activity, F.searchOpen = e.id, false
     U.SetFinderView(KIND_VIEW[e.kind], true)
+    if clicked and U.FinderPublic then
+        U.FinderPublic.OnOpen(e.id)
+    end
     return true
 end
 
@@ -1821,6 +1883,9 @@ function U.CreateFinder()
         end
         U.Message(tr(on and 'Notices for new groups of followed activities are on.' or 'Notices for new groups of followed activities are off. They stay in the bell.'))
     end)
+    if U.FinderPublic then
+        U.FinderPublic.Create(frame)
+    end
     return frame
 end
 
