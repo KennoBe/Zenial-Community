@@ -875,7 +875,7 @@ local function collect(rows, activity, sort)
         for _, row in ipairs((P.Rows(activity))) do
             local key = memberKey(row.leader)
             if (row.solo == true) == (sort == 'seekers') and not row.restricted and not (key and owners[key]) then
-                local view = Q.FromPublic(row, e and { levelMin = e.min, levelMax = e.max })
+                local view = Q.FromPublic(row, e and { levelMin = e.min })
                 view.zenial, view.contacted = key ~= nil, X.Contacted(row)
                 FP.marks[row.key] = { zenial = key ~= nil }
                 entries[#entries + 1] = { row = row, view = view, fit = Q.Fit(view, me), zenial = false }

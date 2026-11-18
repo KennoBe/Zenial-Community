@@ -97,12 +97,13 @@ function Q.FromBoard(r)
     }
 end
 
--- View of a public group (row of PublicLFG.lua). facts: { levelMin, levelMax } of its activity, as far as known.
+-- View of a public group (row of PublicLFG.lua). facts: { levelMin } of its activity, as far as known.
+-- A public group has no upper level: the game asks for a lowest level only, what lies above is a suggestion.
 function Q.FromPublic(row, facts)
     facts = facts or {}
     return {
         source = 'PUBLIC', key = row.key, own = false, zenial = row.zenial == true, size = row.size, members = row.members,
-        wanted = row.remaining, levelMin = facts.levelMin, levelMax = facts.levelMax,
+        wanted = row.remaining, levelMin = facts.levelMin,
         started = -(row.age or 0), gone = row.delisted == true, contacted = row.contacted == true,
         friends = row.friends or 0, guildMates = row.guildMates or 0,
     }
@@ -110,7 +111,7 @@ end
 
 -- How a group fits: { tier, role, level, ready }.
 --   role  WANTED: an open place for one of my roles · TAKEN: places are known, none for me · UNKNOWN
---   level true | false | nil (unknown)
+--   level true | false | nil (unknown); a view without an upper level fits from its lowest level on
 --   ready the group is about to start: only my role is missing, or tank and healer are there
 --   tier  BEST | GOOD | UNKNOWN | POOR | FULL
 -- me = { roles = { TANK, HEALER, DAMAGER }, level = number }
@@ -129,8 +130,12 @@ function Q.Fit(view, me)
         end
     end
     local level = me.level
-    if type(level) == 'number' and type(view.levelMin) == 'number' and type(view.levelMax) == 'number' then
-        fit.level = level >= view.levelMin and level <= view.levelMax
+    if type(level) == 'number' and type(view.levelMin) == 'number' then
+        if type(view.levelMax) == 'number' then
+            fit.level = level >= view.levelMin and level <= view.levelMax
+        elseif view.levelMax == nil then
+            fit.level = level >= view.levelMin
+        end
     end
     local full = view.gone or (view.size ~= nil and view.members ~= nil and view.members >= view.size) or open == 0
     if full then
