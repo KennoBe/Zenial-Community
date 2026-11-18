@@ -401,6 +401,52 @@ local function partySize(r)
     end
     return math.max(1, g.size - C.Wanted(g))
 end
+-- The members of a ZENIAL party as symbols, like the card of a public group: who is there (as far as the
+-- record tells their roles), then the places the group still looks for. { { role, free } }
+local HAVE_ROLE = { TANK = 'TANK', HEALER = 'HEALER', DAMAGER = 'DAMAGER', DD = 'DAMAGER' }
+local function ownerRole(r)
+    if r.own then
+        return L.Role(Z.db.roles)
+    end
+    local peer = Z.db.peers[r.owner]
+    local data, presence = peer and peer.data, peer and peer.presence
+    return L.Role(data and data.roles) or L.Role(presence and presence.role)
+end
+local function groupMembers(r, g, present)
+    local out, known, total = {}, { TANK = 0, HEALER = 0, DAMAGER = 0 }, 0
+    for token, count in tostring((C.SplitHave(g.have))):gmatch('(%u+)=(%d+)') do
+        local role = HAVE_ROLE[token]
+        if role then
+            known[role] = known[role] + tonumber(count)
+        end
+    end
+    for _, role in ipairs(ROLES) do
+        for _ = 1, known[role] do
+            if total < present then
+                out[#out + 1] = { role = role }
+                total = total + 1
+            end
+        end
+    end
+    -- Alone: the organizer with the role of the profile, where it is known.
+    if total == 0 and present == 1 then
+        local role = ownerRole(r)
+        out[1] = { role = ROLE_FIELD[role or ''] and role or 'SEEKER' }
+        total = 1
+    end
+    for _ = total + 1, present do
+        out[#out + 1] = { role = 'SEEKER' }
+    end
+    for _, role in ipairs(ROLES) do
+        for _ = 1, g[ROLE_FIELD[role]] or 0 do
+            out[#out + 1] = { role = role, free = true }
+        end
+    end
+    while #out > g.size do
+        table.remove(out)
+    end
+    return out
+end
 local function wantedRoles(g)
     local parts = {}
     for _, role in ipairs(ROLES) do
@@ -549,22 +595,49 @@ local function describe(r, context)
     end
     if r.kind == 'LIVE' and r.data then
         local g = r.data
-        d.title = context.named and name or Z.T('Group of %s', r.ownerName)
-        d.meta = (context.named and not r.own and r.ownerName .. ' · ' or '')
-            .. Z.T('%d/%d players', partySize(r), g.size)
-            .. ' · '
-            .. (g.min == g.max and Z.T('Level %d', g.min) or Z.T('Level %d–%d', g.min, g.max))
-        d.roleItems = {}
+        -- Built like the card of a public group: the organizer's name in the class colour, the members as
+        -- symbols, the free places faint. The marks (ZENIAL, your group) and what only ZENIAL knows
+        -- (level range, preferred classes, comment) tell the two apart.
+        local classFile, class = ownerFacts(r)
+        local hex = T.ClassColorHex and T.ClassColorHex(classFile, class)
+        local owner = hex and ('|cff' .. hex .. r.ownerName .. '|r') or r.ownerName
+        local present = partySize(r)
+        local levels = g.min == g.max and Z.T('Level %d', g.min) or Z.T('Level %d–%d', g.min, g.max)
+        d.title = context.named and name or owner
+        d.meta = (context.named and not r.own and r.ownerName .. ' · ' or '') .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels
+        local wanted = {}
         for _, role in ipairs(ROLES) do
             local n = g[ROLE_FIELD[role]] or 0
             if n > 0 then
-                d.roleItems[#d.roleItems + 1] = { role = role, text = n .. ' ' .. Z.Locale.Role(role) }
+                wanted[#wanted + 1] = { role = role, text = n .. ' ' .. Z.Locale.Role(role) }
             end
         end
-        if #d.roleItems == 0 then
-            d.roleItems, d.roles = nil, paint('dim', tr('Group is full'))
+        if type(g.size) == 'number' and g.size <= 5 then
+            d.members = groupMembers(r, g, present)
+            local parts = {}
+            for index, item in ipairs(wanted) do
+                parts[index] = { item.role, item.text }
+            end
+            d.roles = #parts > 0 and paint('dim', tr('Needed') .. ': ') .. K.Roles(parts) or paint('dim', tr('Group is full'))
+        elseif #wanted > 0 then
+            d.roleItems = wanted
+        else
+            d.roles = paint('dim', tr('Group is full'))
         end
         d.note = g.note
+        -- Hover info: the organizer, and what the card has no room to spell out.
+        local ownerLevel = r.own and tonumber(Z.me and Z.me.level) or (Z.db.peers[r.owner] and Z.db.peers[r.owner].data and tonumber(Z.db.peers[r.owner].data.level))
+        local facts = {}
+        if ownerLevel then
+            facts[#facts + 1] = Z.T('Level %d', ownerLevel)
+        end
+        if classFile then
+            facts[#facts + 1] = L.ClassName(class, classFile)
+        end
+        d.hover = { title = owner, lines = { name .. ' · ' .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels } }
+        if #facts > 0 then
+            d.hover.pair = { owner, table.concat(facts, ' · ') }
+        end
         -- Preferred classes lead the comment line, in their class colours.
         local classes = C.WantedClasses(g)
         if #classes > 0 then
@@ -577,6 +650,10 @@ local function describe(r, context)
             d.note = paint('dim', Z.T('Preferred: %s', '')) .. table.concat(names, ', ')
                 .. ((g.note or '') ~= '' and paint('dim', ' · ') .. '„' .. g.note .. '“' or '')
             d.noteRaw = true
+            d.hover.lines[#d.hover.lines + 1] = paint('dim', Z.T('Preferred: %s', '')) .. table.concat(names, ', ')
+        end
+        if (g.note or '') ~= '' then
+            d.hover.lines[#d.hover.lines + 1] = '„' .. g.note .. '“'
         end
         d.click = function()
             U.OpenActivity(r.key)
@@ -730,6 +807,24 @@ local function createCard(parent)
             return
         end
         local titles = self.zenialCommon
+        -- A ZENIAL group without quests in common: who organizes it and what the card cannot spell out.
+        local hover = self.zenialHover
+        if (not titles or #titles == 0) and hover and GameTooltip and GameTooltip.SetOwner then
+            GameTooltip:SetOwner(self, 'ANCHOR_RIGHT')
+            GameTooltip:AddLine(hover.title, 1, 0.85, 0.42)
+            for _, text in ipairs(hover.lines) do
+                GameTooltip:AddLine(text, 0.78, 0.8, 0.85, true)
+            end
+            if hover.pair then
+                if GameTooltip.AddDoubleLine then
+                    GameTooltip:AddDoubleLine(hover.pair[1], hover.pair[2], 1, 1, 1, 0.78, 0.8, 0.85)
+                else
+                    GameTooltip:AddLine(hover.pair[1] .. '  ' .. hover.pair[2], 0.78, 0.8, 0.85)
+                end
+            end
+            GameTooltip:Show()
+            return
+        end
         if not titles or #titles == 0 or not GameTooltip or not GameTooltip.SetOwner then
             return
         end
@@ -756,6 +851,41 @@ local function createCard(parent)
     end)
     return card
 end
+-- The member symbols of a party in front of the role line of its card (d.members). Called for every card: one
+-- without symbols gets its own hidden.
+local function drawMembers(card, d, left)
+    local icons, list = card.zenialMembers, d and d.members
+    if not icons then
+        if not list then
+            return
+        end
+        icons = {}
+        card.zenialMembers = icons
+    end
+    local x = left
+    for index = 1, math.max(#icons, list and #list or 0) do
+        local icon, member = icons[index], list and list[index]
+        if member and not icon then
+            icon = card:CreateTexture(nil, 'ARTWORK')
+            icon:SetSize(16, 16)
+            icons[index] = icon
+        end
+        if icon then
+            icon:SetShown(member ~= nil)
+            if member then
+                setRoleIcon(icon, member.role)
+                icon:SetAlpha(member.free and 0.28 or 1)
+                icon:ClearAllPoints()
+                icon:SetPoint('TOPLEFT', x, -42)
+                x = x + 19
+            end
+        end
+    end
+    if list and #list > 0 then
+        card.roles:ClearAllPoints()
+        card.roles:SetPoint('TOPLEFT', x + 6, -44)
+    end
+end
 local function updateCard(card, item, width, context)
     local r = item.row
     local FP = U.FinderPublic
@@ -773,6 +903,7 @@ local function updateCard(card, item, width, context)
     end
     card.row, card.public = r, item.public
     card.zenialCommon = d.commonTitles
+    card.zenialHover = d.hover
     card:SetSize(width, CARD_HEIGHT)
     card.zenialClick = d.click
     local left = 12
@@ -837,10 +968,8 @@ local function updateCard(card, item, width, context)
             slotX = slotX + slotWidth
         end
     end
-    -- A public party shows its members as symbols in front of the role line.
-    if FP then
-        FP.DrawMembers(card, not applying and d or nil, left)
-    end
+    -- A party shows its members as symbols in front of the role line.
+    drawMembers(card, not applying and d or nil, left)
     -- Role choice of a join request: only the roles the group still looks for.
     local chipX = left + 74
     for _, chip in ipairs(card.chips) do
@@ -2008,6 +2137,7 @@ F.CreatePicture, F.SetRoleIcon = createPicture, setRoleIcon
 -- Shared with the assistant of the public group search (UXFinderAssistant.lua).
 F.CreateEdit = createEdit
 F.ScriptFont = scriptFont
+F.DrawMembers = drawMembers
 -- Shared with the start page (UXStart.lua).
 F.CreateTile, F.UpdateTile, F.CoverPage = createTile, updateTile, coverPage
 

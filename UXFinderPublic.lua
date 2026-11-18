@@ -732,41 +732,8 @@ function FP.Describe(row, context)
     return d
 end
 
--- The member symbols of a party in front of the role line of its card (d.members of FP.Describe). Called for
--- every card: one without symbols gets its own hidden.
-function FP.DrawMembers(card, d, left)
-    local icons, list = card.zenialMembers, d and d.members
-    if not icons then
-        if not list then
-            return
-        end
-        icons = {}
-        card.zenialMembers = icons
-    end
-    local x = left
-    for index = 1, math.max(#icons, list and #list or 0) do
-        local icon, member = icons[index], list and list[index]
-        if member and not icon then
-            icon = card:CreateTexture(nil, 'ARTWORK')
-            icon:SetSize(16, 16)
-            icons[index] = icon
-        end
-        if icon then
-            icon:SetShown(member ~= nil)
-            if member then
-                F.SetRoleIcon(icon, member.role)
-                icon:SetAlpha(member.free and 0.28 or 1)
-                icon:ClearAllPoints()
-                icon:SetPoint('TOPLEFT', x, -42)
-                x = x + 19
-            end
-        end
-    end
-    if list and #list > 0 then
-        card.roles:ClearAllPoints()
-        card.roles:SetPoint('TOPLEFT', x + 6, -44)
-    end
-end
+-- The member symbols of a party are drawn by the finder itself (ZENIAL cards have them too).
+FP.DrawMembers = F.DrawMembers
 
 -- Hover info of a public card: who is in the group, with level and class. The members are read from the
 -- client the moment the mouse is over the card, and only for a list the client still holds.
@@ -1223,7 +1190,6 @@ FP.Guard(FP, 'TileHint', nothing)
 FP.Guard(FP, 'CategoryRows', nothing)
 FP.Guard(FP, 'Candidates', function() return {} end)
 FP.Guard(FP, 'Status', function() return '', false end)
-FP.Guard(FP, 'DrawMembers', nothing)
 FP.Guard(FP, 'Tooltip', nothing)
 FP.Guard(FP, 'FormChip', nothing)
 FP.Guard(FP, 'LayoutBar', function() hide() return 0 end)

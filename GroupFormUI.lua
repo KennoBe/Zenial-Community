@@ -262,10 +262,26 @@ local function layout()
         place(fields.min, LEFT, y - 18, 48, 24)
         place(fields.max.caption, LEFT + 54, y - 16, 14, 20)
         place(fields.max, LEFT + 70, y - 18, 48, 24)
-        place(G.sizeLabel, 182, y, 200, 12)
-        place(G.size, 182, y - 17)
-        place(fields.size, 398, y - 18, 46, 24)
-        y = y - 58
+        -- A dungeon of the catalogue has its size: the choice would change nothing, so it stays away and the
+        -- comment takes the room beside the level range.
+        local _, entry = currentActivity()
+        local fixed = entry ~= nil and entry.kind == 'DUNGEON'
+        G.fixedSize = fixed
+        G.sizeLabel:SetShown(not fixed)
+        G.size:SetShown(not fixed)
+        fields.size:SetShown(not fixed)
+        if fixed then
+            place(fields.note.caption, 182, y, 300, 14)
+            place(U.groupNoteCount, 538, y, 96, 14)
+            place(G.noteBox, 182, y - 18, WIDTH - 166, 40)
+            place(fields.note, 182, y - 18, WIDTH - 166, 40)
+            y = y - 72
+        else
+            place(G.sizeLabel, 182, y, 200, 12)
+            place(G.size, 182, y - 17)
+            place(fields.size, 398, y - 18, 46, 24)
+            y = y - 58
+        end
         place(G.classLabel, LEFT, y, 200, 12)
         place(G.classHint, 234, y + 1, 400, 14)
         y = y - 18
@@ -287,12 +303,16 @@ local function layout()
             place(chip, x, y, width, 24)
             x, inRow = x + width + 3, inRow + 1
         end
-        y = y - 24 - 14
-        place(fields.note.caption, LEFT, y, 300, 14)
-        place(U.groupNoteCount, 538, y, 96, 14)
-        place(G.noteBox, LEFT, y - 18, WIDTH, 40)
-        place(fields.note, LEFT, y - 18, WIDTH, 40)
-        y = y - 58
+        if G.fixedSize then
+            y = y - 24
+        else
+            y = y - 24 - 14
+            place(fields.note.caption, LEFT, y, 300, 14)
+            place(U.groupNoteCount, 538, y, 96, 14)
+            place(G.noteBox, LEFT, y - 18, WIDTH, 40)
+            place(fields.note, LEFT, y - 18, WIDTH, 40)
+            y = y - 58
+        end
     end
     y = y - 16
     -- Public group search: the choice to list the group in the group search of the game as well, right above
