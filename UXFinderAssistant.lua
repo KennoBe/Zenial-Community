@@ -309,6 +309,7 @@ function FA.Refresh()
         frame.who:ClearAllPoints()
         frame.who:SetPoint('TOPLEFT', 16, -72)
         frame.who:SetText(Z.T('Group %d of %d', s.index, #s.queue) .. ': ' .. plain(line(item)))
+        F.ScriptFont(frame.who, plain(line(item)))
         frame.who:SetWidth(WIDTH - 32)
         frame.who:SetHeight(18)
         y = 104

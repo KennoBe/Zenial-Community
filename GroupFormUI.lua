@@ -295,6 +295,14 @@ local function layout()
         y = y - 58
     end
     y = y - 16
+    -- Public group search: the choice to list the group in the group search of the game as well, right above
+    -- the button that creates it.
+    local listing = U.FinderPublic and U.FinderPublic.FormChip and U.FinderPublic.FormChip(form, (currentActivity()))
+    if listing then
+        place(listing.hint, LEFT, y + 2, WIDTH - 202, 28)
+        place(listing, LEFT + WIDTH - 190, y, 190, 24)
+        y = y - 36
+    end
     -- Foot: back and discard on the left, the one primary action on the right; saving a template belongs to
     -- the optional part.
     place(U.groupFormBack, LEFT, y, 130)

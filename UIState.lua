@@ -24,7 +24,8 @@ local function copyDraft(raw)
     return out
 end
 -- Group finder, public group search: which groups are shown (per character), the roles the player looks
--- with (per character) and the languages of the public search (account).
+-- with, the languages of the public search, "Only fitting" and whether own entries are also listed in the
+-- group search of the game (on unless switched off). All per character.
 local function finderSource(value)return(value=="ZENIAL"or value=="PUBLIC")and value or"ALL"end
 local function finderRoles(raw)
     if type(raw)~="table"then return nil end
@@ -37,18 +38,6 @@ local function finderLanguages(raw)
     local count=0
     for code,on in pairs(type(raw.codes)=="table"and raw.codes or{})do
         if count<32 and on==true and type(code)=="string"and code:match("^%a%a%a%a$")then out.codes[code]=true;count=count+1 end
-    end
-    return out
-end
--- Search profiles of the group finder: up to five named sets of source, languages, roles and local filters.
-local function finderProfiles(raw)
-    local out={}
-    for _,entry in ipairs(type(raw)=="table"and raw or{})do
-        if #out<5 and type(entry)=="table"and text(entry.name,24)==entry.name and entry.name~=""then
-            local languages=finderLanguages(entry)
-            out[#out+1]={name=entry.name,source=finderSource(entry.source),mode=languages.mode,codes=languages.codes,roles=finderRoles(entry.roles),
-                fitting=entry.fitting==true,open=entry.open==true,hideSolo=entry.hideSolo==true,minSize=L.Int(entry.minSize,3,4)and entry.minSize or 0}
-        end
     end
     return out
 end
@@ -68,7 +57,7 @@ end
 function S.Initialize(root,characterKey,legacy)
     local raw=type(root.ui)=="table"and root.ui or{};local window=type(raw.window)=="table"and raw.window or{}
     -- Account-wide navigation preference; existing installations show the manager by default.
-    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,finderLanguages=finderLanguages(raw.finderLanguages),finderTemplates=finderTemplates(raw.finderTemplates),window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
+    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,finderTemplates=finderTemplates(raw.finderTemplates),window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
     ui.window.width=math.max(900,math.min(1280,math.floor(ui.window.width)));ui.window.height=math.max(610,math.min(860,math.floor(ui.window.height)))
     for key,value in pairs(type(raw.characters)=="table"and raw.characters or{})do
         if type(value)=="table"and L.ValidIdentityKey(key)then
@@ -76,7 +65,7 @@ function S.Initialize(root,characterKey,legacy)
         for area,allowed in pairs(SUBVIEWS)do local selected=type(value.subviews)=="table"and value.subviews[area];subviews[area]=allowed[selected]and selected or DEFAULT_SUBVIEW[area]end
         for kind,draft in pairs(type(value.drafts)=="table"and value.drafts or{})do if kind=="offer"or kind=="profile"then drafts[kind]=copyDraft(draft)end end
         section=section=="groups"and(subviews.groups=="today"and"today"or"activities")or section=="quests"and((subviews.quests=="shared"or subviews.quests=="questgroups")and"today"or"activities")or(section=="profile"or section=="history"or section=="addons")and"settings"or section
-        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications),finderSource=finderSource(value.finderSource),finderRoles=finderRoles(value.finderRoles),finderListPublic=value.finderListPublic==true,finderProfiles=finderProfiles(value.finderProfiles)}
+        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications),finderSource=finderSource(value.finderSource),finderRoles=finderRoles(value.finderRoles),finderLanguages=finderLanguages(value.finderLanguages or raw.finderLanguages),finderFitting=value.finderFitting==true,finderPublish=value.finderPublish~=false}
         end
     end
     ui.characters[characterKey]=ui.characters[characterKey]or{section="today",memberStatus="ALL",subviews={craft="search",groups="browse",quests="shared",trade="browse",profile="public",rivalry="overview"},drafts={}}

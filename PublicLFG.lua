@@ -866,6 +866,19 @@ function P.List(wanted)
     return set.rows, describe(set, not set.truncated)
 end
 
+-- Members of a row for the hover info of its card: { { name, class, level, role, leader } }. Read from the
+-- client the moment they are asked for and kept with the row. nil when the row is not part of the list the
+-- client holds right now: its result id means nothing any more.
+function P.Members(row)
+    if type(row) ~= 'table' or not live or not live.live or live.byKey[row.key] ~= row or row.gone then
+        return nil
+    end
+    if not row.memberList then
+        row.memberList = P.ReadMembers(row.resultId, row.members)
+    end
+    return row.memberList
+end
+
 -- One row by its key, from any list that is still kept.
 function P.Row(key)
     for _, set in pairs(sets) do

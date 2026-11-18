@@ -63,6 +63,72 @@ end
 local function activityName(id)
     return Z.Locale.Activity(id)
 end
+-- Texts in another script (a Russian, Korean or Chinese player name, a note). The texts of the addon keep the
+-- font file of the client's Latin alphabet (T.Font), which has no such letters: they would show as empty
+-- boxes. A text that holds them takes the font the client has for that alphabet, at the same size.
+local ALPHABET_FILE = {}
+local function alphabetOf(text)
+    if type(text) ~= 'string' then
+        return nil
+    end
+    -- The first byte of a letter tells its block: Cyrillic, Korean, Chinese. Punctuation (dashes, quotation
+    -- marks, the ellipsis) starts with a byte of the same range and is passed over.
+    for lead in text:gmatch('[\208-\237]') do
+        local byte = lead:byte()
+        if byte <= 211 then
+            return 'russian'
+        elseif byte >= 234 then
+            return 'korean'
+        elseif byte >= 227 and byte <= 233 then
+            return 'simplifiedchinese'
+        end
+    end
+    return nil
+end
+local function alphabetFile(alphabet)
+    if ALPHABET_FILE[alphabet] == nil then
+        local file = false
+        local base = _G.GameFontNormal
+        if type(base) == 'table' and type(base.GetFontObjectForAlphabet) == 'function' then
+            local ok, object = pcall(base.GetFontObjectForAlphabet, base, alphabet)
+            if ok and type(object) == 'table' and type(object.GetFont) == 'function' then
+                local read, found = pcall(object.GetFont, object)
+                if read and type(found) == 'string' and found ~= '' then
+                    file = found
+                end
+            end
+        end
+        -- The narrow font of the client has Cyrillic letters in every language version.
+        if not file and alphabet == 'russian' then
+            file = 'Fonts\\ARIALN.TTF'
+        end
+        ALPHABET_FILE[alphabet] = file
+    end
+    return ALPHABET_FILE[alphabet] or nil
+end
+local function scriptFont(fs, text)
+    if type(fs.GetFont) ~= 'function' or type(fs.SetFont) ~= 'function' then
+        return
+    end
+    if not fs.zenialFont then
+        local ok, file, size, flags = pcall(fs.GetFont, fs)
+        if not ok or type(file) ~= 'string' or file == '' then
+            return
+        end
+        fs.zenialFont = { file, size, flags or '' }
+    end
+    local alphabet = alphabetOf(text)
+    local file = alphabet and alphabetFile(alphabet) or fs.zenialFont[1]
+    if fs.zenialFontFile ~= file then
+        local ok, set = pcall(fs.SetFont, fs, file, fs.zenialFont[2], fs.zenialFont[3])
+        if ok and set ~= false then
+            fs.zenialFontFile = file
+        elseif file ~= fs.zenialFont[1] then
+            pcall(fs.SetFont, fs, fs.zenialFont[1], fs.zenialFont[2], fs.zenialFont[3])
+            fs.zenialFontFile = fs.zenialFont[1]
+        end
+    end
+end
 -- Badge caption with an explicit text box: the tag then has a width the layout can rely on.
 local function setBadge(badge, value, tone)
     if tone then
@@ -287,10 +353,8 @@ local function updateTile(tile, e, stats, width, height)
         end
     end
     local y = -6
-    -- While only public groups are shown the community marks stay away.
-    local publicOnly = U.FinderPublic and U.FinderPublic.HidesCommunity()
     for _, sort in ipairs({ 'groups', 'seekers', 'planned' }) do
-        local pill, n = tile.pills[sort], publicOnly and 0 or stats[sort]
+        local pill, n = tile.pills[sort], stats[sort]
         pill:SetShown(n > 0)
         if n > 0 then
             setBadge(pill, countText(sort, n))
@@ -660,6 +724,11 @@ local function createCard(parent)
     end
     -- Titles of the quests in common, as far as the own log knows them.
     card:SetScript('OnEnter', function(self)
+        -- A public group: who is in it.
+        if self.public and U.FinderPublic then
+            U.FinderPublic.Tooltip(self, self.public)
+            return
+        end
         local titles = self.zenialCommon
         if not titles or #titles == 0 or not GameTooltip or not GameTooltip.SetOwner then
             return
@@ -736,12 +805,14 @@ local function updateCard(card, item, width, context)
     card.title:ClearAllPoints()
     card.title:SetPoint('TOPLEFT', left, -9)
     card.title:SetText(d.title or '')
+    scriptFont(card.title, d.title)
     oneLine(card.title, math.max(40, textWidth - badgeWidth), 15)
     card.meta:ClearAllPoints()
     card.meta:SetPoint('TOPLEFT', left, -27)
     -- Quests in common with the organizer or the player looking, where both share their quests.
     local shared = not item.partner and d.common and paint('dim', ' · ') .. paint('goldBright', commonText(d.common)) or ''
     card.meta:SetText((d.meta or '') .. shared)
+    scriptFont(card.meta, d.meta)
     oneLine(card.meta, textWidth, 13)
     card.roles:ClearAllPoints()
     card.roles:SetPoint('TOPLEFT', left, -44)
@@ -765,6 +836,10 @@ local function updateCard(card, item, width, context)
             oneLine(slot.text, slotWidth - 20, 13)
             slotX = slotX + slotWidth
         end
+    end
+    -- A public party shows its members as symbols in front of the role line.
+    if FP then
+        FP.DrawMembers(card, not applying and d or nil, left)
     end
     -- Role choice of a join request: only the roles the group still looks for.
     local chipX = left + 74
@@ -813,6 +888,7 @@ local function updateCard(card, item, width, context)
     card.note:ClearAllPoints()
     card.note:SetPoint('TOPLEFT', left, -61)
     card.note:SetText(note == '' and '' or d.noteRaw and note or '„' .. note .. '“')
+    scriptFont(card.note, note)
     oneLine(card.note, textWidth, 13)
 end
 
@@ -847,6 +923,10 @@ local function renderStream(stream, width, height, items, columns, context)
             header:ClearAllPoints()
             header:SetPoint('TOPLEFT', 0, -(y + (y > 0 and 6 or 0)))
             header:SetWidth(inner)
+            -- A reused header keeps the width of its last caption, and the client measures a text only up to
+            -- the width it has: without this a longer caption would be cut down to an ellipsis.
+            header.label:SetWidth(0)
+            header.count:SetWidth(0)
             header:SetText(item.text)
             header:SetCount(item.count)
             header:Show()
@@ -1323,13 +1403,19 @@ local function renderDetail(snap, top, width, height)
     oneLine(hero.facts, textWidth - 244, 15)
     hero.counts:ClearAllPoints()
     hero.counts:SetPoint('TOPLEFT', x, -64)
+    -- With a list of the public group search the figures count both sources and say so.
+    local groupCount, seekerCount, where = stats.groups, stats.seekers, tr('in the ZENIAL community')
+    local both = U.FinderPublic and U.FinderPublic.Totals(e.id, stats)
+    if both then
+        groupCount, seekerCount, where = both.groups, both.seekers, both.where
+    end
     hero.counts:SetText(
-        paint(stats.groups > 0 and 'success' or 'dim', countText('groups', stats.groups) .. ' ' .. tr('open'))
+        paint(groupCount > 0 and 'success' or 'dim', countText('groups', groupCount) .. ' ' .. tr('open'))
             .. paint('dim', '   ·   ')
-            .. paint(stats.seekers > 0 and 'accentBlue' or 'dim', countText('seekers', stats.seekers))
+            .. paint(seekerCount > 0 and 'accentBlue' or 'dim', countText('seekers', seekerCount))
             .. paint('dim', '   ·   ')
             .. paint(stats.planned > 0 and 'text' or 'dim', countText('planned', stats.planned))
-            .. paint('muted', '   ' .. tr('in the ZENIAL community'))
+            .. paint('muted', '   ' .. where)
     )
     oneLine(hero.counts, textWidth, 15)
     hero.back:ClearAllPoints()
@@ -1917,6 +2003,7 @@ end
 F.CreatePicture, F.SetRoleIcon = createPicture, setRoleIcon
 -- Shared with the assistant of the public group search (UXFinderAssistant.lua).
 F.CreateEdit = createEdit
+F.ScriptFont = scriptFont
 -- Shared with the start page (UXStart.lua).
 F.CreateTile, F.UpdateTile, F.CoverPage = createTile, updateTile, coverPage
 
