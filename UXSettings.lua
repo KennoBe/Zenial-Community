@@ -197,8 +197,18 @@ function U.CreateSettings(helpers)
     end)
     U.publicGroupsOption:SetChecked(not Z.ui or Z.ui.finderPublic ~= false)
     heading(U.settingsToolsFrame, 'Notifications', 16, -194, 300)
-    label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 16, -216, 800, 'GameFontHighlightSmall')
-    label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 16, -246, 800, 'GameFontHighlightSmall')
+    -- Pop-up and sound for new groups of followed instances (the bell in the head of an instance follows it).
+    -- Off: the notice still goes into the bell of the window.
+    U.groupNoticesOption = checkbox(U.settingsToolsFrame, tr('Show a pop-up for new groups of instances you follow'), 12, -214, 520, function(self)
+        local on = self:GetChecked() == true
+        if Z.ui then
+            Z.ui.finderNotices = on
+        end
+        U.Message(tr(on and 'Notices for new groups of followed activities are on.' or 'Notices for new groups of followed activities are off. They stay in the bell.'))
+    end)
+    U.groupNoticesOption:SetChecked(not Z.ui or Z.ui.finderNotices ~= false)
+    label(U.settingsToolsFrame, tr('Use the bell in the window header for notifications. PvP receiving is controlled in the existing PvP option.'), 16, -244, 800, 'GameFontHighlightSmall')
+    label(U.settingsToolsFrame, tr('Map, minimap and slash command entry points remain available.'), 16, -274, 800, 'GameFontHighlightSmall')
 
     -- History and categories (the categories button is added by CategorySettingsUI.lua at 430, -52).
     U.settingsDataFrame = CreateFrame('Frame', nil, p)

@@ -322,6 +322,14 @@ local function layout()
         place(listing.hint, LEFT, y + 2, WIDTH - 202, 28)
         place(listing, LEFT + WIDTH - 190, y, 190, 24)
         y = y - 36
+        -- Play style and "new players welcome" of the public listing.
+        local x = LEFT
+        for _, option in ipairs(listing.styles) do
+            place(option, x, y, option.zenialWidth, 24)
+            x = x + option.zenialWidth + 4
+        end
+        place(listing.beginners, LEFT + WIDTH - 190, y, 190, 24)
+        y = y - 34
     end
     -- Foot: back and discard on the left, the one primary action on the right; saving a template belongs to
     -- the optional part.

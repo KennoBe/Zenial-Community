@@ -1525,12 +1525,12 @@ local function renderDetail(snap, top, width, height)
     hero.title:ClearAllPoints()
     hero.title:SetPoint('TOPLEFT', x, -11)
     hero.title:SetText(activityName(e.id))
-    oneLine(hero.title, textWidth - 170, 24)
+    oneLine(hero.title, textWidth - 204, 24)
     local zone = C.Zone(e)
     hero.facts:ClearAllPoints()
     hero.facts:SetPoint('TOPLEFT', x, -40)
     hero.facts:SetText(paint(C.Fits(e, myLevel()) and 'goldText' or 'textSoft', levelText(e)) .. paint('dim', ' · ') .. paint('textSoft', Z.T('%d players', e.size)) .. (zone and paint('dim', ' · ') .. paint('textSoft', zone) or ''))
-    oneLine(hero.facts, textWidth - 244, 15)
+    oneLine(hero.facts, textWidth, 15)
     hero.counts:ClearAllPoints()
     hero.counts:SetPoint('TOPLEFT', x, -64)
     -- With a list of the public group search the figures count both sources and say so.
@@ -1550,9 +1550,10 @@ local function renderDetail(snap, top, width, height)
     oneLine(hero.counts, textWidth, 15)
     hero.back:ClearAllPoints()
     hero.back:SetPoint('TOPRIGHT', -12, -10)
+    -- The bell beside "Back to overview": follow this instance and hear about new ZENIAL groups for it.
     local followed = Z.db.groupFollows[e.id] == true
     hero.follow:ClearAllPoints()
-    hero.follow:SetPoint('TOPRIGHT', -12, -38)
+    hero.follow:SetPoint('TOPRIGHT', -12 - 160 - 6, -9)
     hero.follow:SetChecked(followed)
     -- Actions: one primary (create), the search switch and the journal.
     local own = Z.db.lfg[1]
@@ -1807,9 +1808,6 @@ function U.RefreshFinder()
         button:SetPoint('TOPLEFT', footX, -(height - 26))
         footX = footX + button.zenialWidth + 6
     end
-    F.notices:ClearAllPoints()
-    F.notices:SetPoint('TOPRIGHT', frame, 'TOPLEFT', width, -(height - 26))
-    F.notices:SetChecked(not Z.ui or Z.ui.finderNotices ~= false)
     if U.FinderAssistant then
         U.FinderAssistant.Refresh()
     end
@@ -2030,9 +2028,19 @@ function U.CreateFinder()
     hero.back = T.Button(hero, tr('Back to overview'), 160, 24, function()
         U.SetFinderView(F.view)
     end, 'secondary')
-    hero.follow = T.Chip(hero, tr('Notify me about new groups'), 232, 24, function()
+    hero.follow = K.IconButton(hero, 'bell', 26, function()
         U.ToggleFinderFollow(F.activity)
     end)
+    hero.follow.edges = T.Edges(hero.follow, 'BORDER')
+    function hero.follow:SetChecked(on)
+        self.zenialOn = on == true
+        self:SetIconColor(self.zenialOn and 'goldBright' or 'textSoft')
+        T.TintEdges(self.edges, self.zenialOn and 'gold' or 'line')
+        self.zenialTooltip = tr(self.zenialOn and 'You are notified about new ZENIAL groups for this instance. Click to stop.' or 'Notify me about new ZENIAL groups for this instance')
+    end
+    function hero.follow:GetChecked()
+        return self.zenialOn == true
+    end
     hero.create = T.Button(hero, tr('Create group'), 160, 26, function()
         U.OpenFinderCreate(F.activity)
     end, 'secondary')
@@ -2093,6 +2101,8 @@ function U.CreateFinder()
     detail.right = createStream(detail)
     detail:Hide()
 
+    -- Three ways to the other views of the activities. Planning a group goes through "Create group", the
+    -- archive is reached from the events; both were here a second time.
     F.footer = {}
     for _, spec in ipairs({
         { 'My requests', 130, function()
@@ -2104,12 +2114,6 @@ function U.CreateFinder()
                 U.RefreshScheduledGroups()
             end
         end },
-        { 'Plan a group', 130, function()
-            U.OpenFinderCreate(F.activity, true)
-        end },
-        { 'Archive', 100, function()
-            U.OpenActivityArchive()
-        end },
         { 'List view', 120, function()
             U.Navigate('activities', 'list')
         end },
@@ -2118,14 +2122,6 @@ function U.CreateFinder()
         button.zenialWidth = spec[2]
         F.footer[#F.footer + 1] = button
     end
-    -- Pop-up notices for new groups of followed activities, on or off for the whole account.
-    F.notices = T.Chip(frame, tr('Group finder notices'), 150, 24, function(self)
-        local on = self:GetChecked() and true or false
-        if Z.ui then
-            Z.ui.finderNotices = on
-        end
-        U.Message(tr(on and 'Notices for new groups of followed activities are on.' or 'Notices for new groups of followed activities are off. They stay in the bell.'))
-    end)
     if U.FinderPublic then
         U.FinderPublic.Create(frame)
     end

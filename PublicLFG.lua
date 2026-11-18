@@ -110,6 +110,39 @@ function P.Languages()
     return out
 end
 
+-- Play styles of a listing: { { value, label } } in the order of the game (learning, relaxed, competitive,
+-- carry offered). Values and names come from the client; the numbers and words here only stand in where the
+-- client does not tell them.
+local STYLES = { { 'Learning', 1, 'Learning' }, { 'FunRelaxed', 2, 'Relaxed' }, { 'FunSerious', 3, 'Competitive' }, { 'Expert', 4, 'Carry offered' } }
+local function styleValue(spec)
+    local enum = type(Enum) == 'table' and Enum.LFGEntryGeneralPlaystyle
+    local value = type(enum) == 'table' and enum[spec[1]]
+    return type(value) == 'number' and value or spec[2]
+end
+function P.PlaystyleName(value)
+    if type(value) ~= 'number' or value <= 0 then
+        return nil
+    end
+    local name = type(GetGeneralPlaystyleString) == 'function' and A.Call(GetGeneralPlaystyleString, value) or nil
+    if A.Safe(name) and type(name) == 'string' and name ~= '' then
+        return name
+    end
+    for _, spec in ipairs(STYLES) do
+        if styleValue(spec) == value then
+            return Z.T(spec[3])
+        end
+    end
+    return nil
+end
+function P.Playstyles()
+    local out = {}
+    for index, spec in ipairs(STYLES) do
+        local value = styleValue(spec)
+        out[index] = { value = value, label = P.PlaystyleName(value) or Z.T(spec[3]) }
+    end
+    return out
+end
+
 -- Facts of one activity of the group search, nil while the client does not have them:
 -- { id, name, short, kind, catalog, size, minLevel, maxLevel, roles }
 -- size is nil when the activity has no fixed group size; roles tells whether the client expects one tank,
@@ -266,6 +299,13 @@ function P.ReadRow(id, runId)
             row.soloRoles = roleFlags(field(leader, 'lfgRoles', 'table'))
         end
     end
+    -- A single player whose area the leader facts do not tell: the client has it with the player facts.
+    if row.solo and not row.leaderArea then
+        local player = one('GetSearchResultPlayerInfo', id, 1)
+        if player then
+            row.leaderArea = text(player, 'areaName')
+        end
+    end
     return row
 end
 
@@ -279,7 +319,7 @@ function P.ReadMembers(id, count)
             out[#out + 1] = {
                 class = text(info, 'classFilename'), level = field(info, 'level', 'number'),
                 role = role and ROLES[role] and role or nil,
-                leader = field(info, 'isLeader', 'boolean') == true, name = text(info, 'name'),
+                leader = field(info, 'isLeader', 'boolean') == true, name = text(info, 'name'), area = text(info, 'areaName'),
             }
         end
     end

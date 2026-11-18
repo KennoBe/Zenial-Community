@@ -141,7 +141,14 @@ function Y.Publish(group)
     -- Whatever was typed into Blizzard's own listing window last must not go out with this listing.
     pcall(api('ClearCreationTextFields') or function() end)
     local active = A.Call(api('HasActiveEntryInfo')) == true
-    local done, refused = guarded(api(active and 'UpdateListing' or 'CreateListing'), { activityIDs = ids, newPlayerFriendly = false })
+    -- Play style and "new players welcome" as the character chose them for its listings. Like the window of
+    -- the game, the play style goes out when the listing is created, not when it is changed.
+    local chosen = Z.uiCharacter or {}
+    local data = { activityIDs = ids, newPlayerFriendly = chosen.finderBeginners == true }
+    if not active and type(chosen.finderPlaystyle) == 'number' and chosen.finderPlaystyle > 0 then
+        data.generalPlaystyle = chosen.finderPlaystyle
+    end
+    local done, refused = guarded(api(active and 'UpdateListing' or 'CreateListing'), data)
     if not done then
         state = { phase = refused and 'BLOCKED' or 'FAILED' }
         return false, refused and 'BLOCKED' or 'FAILED'

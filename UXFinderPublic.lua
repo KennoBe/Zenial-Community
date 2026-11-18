@@ -598,6 +598,23 @@ local function tierBadge(d, fit)
     end
 end
 
+-- Where the leader of a group or a single player is, as the search results tell it: the text for the card
+-- and the hover info, and whether that is the area of the open instance. The area alone never says that
+-- somebody stands at the entrance, so nothing here claims that.
+function FP.Location(row)
+    local area = row.leaderArea
+    if not area then
+        return paint('muted', tr('Area unknown')), nil
+    end
+    local text = paint('dim', Z.T(row.solo and 'Location: %s' or 'Group leader: %s', '')) .. paint('textSoft', area)
+    local e = F.activity and C.Get(F.activity)
+    local zone = e and C.Zone(e)
+    if zone and zone == area then
+        return text, tr(e.kind == 'DUNGEON' and 'In the dungeon area' or 'In the area of the activity')
+    end
+    return text, nil
+end
+
 -- What the card of a public group or of a single player shows. Same shape as the description of a ZENIAL
 -- card in UXFinder.lua; nothing here reads the activity board.
 function FP.Describe(row, context)
@@ -713,6 +730,14 @@ function FP.Describe(row, context)
     if contact then
         d.badge, d.tone = tr(contact[1]), contact[2]
     end
+    -- Play style and "new players welcome", as the group search of the game shows them.
+    local style = P.PlaystyleName(row.playstyle)
+    if style then
+        parts[#parts + 1] = paint('success', style)
+    end
+    if row.beginners then
+        parts[#parts + 1] = tr('New players welcome')
+    end
     if mark and mark.zenial then
         parts[#parts + 1] = paint('goldBright', tr('ZENIAL member'))
     end
@@ -725,7 +750,11 @@ function FP.Describe(row, context)
         parts[#parts + 1] = listed
     end
     d.meta = table.concat(parts, ' · ')
-    d.note = row.comment
+    -- Last line: where the leader or the player is, then the comment of the listing.
+    local where, near = FP.Location(row)
+    d.note = where .. (near and paint('dim', ' · ') .. paint('goldBright', near) or '')
+        .. (type(row.comment) == 'string' and row.comment ~= '' and paint('dim', ' · ') .. '„' .. row.comment .. '“' or '')
+    d.noteRaw = true
     if gone then
         d.badge, d.tone = tr('No longer listed'), 'neutral'
     end
@@ -753,6 +782,18 @@ function FP.Tooltip(card, row)
     if #head > 0 then
         GameTooltip:AddLine(table.concat(head, ' · '), 0.78, 0.8, 0.85, true)
     end
+    local where, near = FP.Location(row)
+    GameTooltip:AddLine(where .. (near and paint('dim', ' · ') .. paint('goldBright', near) or ''), 0.78, 0.8, 0.85, true)
+    local manner = {}
+    if P.PlaystyleName(row.playstyle) then
+        manner[#manner + 1] = P.PlaystyleName(row.playstyle)
+    end
+    if row.beginners then
+        manner[#manner + 1] = tr('New players welcome')
+    end
+    if #manner > 0 then
+        GameTooltip:AddLine(table.concat(manner, ' · '), 0.45, 0.82, 0.5, true)
+    end
     local members = P.Members(row)
     if members and #members > 0 then
         for _, member in ipairs(members) do
@@ -768,6 +809,9 @@ function FP.Tooltip(card, row)
             end
             if member.role then
                 facts[#facts + 1] = Z.Locale.Role(member.role)
+            end
+            if member.area and not member.leader then
+                facts[#facts + 1] = member.area
             end
             who = hex and ('|cff' .. hex .. who .. '|r') or who
             if GameTooltip.AddDoubleLine then
@@ -1058,14 +1102,49 @@ function FP.FormChip(parent, activity)
         if chip then
             chip:Hide()
             chip.hint:Hide()
+            for _, option in ipairs(chip.styles) do
+                option:Hide()
+            end
+            chip.beginners:Hide()
         end
         return nil
     end
     if not chip then
+        local function sync()
+            local on = FP.ListsPublicly()
+            local style = Z.uiCharacter and Z.uiCharacter.finderPlaystyle or 0
+            for _, option in ipairs(chip.styles) do
+                option:SetChecked(style == option.zenialValue)
+                option:SetEnabled(on)
+            end
+            chip.beginners:SetChecked(Z.uiCharacter ~= nil and Z.uiCharacter.finderBeginners == true)
+            chip.beginners:SetEnabled(on)
+        end
         chip = T.Chip(parent, tr('List publicly'), 190, 24, function(self)
             if Z.uiCharacter then
                 Z.uiCharacter.finderPublish = self:GetChecked() and true or false
             end
+            sync()
+        end)
+        chip.zenialSync = sync
+        -- Play style of the listing, as in the window of the game: one of four or none.
+        chip.styles = {}
+        for index, style in ipairs(P.Playstyles()) do
+            local width = math.max(64, #style.label * 7 + 22)
+            local option = T.Chip(parent, style.label, width, 24, function(self)
+                if Z.uiCharacter then
+                    Z.uiCharacter.finderPlaystyle = self:GetChecked() and style.value or 0
+                end
+                sync()
+            end)
+            option.zenialValue, option.zenialWidth = style.value, width
+            chip.styles[index] = option
+        end
+        chip.beginners = T.Chip(parent, tr('New players welcome'), 190, 24, function(self)
+            if Z.uiCharacter then
+                Z.uiCharacter.finderBeginners = self:GetChecked() and true or false
+            end
+            sync()
         end)
         chip:HookScript('OnEnter', listingTooltip)
         chip:HookScript('OnLeave', function()
@@ -1074,7 +1153,7 @@ function FP.FormChip(parent, activity)
             end
         end)
         -- What the group search of the game does not carry: said where the player fills it in.
-        chip.hint = K.Text(parent, tr('The group search of the game shows only the activity and your members. Level, preferred classes and comment are seen by ZENIAL members only.'), 'caption', 'dim')
+        chip.hint = K.Text(parent, tr('The group search of the game shows the activity, your members and the play style. Level, preferred classes and comment are seen by ZENIAL members only.'), 'caption', 'dim')
         chip.hint:SetJustifyH('LEFT')
         if chip.hint.SetJustifyV then
             chip.hint:SetJustifyV('TOP')
@@ -1084,6 +1163,11 @@ function FP.FormChip(parent, activity)
     chip:SetChecked(FP.ListsPublicly())
     chip:Show()
     chip.hint:Show()
+    for _, option in ipairs(chip.styles) do
+        option:Show()
+    end
+    chip.beginners:Show()
+    chip.zenialSync()
     return chip
 end
 
@@ -1186,6 +1270,7 @@ FP.Guard(FP, 'PresetRoles', nothing)
 FP.Guard(FP, 'Figures', nothing)
 FP.Guard(FP, 'TileText', nothing)
 FP.Guard(FP, 'Totals', nothing)
+FP.Guard(FP, 'Location', function() return '', nil end)
 FP.Guard(FP, 'TileHint', nothing)
 FP.Guard(FP, 'CategoryRows', nothing)
 FP.Guard(FP, 'Candidates', function() return {} end)
