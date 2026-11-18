@@ -756,6 +756,9 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.db and Z.GroupFinderCatalog and Z.GroupFinderCatalog.SyncExtras()then Z.MarkDirty()end
     elseif event=="ADDON_ACTION_BLOCKED"or event=="ADDON_ACTION_FORBIDDEN"then
         if Z.CrossFaction then Z.CrossFaction.OnBlocked(event,...)end
+        -- Kept for the diagnosis: the last call of this addon the game refused.
+        local blockedAddon,blockedCall=...
+        if blockedAddon=="ZenialCommunity"and type(blockedCall)=="string"then Z.lastBlockedCall=blockedCall:sub(1,80)end
         if Z.PublicLFG then publicCall(Z.PublicLFG.OnBlocked)end
         if Z.PublicLFGListing then publicCall(Z.PublicLFGListing.OnBlocked)end
     elseif event=="CHAT_MSG_SAY"or event=="CHAT_MSG_YELL"then if Z.CrossFaction then pcall(Z.CrossFaction.OnChat,event,...)end

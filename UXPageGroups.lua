@@ -158,11 +158,12 @@ function S.createGroupsPage(f)
     button(U.groupMineSummary, tr('Löschen'), 135, -78, 125, function()
         local g = Z.db.lfg[1]
         if g and Z.CloseGroup(g.id) then
-            U.groupApplicantKey = nil
-            U.Publish()
+            -- The public listing first, while the button that was clicked is still on screen.
             if U.SyncPublicListing then
                 U.SyncPublicListing()
             end
+            U.groupApplicantKey = nil
+            U.Publish()
         end
     end)
     U.groupOwnTemplate = button(U.groupMineSummary, tr('Als Vorlage speichern'), 270, -78, 190, function()
@@ -284,13 +285,14 @@ function S.createGroupsPage(f)
         end
         local id, err = Z.SaveGroup(g, now)
         if id then
-            U.groupEditing = false
-            U.groupForm:Hide()
-            U.Publish()
-            -- Saved with a click: a public listing of the group follows where the player chose that.
+            -- Saved with a click: a public listing of the group follows where the player chose that. It goes
+            -- out before the form closes, while the button that was clicked is still on screen.
             if U.SyncPublicListing then
                 U.SyncPublicListing()
             end
+            U.groupEditing = false
+            U.groupForm:Hide()
+            U.Publish()
         else
             U.Message(err)
         end

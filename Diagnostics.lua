@@ -98,7 +98,7 @@ local function publicSearch()
     local c=p.Capabilities();local function yes(v)return v and"yes"or"no"end
     -- A fault inside the public part (interface or events): it was switched off or went on without that call.
     local fault=Z.UI and Z.UI.FinderPublic and Z.UI.FinderPublic.broken or Z.publicLFGFault
-    return"\nPublic group search: "..yes(p.Available()).." · search: "..yes(c.search).." · results: "..yes(c.results).." · role slots: "..yes(c.counts).." · languages: "..yes(c.languages).." · own listing: "..yes(c.listing)..(fault and" · stopped after an error: "..tostring(fault):sub(1,160)or"")
+    return"\nPublic group search: "..yes(p.Available()).." · search: "..yes(c.search).." · results: "..yes(c.results).." · role slots: "..yes(c.counts).." · languages: "..yes(c.languages).." · own listing: "..yes(c.listing)..(fault and" · stopped after an error: "..tostring(fault):sub(1,160)or"")..(Z.lastBlockedCall and" · last call the game blocked: "..Z.lastBlockedCall or"")
 end
 function D.Capabilities()
     local t=C_TradeSkillUI or{};local k=C_SkillInfo or{};local v,b,_,i=A.Call(GetBuildInfo)

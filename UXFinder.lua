@@ -1059,6 +1059,7 @@ function U.InviteFinderSeeker(key)
     return ok and true or false
 end
 -- The own group or search changed through a click: a public listing of it follows (UXFinderPublic.lua).
+-- Called before the interface is redrawn, while the button that was clicked is still on screen.
 local function syncListing()
     if U.FinderPublic then
         U.FinderPublic.SyncListing()
@@ -1072,9 +1073,9 @@ function U.StartFinderSearch(activity, roles, note)
         return false
     end
     F.searchOpen = false
+    syncListing()
     U.Message(Z.T('You are now looking for a group for %s.', activityName(activity)))
     U.Publish()
-    syncListing()
     return true
 end
 function U.AddFinderSearch(activity)
@@ -1083,9 +1084,9 @@ function U.AddFinderSearch(activity)
         U.Message(tr(why))
         return false
     end
+    syncListing()
     U.Message(Z.T('%s added to your search (%d/%d).', activityName(activity), #C.SearchActivities(Z.db.lfg[1]), C.MAX_SEARCH))
     U.Publish()
-    syncListing()
     return true
 end
 function U.RemoveFinderSearch(activity)
@@ -1093,16 +1094,16 @@ function U.RemoveFinderSearch(activity)
         return false
     end
     local g = Z.db.lfg[1]
+    syncListing()
     U.Message(g and C.IsSearch(g) and Z.T('%s removed from your search.', activityName(activity)) or tr('Search ended.'))
     U.Publish()
-    syncListing()
     return true
 end
 function U.StopFinderSearch()
     if C.StopSearch() then
+        syncListing()
         U.Message(tr('Search ended.'))
         U.Publish()
-        syncListing()
         return true
     end
     return false
@@ -1747,14 +1748,17 @@ function U.OpenFinderActivity(activity, clicked)
     if not e then
         return false
     end
+    -- The click that opens an instance also searches its public groups. The search goes out first, while the
+    -- tile that was clicked is still on screen: the game takes the call only from the click itself, and in the
+    -- client a search that followed the redraw was refused (owner's test, 2026-11-18).
+    if clicked and U.FinderPublic then
+        U.FinderPublic.OnOpen(e.id)
+    end
     if U.page ~= 10 and not U.Navigate('activities', KIND_VIEW[e.kind]) then
         return false
     end
     F.activity, F.searchOpen = e.id, false
     U.SetFinderView(KIND_VIEW[e.kind], true)
-    if clicked and U.FinderPublic then
-        U.FinderPublic.OnOpen(e.id)
-    end
     return true
 end
 

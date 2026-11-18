@@ -106,11 +106,12 @@ end
 
 -- Query of the open view: the activities of the open instance, otherwise everything the client offers in the
 -- category of the tab, with the chosen languages. nil for views without a public counterpart.
-function FP.Query()
+function FP.Query(activity)
+    activity = activity or F.activity
     local category, ids
-    if F.activity then
-        local e = C.Get(F.activity)
-        category, ids = e and M.Category(e.kind), M.Activities(F.activity)
+    if activity then
+        local e = C.Get(activity)
+        category, ids = e and M.Category(e.kind), M.Activities(activity)
     else
         local kind = VIEW_KIND[F.view]
         category, ids = kind and M.Category(kind), kind and M.CategoryActivities(kind) or nil
@@ -177,24 +178,23 @@ function FP.Search()
     return ok
 end
 
--- The player opened an instance with a click: its public groups are searched right away. Not when its list
--- is only a few seconds old, and not while only ZENIAL groups are shown.
-function FP.OnOpen()
-    if not FP.Active() or FP.Source() == 'ZENIAL' then
+-- The player opens an instance with a click: its public groups are searched right away. Not when its list
+-- is only a few seconds old, and not while only ZENIAL groups are shown. Called before the instance is drawn
+-- (the caller draws it afterwards), so the call into the game is the first thing the click does.
+function FP.OnOpen(activity)
+    if not activity or not FP.Active() or FP.Source() == 'ZENIAL' then
         return
     end
-    local query = FP.Query()
-    if not F.activity or not query then
+    local query = FP.Query(activity)
+    if not query then
         return
     end
-    local _, info = P.Rows(F.activity)
+    local _, info = P.Rows(activity)
     if info and info.complete and A.Clock() - info.receivedAt <= FRESH and languagePart(info.signature) == languagePart(P.Signature(query)) then
         return
     end
     FP.refused = nil
-    if P.Search(query) then
-        U.RefreshFinder()
-    end
+    P.Search(query)
 end
 
 -- How long ago a list arrived.
