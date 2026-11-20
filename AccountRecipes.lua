@@ -16,12 +16,12 @@ end
 local function sortedKeys()local out={};for key in pairs(characters())do out[#out+1]=key end;table.sort(out);return out end
 local function number(v)return type(v)=="number"and v or 0 end
 local function signature(keys)
-    local O=Z.AccountOverview;local rev,at,n=0,0,0
+    local rev,at,n=0,0,0
     for _,key in ipairs(keys)do
         local p=profile(key)
         if p then rev=rev+number(p.recipeRev);at=at+number(p.professionsAt);n=n+(type(p.recipes)=="table"and#p.recipes or 0)end
     end
-    return#keys..":"..(O and O.revision or 0)..":"..rev..":"..at..":"..n
+    return#keys..":"..":"..rev..":"..at..":"..n
 end
 function R.Index()
     local keys=sortedKeys();local sig=signature(keys)

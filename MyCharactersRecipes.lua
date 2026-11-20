@@ -113,7 +113,7 @@ end
 -- ---------------------------------------------------------------------------------------------
 local function materialsFor(e,crafter,crafts)
     local R,P=Z.AccountRecipes,Z.MaterialPlanner
-    local key=table.concat({e.profession,e.id,crafter,crafts,R.Index().sig,P and P.store and P.store.revision or 0},'|')
+    local key=table.concat({e.profession,e.id,crafter,crafts,R.Index().sig,Z.AccountOverview and Z.AccountOverview.revision or 0,P and P.store and P.store.revision or 0},'|')
     if M.materialKey~=key then
         M.materialKey=key;M.material=R.Materials(e,crafter,crafts);M.gatherPlan=nil
     end
@@ -319,7 +319,7 @@ end
 local previousItemData=U.OnItemData
 function U.OnItemData(...)
     if previousItemData then previousItemData(...)end
-    if not M.refreshed or not U.frame or U.page~=6 or U.myCharactersTab~='recipes'or not U.myCharactersBuilt then return end
+    if not M.refreshed or not U.frame or not U.frame:IsShown()or U.page~=6 or U.myCharactersTab~='recipes'or not U.myCharactersBuilt then return end
     local now=A.Clock()
     if now-(M.itemRedrawAt or 0)<.5 then
         if not M.itemRedrawPending and C_Timer and C_Timer.After then

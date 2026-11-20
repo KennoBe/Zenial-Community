@@ -18,14 +18,15 @@
 -- session, then every 30 minutes, never in combat). The chat line is kept out
 -- of the chat by unregistering TIME_PLAYED_MSG on the chat frames that have it
 -- for the duration of the request; a /played typed by the player stays visible
--- and is stored as well.
+-- and is stored as well. A /played typed or requested by another addon during
+-- those few seconds is stored but not printed.
 -- Characters can be hidden from the "My characters" view; hiding only changes
 -- that view and keeps every stored value and link.
 -- Community is the only live source. Rows once taken over from ZENIAL Utility
 -- stay readable as a separate, labelled snapshot that a newer Community value
 -- always replaces; Utility itself is never read.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local O={VERSION=2,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_CONTAINERS=12,BANK_RETRIES=3,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200,PLAYED_FIRST=20,PLAYED_EVERY=1800,PLAYED_TIMEOUT=10}
+local O={VERSION=2,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=1500,MAX_CONTAINERS=12,BANK_RETRIES=3,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200,PLAYED_FIRST=20,PLAYED_EVERY=1800,PLAYED_TIMEOUT=10}
 Z.AccountOverview=O
 local MAX_TIME=4102444800
 local MAX_MONEY=99999999999
@@ -289,10 +290,26 @@ local function scan(bags,limit)
     if #containers>O.MAX_CONTAINERS then complete=false end
     return out,containers,complete
 end
-local function bagIDs()local n=L.Int(NUM_BAG_SLOTS,1,20)and NUM_BAG_SLOTS or 4;local out={};for bag=0,n do out[#out+1]=bag end;return out end
+-- Equipped bags include the reagent bag (never the keyring).
+local function bagIDs()
+    local n=L.Int(NUM_TOTAL_EQUIPPED_BAG_SLOTS,1,20)and NUM_TOTAL_EQUIPPED_BAG_SLOTS or L.Int(NUM_BAG_SLOTS,1,20)and NUM_BAG_SLOTS or 4
+    local out={};for bag=0,n do out[#out+1]=bag end;return out
+end
+-- Bank containers. With C_Bank (Forever) they are the purchased character bank
+-- tabs; the list is only usable if the call returned at least one valid tab.
+-- Without C_Bank the legacy main bank plus bank bags are read.
 local function bankIDs()
+    local B=C_Bank
+    if type(B)=="table"and type(B.FetchPurchasedBankTabData)=="function"and type(Enum)=="table"and type(Enum.BankType)=="table"and Enum.BankType.Character~=nil then
+        local tabs=A.Call(B.FetchPurchasedBankTabData,Enum.BankType.Character)
+        local out,seen,ok={},{},type(tabs)=="table"
+        if ok then for _,tab in ipairs(tabs)do
+            if type(tab)=="table"and L.Int(tab.ID,0,100)and not seen[tab.ID]and #out<O.MAX_CONTAINERS then seen[tab.ID]=true;out[#out+1]=tab.ID else ok=false end
+        end end
+        return out,true,ok and #out>0
+    end
     local first=(L.Int(NUM_BAG_SLOTS,1,20)and NUM_BAG_SLOTS or 4)+1;local count=L.Int(NUM_BANKBAGSLOTS,0,20)and NUM_BANKBAGSLOTS or 6
-    local out={L.Int(BANK_CONTAINER,-10,0)and BANK_CONTAINER or -1};for bag=first,first+count-1 do out[#out+1]=bag end;return out
+    local out={L.Int(BANK_CONTAINER,-10,0)and BANK_CONTAINER or -1};for bag=first,first+count-1 do out[#out+1]=bag end;return out,false,true
 end
 -- Bags and bank are not protected, but scans wait for the end of combat.
 -- An incomplete scan (client still loading) keeps the previous snapshot.
@@ -303,6 +320,16 @@ function O.ScanBags()
     local agg,containers,complete=scan(bagIDs(),O.MAX_BAG_ITEMS)
     -- The backpack always has slots; zero means the client is still loading.
     if complete and not(containers[1]and containers[1].size>0)then complete=false end
+    -- An equipped bag that reports no slots is not loaded yet.
+    local C=C_Container
+    if complete and C and type(C.ContainerIDToInventoryID)=="function"and type(GetInventoryItemID)=="function"then
+        for _,ct in ipairs(containers)do
+            if ct.bag>=1 and ct.size==0 then
+                local invID=A.Call(C.ContainerIDToInventoryID,ct.bag)
+                if invID and A.Call(GetInventoryItemID,"player",invID)then complete=false;break end
+            end
+        end
+    end
     O.lastScan.bags={at=at,complete=complete}
     if not complete then return end
     c.bags=agg;c.bagsAt=at;c.bagSlots={at=at,containers=containers};changed()
@@ -313,9 +340,13 @@ function O.ScanBank()
     local c=own();if not c or not O.InventoryEnabled()or not O.bankOpen then return end
     if A.Call(InCombatLockdown)==true then O.bankDirty=true;return end
     O.bankDirty=false;local at=A.Now();if at<=0 then return end
-    local agg,containers,complete=scan(bankIDs(),O.MAX_BANK_ITEMS)
-    -- The main bank always has slots; zero means it is not loaded yet.
-    if complete and not(containers[1]and containers[1].size>0)then complete=false end
+    local ids,tabs,idsOk=bankIDs()
+    local agg,containers,complete=scan(ids,O.MAX_BANK_ITEMS)
+    if not idsOk then complete=false end
+    if tabs then
+        -- Every purchased bank tab has slots; zero means it is not loaded yet.
+        for _,ct in ipairs(containers)do if ct.size<=0 then complete=false end end
+    elseif complete and not(containers[1]and containers[1].size>0)then complete=false end -- the main bank always has slots
     O.lastScan.bank={at=at,complete=complete}
     if not complete then
         if O.bankRetries<O.BANK_RETRIES and not O.bankRetryQueued and C_Timer and type(C_Timer.After)=="function"then

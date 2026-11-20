@@ -39,11 +39,12 @@ function S.ApplyProfessions(professions)
     end
     return true,changed
 end
-function S.RefreshProfessions()
+-- confirmEmpty is only passed by the manual scan: an empty list is then applied.
+function S.RefreshProfessions(confirmEmpty)
     local professions,message=A.ScanProfessions()
     if not professions then S.emptyProfessions=false;return nil,message end
     -- An empty list never replaces known professions: the client may still be loading.
-    if #professions==0 and #(Z.db.professions or{})>0 then S.emptyProfessions=false;return nil,"Profession data is not ready yet."end
+    if #professions==0 and #(Z.db.professions or{})>0 and confirmEmpty~=true then S.emptyProfessions=false;return nil,"Profession data is not ready yet."end
     S.emptyProfessions=false;S.professionRetries=0
     local ok,changed=S.ApplyProfessions(professions);return ok,message,changed
 end

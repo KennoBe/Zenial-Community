@@ -191,8 +191,15 @@ local function itemName(itemID)
     if Z.Items then Z.Items.Observe(itemID)end
     return'#'..itemID,false
 end
-local function containerName(area,bag)
-    if area=='bags'then return bag==0 and tr('Backpack')or tr('Bag %d',bag)end
+-- Bank containers: legacy snapshots start with the main bank (-1), Forever
+-- snapshots only hold bank tabs, named by their position.
+local function containerName(area,bag,index,legacy)
+    if area=='bags'then
+        if bag==0 then return tr('Backpack')end
+        if bag==5 then return tr('Reagent bag')end
+        return tr('Bag %d',bag)
+    end
+    if not legacy then return tr('Bank tab %d',index or 1)end
     if bag<0 then return tr('Bank')end
     local first=(L.Int(NUM_BAG_SLOTS,1,20)and NUM_BAG_SLOTS or 4)
     return tr('Bank bag %d',bag-first)
@@ -230,10 +237,11 @@ end
 local function buildCharacter(inv,area,width)
     local entries,y={},0
     if inv.slots then
-        for _,ct in ipairs(inv.slots.containers)do
+        local legacy=inv.slots.containers[1]and inv.slots.containers[1].bag<0
+        for index,ct in ipairs(inv.slots.containers)do
             if ct.size>0 then
                 local used=0;for _ in pairs(ct.slots)do used=used+1 end
-                entries[#entries+1]={kind='head',y=y,h=HEAD_HEIGHT,text=containerName(area,ct.bag),info=used..'/'..ct.size}
+                entries[#entries+1]={kind='head',y=y,h=HEAD_HEIGHT,text=containerName(area,ct.bag,index,legacy),info=used..'/'..ct.size}
                 y=y+HEAD_HEIGHT
                 local columns=K().Columns(width,SLOT,GAP,MAX_COLUMNS)
                 local rows=math.ceil(ct.size/columns)
