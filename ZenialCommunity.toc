@@ -47,6 +47,7 @@ ProfessionScan.lua
 RecipeSearch.lua
 CraftOrders.lua
 MaterialPlanner.lua
+AccountRecipes.lua
 ScheduleTime.lua
 ScheduledGroups.lua
 ScheduledRelay.lua

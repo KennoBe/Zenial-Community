@@ -84,10 +84,11 @@ function P.ReadInventory(force)
 end
 function P.InvalidateInventory()P.inventory=nil;if Z.MarkDirty then Z.MarkDirty("materials")end end
 function P.Get(id)return P.store and P.store.plans[id]end
-function P.List()
-    local out={};for _,plan in pairs(P.store and P.store.plans or{})do out[#out+1]=plan end
+local function sortedPlans(store)
+    local out={};for _,plan in pairs(store and store.plans or{})do out[#out+1]=plan end
     table.sort(out,function(a,b)if a.createdAt~=b.createdAt then return a.createdAt<b.createdAt end;return tonumber(a.id:sub(2))<tonumber(b.id:sub(2))end);return out
 end
+function P.List()return sortedPlans(P.store)end
 function P.Order(plan)
     local ref=plan and plan.order;if not ref then return nil end
     local order=Z.CraftOrders.Get(ref.id,ref.peer,ref.direction);return sameOrder(ref,order)and order or nil
@@ -128,23 +129,36 @@ function P.UpdateProgress(id,itemID,amount)
     if(plan.manual[itemID]or 0)~=amount then plan.manual[itemID]=amount;plan.updatedAt=A.Now();changed()end;return true
 end
 function P.Delete(id)if P.Get(id)then P.store.plans[id]=nil;changed();return true end;return false end
-function P.Progress(id,force)
-    local plan=P.Get(id);if not plan then return nil end
-    local inventory=P.ReadInventory(force);local remaining,allocation,total={},{},{}
+-- Reserved amount per item over all active lists of a store, oldest list first,
+-- limited by counts (item -> amount in the bags; an item without an entry is
+-- unknown and reserves nothing). Second result: the allocation of list targetID.
+function P.Reservations(store,counts,isActive,targetID)
+    local remaining,allocation,total={},{},{}
     -- Oldest active list first, including marked materials: a marked quantity
     -- might be in these bags. Terminal/unavailable orders release reservations.
-    for _,saved in ipairs(P.List())do
-        local active=P.Active(saved);local current={}
+    for _,saved in ipairs(sortedPlans(store))do
+        local active=isActive(saved);local current={}
         for _,need in ipairs(saved.needs)do
             local itemID=need.itemID
-            if inventory.known and not inventory.unknown[itemID]then
-                if remaining[itemID]==nil then remaining[itemID]=inventory.counts[itemID]or 0 end
+            if counts[itemID]~=nil then
+                if remaining[itemID]==nil then remaining[itemID]=counts[itemID]end
                 current[itemID]=active and math.min(need.quantity,remaining[itemID])or 0
                 if active then remaining[itemID]=remaining[itemID]-current[itemID];total[itemID]=(total[itemID]or 0)+current[itemID]end
             end
         end
-        if saved.id==id then allocation=current end
+        if saved.id==targetID then allocation=current end
     end
+    return total,allocation
+end
+function P.Progress(id,force)
+    local plan=P.Get(id);if not plan then return nil end
+    local inventory=P.ReadInventory(force);local counts={}
+    if inventory.known then
+        for _,saved in ipairs(P.List())do for _,need in ipairs(saved.needs)do
+            if not inventory.unknown[need.itemID]then counts[need.itemID]=inventory.counts[need.itemID]or 0 end
+        end end
+    end
+    local total,allocation=P.Reservations(P.store,counts,P.Active,id)
     local result=P.Calculate(plan.recipe,plan.crafts,inventory,plan.manual,allocation)
     for _,row in ipairs(result.rows)do row.reservedElsewhere=row.available and((total[row.itemID]or 0)-(row.allocated or 0))or nil end
     return result
