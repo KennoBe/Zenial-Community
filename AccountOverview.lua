@@ -9,7 +9,11 @@
 -- Basic data is recorded by default for new stores. Stores saved before that
 -- default existed carry no enabledBy marker; their switch is kept as it was,
 -- because 5.3.0 saved enabled=false for everybody and an explicit choice
--- cannot be told apart from the old default. Bags and bank stay opt-in.
+-- cannot be told apart from the old default. Bag and bank recording is on for
+-- new stores and switched on once when a schema v1 store is migrated to v2
+-- (inventoryBy says who set it); after that the player's switch decides.
+-- Bags and bank are kept per slot (only complete scans are stored) next to
+-- the aggregated item counts.
 -- Played time is only recorded when the player types /played: requesting it
 -- automatically would print to the chat frame on every login.
 -- Characters can be hidden from the "My characters" view; hiding only changes
@@ -18,7 +22,7 @@
 -- are only read when the player takes them over explicitly, and then kept as
 -- a separate, labelled snapshot that a newer Community value always replaces.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local O={VERSION=1,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
+local O={VERSION=2,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_CONTAINERS=12,BANK_RETRIES=3,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
 Z.AccountOverview=O
 local MAX_TIME=4102444800
 local MAX_MONEY=99999999999
@@ -26,7 +30,7 @@ local EVENTS={"PLAYER_ENTERING_WORLD","PLAYER_MONEY","TIME_PLAYED_MSG","PLAYER_X
 local INVENTORY_EVENTS={"BAG_UPDATE_DELAYED","BANKFRAME_OPENED","BANKFRAME_CLOSED","PLAYERBANKSLOTS_CHANGED"}
 local frame
 
-local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=false,characters={},hidden={}}end
+local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=true,inventoryBy="default",characters={},hidden={}}end
 local function stamp()local now=A.Now();return now>0 and now or nil end
 local function changed()O.revision=(O.revision or 0)+1 end
 local function int(value,min,max)return L.Int(value,min,max)and value or nil end
@@ -35,6 +39,24 @@ local function items(raw,limit)
     for id,count in pairs(type(raw)=="table"and raw or{})do
         if n>=limit then break end
         if L.Int(id,1,10000000)and L.Int(count,1,1000000)then out[id]=count;n=n+1 end
+    end
+    return out
+end
+-- Per-slot snapshot {at=time,containers={{bag=id,size=n,slots={[slot]={itemID,count}}}}}.
+local function slotSnapshot(raw,limit)
+    if type(raw)~="table"or not L.Int(raw.at,1,MAX_TIME)or type(raw.containers)~="table"then return nil end
+    local out,occupied,seen={at=raw.at,containers={}},0,{}
+    for _,ct in ipairs(raw.containers)do
+        if #out.containers>=O.MAX_CONTAINERS then break end
+        if type(ct)=="table"and L.Int(ct.bag,-10,100)and not seen[ct.bag]and L.Int(ct.size,0,200)and type(ct.slots)=="table"then
+            seen[ct.bag]=true;local slots={}
+            for slot,entry in pairs(ct.slots)do
+                if occupied<limit and L.Int(slot,1,ct.size)and type(entry)=="table"and L.Int(entry[1],1,10000000)and L.Int(entry[2],1,1000000)then
+                    slots[slot]={entry[1],entry[2]};occupied=occupied+1
+                end
+            end
+            out.containers[#out.containers+1]={bag=ct.bag,size=ct.size,slots=slots}
+        end
     end
     return out
 end
@@ -50,6 +72,7 @@ local function sanitize(raw)
     c.played=int(raw.played,0,2147483646);c.playedLevel=int(raw.playedLevel,0,2147483646);c.playedAt=c.played and int(raw.playedAt,1,MAX_TIME)
     if type(raw.bags)=="table"and L.Int(raw.bagsAt,1,MAX_TIME)then c.bags=items(raw.bags,O.MAX_BAG_ITEMS);c.bagsAt=raw.bagsAt end
     if type(raw.bank)=="table"and L.Int(raw.bankAt,1,MAX_TIME)then c.bank=items(raw.bank,O.MAX_BANK_ITEMS);c.bankAt=raw.bankAt end
+    c.bagSlots=slotSnapshot(raw.bagSlots,O.MAX_BAG_ITEMS);c.bankSlots=slotSnapshot(raw.bankSlots,O.MAX_BANK_ITEMS)
     return c
 end
 local function accountCharacters()return Z.account and type(Z.account.characters)=="table"and Z.account.characters or{}end
@@ -65,15 +88,20 @@ end
 
 function O.Initialize()
     O.revision=0;O.bankOpen=false;O.bagsDirty=false;O.bankDirty=false;O.bankScanQueued=false
+    O.lastScan={};O.bankRetries=0;O.bankRetryQueued=false;O.stockCache=nil
     local root=ZenialCommunityDB;if type(root)~="table"then return end
     local raw=root.accountOverview
     -- A newer format from a later addon version stays untouched and read-only.
-    O.readOnly=type(raw)=="table"and raw.version~=nil and raw.version~=O.VERSION
+    -- Schema v1 is migrated below; only versions this code does not know are read-only.
+    O.readOnly=type(raw)=="table"and raw.version~=nil and raw.version~=1 and raw.version~=O.VERSION
     if O.readOnly then O.store=defaults();setEvents();return end
     local store=defaults();local known=accountCharacters()
     local aliases=Z.account and type(Z.account.characterAliases)=="table"and Z.account.characterAliases or{}
     if type(raw)=="table"then
-        store.enabled=raw.enabled==true;store.inventory=raw.inventory==true
+        store.enabled=raw.enabled==true
+        if raw.version==1 then store.inventory=true;store.inventoryBy="migration"
+        else store.inventory=raw.inventory==true
+            store.inventoryBy=(raw.inventoryBy=="default"or raw.inventoryBy=="migration"or raw.inventoryBy=="user")and raw.inventoryBy or"default"end
         store.enabledBy=(raw.enabledBy=="default"or raw.enabledBy=="user")and raw.enabledBy or"legacy"
         local n=0
         for key,row in pairs(type(raw.characters)=="table"and raw.characters or{})do
@@ -113,7 +141,7 @@ end
 function O.IsHidden(key)return O.store~=nil and O.store.hidden~=nil and O.store.hidden[key]==true end
 function O.SetInventory(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
-    O.store.inventory=value==true;setEvents();if O.InventoryEnabled()then O.ScanBags()end;changed();return true
+    O.store.inventory=value==true;O.store.inventoryBy="user";setEvents();if O.InventoryEnabled()then O.ScanBags()end;changed();return true
 end
 
 -- Writable row of the logged-in character, created on demand.
@@ -181,24 +209,35 @@ end
 local function slots(bag)
     local C=C_Container
     local n=C and type(C.GetContainerNumSlots)=="function"and A.Call(C.GetContainerNumSlots,bag)or A.Call(GetContainerNumSlots,bag)
-    return L.Int(n,0,200)and n or 0
+    return L.Int(n,0,200)and n or nil
 end
+-- Reads containers into the item aggregate and the per-slot snapshot. complete
+-- is false if a container reported no slot count, a slot had an item without
+-- a valid amount, or the limits were exceeded: such a scan is never stored.
 local function scan(bags,limit)
-    local out,n,observed={},0,0
+    local out,n,observed,occupied={},0,0,0
+    local containers,complete={},true
     for _,bag in ipairs(bags)do
-        for slot=1,slots(bag)do
+        local size=slots(bag);local ct={bag=bag,size=size or 0,slots={}}
+        if size==nil then complete=false end
+        for slot=1,size or 0 do
             local id,count=slotItem(bag,slot)
-            if L.Int(id,1,10000000)then
-                count=L.Int(count,1,1000000)and count or 1
-                if out[id]then out[id]=math.min(1000000,out[id]+count)
-                elseif n<limit then out[id]=count;n=n+1
-                    -- Seeds the shared name index so searches can name the item later.
-                    if Z.Items and observed<O.MAX_REQUESTS and not Z.Items.Get(id)then Z.Items.Observe(id);observed=observed+1 end
+            if id~=nil then
+                if not L.Int(id,1,10000000)or not L.Int(count,1,1000000)or occupied>=limit then complete=false
+                else
+                    ct.slots[slot]={id,count};occupied=occupied+1
+                    if out[id]then out[id]=math.min(1000000,out[id]+count)
+                    elseif n<limit then out[id]=count;n=n+1
+                        -- Seeds the shared name index so searches can name the item later.
+                        if Z.Items and observed<O.MAX_REQUESTS and not Z.Items.Get(id)then Z.Items.Observe(id);observed=observed+1 end
+                    end
                 end
             end
         end
+        containers[#containers+1]=ct
     end
-    return out
+    if #containers>O.MAX_CONTAINERS then complete=false end
+    return out,containers,complete
 end
 local function bagIDs()local n=L.Int(NUM_BAG_SLOTS,1,20)and NUM_BAG_SLOTS or 4;local out={};for bag=0,n do out[#out+1]=bag end;return out end
 local function bankIDs()
@@ -206,18 +245,37 @@ local function bankIDs()
     local out={L.Int(BANK_CONTAINER,-10,0)and BANK_CONTAINER or -1};for bag=first,first+count-1 do out[#out+1]=bag end;return out
 end
 -- Bags and bank are not protected, but scans wait for the end of combat.
+-- An incomplete scan (client still loading) keeps the previous snapshot.
 function O.ScanBags()
     local c=own();if not c or not O.InventoryEnabled()then return end
     if A.Call(InCombatLockdown)==true then O.bagsDirty=true;return end
-    O.bagsDirty=false;c.bags=scan(bagIDs(),O.MAX_BAG_ITEMS);c.bagsAt=A.Now()>0 and A.Now()or nil
-    if not c.bagsAt then c.bags=nil end;changed()
+    O.bagsDirty=false;local at=A.Now();if at<=0 then return end
+    local agg,containers,complete=scan(bagIDs(),O.MAX_BAG_ITEMS)
+    -- The backpack always has slots; zero means the client is still loading.
+    if complete and not(containers[1]and containers[1].size>0)then complete=false end
+    O.lastScan.bags={at=at,complete=complete}
+    if not complete then return end
+    c.bags=agg;c.bagsAt=at;c.bagSlots={at=at,containers=containers};changed()
 end
 -- Only a bank that is actually open is read; otherwise the old snapshot stays.
+-- A bank the client has not loaded yet is read again up to three times.
 function O.ScanBank()
     local c=own();if not c or not O.InventoryEnabled()or not O.bankOpen then return end
     if A.Call(InCombatLockdown)==true then O.bankDirty=true;return end
     O.bankDirty=false;local at=A.Now();if at<=0 then return end
-    c.bank=scan(bankIDs(),O.MAX_BANK_ITEMS);c.bankAt=at;changed()
+    local agg,containers,complete=scan(bankIDs(),O.MAX_BANK_ITEMS)
+    -- The main bank always has slots; zero means it is not loaded yet.
+    if complete and not(containers[1]and containers[1].size>0)then complete=false end
+    O.lastScan.bank={at=at,complete=complete}
+    if not complete then
+        if O.bankRetries<O.BANK_RETRIES and not O.bankRetryQueued and C_Timer and type(C_Timer.After)=="function"then
+            O.bankRetries=O.bankRetries+1;O.bankRetryQueued=true
+            C_Timer.After(.5,function()O.bankRetryQueued=false;O.ScanBank()end)
+        end
+        return
+    end
+    O.bankRetries=0
+    c.bank=agg;c.bankAt=at;c.bankSlots={at=at,containers=containers};changed()
 end
 local function queueBank()
     if O.bankScanQueued then return end
@@ -234,7 +292,7 @@ function O.OnEvent(event,...)
     elseif event=="PLAYER_XP_UPDATE"or event=="UPDATE_EXHAUSTION"or event=="PLAYER_UPDATE_RESTING"then O.SampleXP()
     elseif event=="PLAYER_REGEN_ENABLED"then if O.bagsDirty then O.ScanBags()end;if O.bankDirty then O.ScanBank()end
     elseif event=="BAG_UPDATE_DELAYED"then O.ScanBags();if O.bankOpen then O.ScanBank()end
-    elseif event=="BANKFRAME_OPENED"then O.bankOpen=true;O.ScanBank()
+    elseif event=="BANKFRAME_OPENED"then O.bankOpen=true;O.bankRetries=0;O.ScanBank()
     elseif event=="BANKFRAME_CLOSED"then O.bankOpen=false
     elseif event=="PLAYERBANKSLOTS_CHANGED"then if O.bankOpen then queueBank()end end
 end
@@ -429,6 +487,55 @@ function O.Realms()
 end
 function O.TotalMoney(rows)local n=0;for _,r in ipairs(rows)do n=n+(r.money or 0)end;return n end
 
+-- Stored inventory of one character. known=false: never recorded (unknown, not
+-- empty). used/free/total exist only for snapshots with slot data.
+function O.Inventory(key)
+    local s=O.store and O.store.characters[key]
+    local out={}
+    for _,place in ipairs({"bags","bank"})do
+        local counts=s and s[place]
+        if type(counts)~="table"then out[place]={known=false}
+        else
+            local e={known=true,at=s[place.."At"],counts=counts}
+            local snap=s[place=="bags"and"bagSlots"or"bankSlots"]
+            if snap then
+                local used,total=0,0
+                for _,ct in ipairs(snap.containers)do total=total+ct.size;for _ in pairs(ct.slots)do used=used+1 end end
+                e.slots=snap;e.used=used;e.total=total;e.free=total-used
+            end
+            out[place]=e
+        end
+    end
+    return out
+end
+-- Item amounts per item, character and place: {[itemID]={[key]={bags=n,bank=n}}}.
+-- nil: the place was never recorded; 0: recorded and not present. Cached until
+-- the data changes.
+function O.Stock(keys)
+    keys=type(keys)=="table"and keys or{}
+    local sig=table.concat(keys,"\1")
+    local cache=O.stockCache
+    if cache and cache.revision==O.revision and cache.sig==sig then return cache.result end
+    local result,ids,rows={},{},{}
+    for _,key in ipairs(keys)do
+        local s=O.store and O.store.characters[key]
+        if s then
+            rows[key]=s
+            for _,place in ipairs({"bags","bank"})do for id in pairs(type(s[place])=="table"and s[place]or{})do ids[id]=true end end
+        end
+    end
+    for id in pairs(ids)do
+        local per={}
+        for _,key in ipairs(keys)do
+            local s=rows[key]
+            if s then per[key]={bags=type(s.bags)=="table"and(s.bags[id]or 0)or nil,bank=type(s.bank)=="table"and(s.bank[id]or 0)or nil}end
+        end
+        result[id]=per
+    end
+    O.stockCache={revision=O.revision,sig=sig,result=result}
+    return result
+end
+
 -- Searches stored bags and banks of the listed characters by item name or ID.
 -- Unknown names are requested from the client; such items appear once loaded.
 function O.Search(query,rows)
@@ -446,10 +553,10 @@ function O.Search(query,rows)
                 local match=id and itemID==id or not id and name and string.lower(name):find(needle,1,true)
                 if not name and not id then unresolved=unresolved+1 end
                 if match then
-                    local hit=hits[itemID]or{id=itemID,name=name or("#"..itemID),total=0,holders={},byKey={}}
-                    hits[itemID]=hit;hit.total=hit.total+n
+                    local hit=hits[itemID]or{id=itemID,name=name or("#"..itemID),total=0,bagsTotal=0,bankTotal=0,holders={},byKey={}}
+                    hits[itemID]=hit;hit.total=hit.total+n;hit[place.."Total"]=hit[place.."Total"]+n
                     local holder=hit.byKey[r.key]
-                    if not holder then holder={key=r.key,name=r.name,realm=r.realm,bags=0,bank=0};hit.byKey[r.key]=holder;hit.holders[#hit.holders+1]=holder end
+                    if not holder then holder={key=r.key,name=r.name,realm=r.realm,bags=0,bank=0,bagsAt=s.bagsAt,bankAt=s.bankAt};hit.byKey[r.key]=holder;hit.holders[#hit.holders+1]=holder end
                     holder[place]=holder[place]+n
                 end
             end
