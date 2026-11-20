@@ -119,6 +119,9 @@ ActivityArchiveUI.lua
 SocialDiaryUI.lua
 AccountOverviewUI.lua
 MyCharactersCards.lua
+MyCharactersRecipes.lua
+MyCharactersProfessions.lua
+MyCharactersInventory.lua
 NotificationInboxUI.lua
 PvPHelpUI.lua
 RivalryUI.lua

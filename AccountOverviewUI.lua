@@ -2,9 +2,9 @@
 -- This file is the shell: head, tab row, shared filters, footer with the recording
 -- options and the character menu. Every tab registers itself with
 -- U.RegisterMyCharactersTab(id, {create, layout, refresh}); the shell only calls
--- the visible one. The Overview tab (character cards and details) lives in
--- MyCharactersCards.lua; the Inventory tab (item search over the recorded bags and
--- banks) is still built here. Reads local data only; nothing here sends data to
+-- the visible one. The tabs live in MyCharactersCards.lua (Overview),
+-- MyCharactersProfessions.lua and MyCharactersInventory.lua (bags, bank and item
+-- search). Reads local data only; nothing here sends data to
 -- other players. Main changes go through Z.SetMain, deletion through the existing
 -- Z.RemoveCharacter confirmation; hiding only affects this view.
 local Z,U,A=ZenialCommunity,ZenialCommunity.UI,ZenialCommunity.Adapter
@@ -24,8 +24,6 @@ local function paint(key,text)
     return text
 end
 local function styled()return Z.Kit~=nil and T~=nil and T.PaletteHex~=nil end
-local HIT_HEIGHT=30
-local HOLDER_HEIGHT=40
 -- Content widths from here on use the wide two-column layout of the Inventory
 -- tab; below it the hits and the holders alternate (hits first).
 local WIDE_WIDTH=840
@@ -163,15 +161,6 @@ function U.MyCharactersRows()
     return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=f.realm~=nil or f.faction~=nil,
         realm=f.realm,faction=f.faction,showHidden=showHidden}
 end
--- Item hits of the Inventory tab: only AccountOverview.Search over the
--- characters of the overview scope. An empty query finds nothing.
-function U.MyCharactersItemHits(context)
-    local query=trim(U.itemSearch:GetText())
-    if query==''then return{},0,query end
-    local hits,unresolved=O().Search(query,context.scoped)
-    return hits,unresolved,query
-end
-
 local function summary(context)
     local overview=O();local scoped=context.scoped;local known,unknown,oldest,professions=0,0,nil,0
     for _,r in ipairs(scoped)do
@@ -196,80 +185,6 @@ local function summary(context)
         if status.ambiguous>0 then note=note..' · '..paint('warning',tr('%d not assignable',status.ambiguous))end
     end
     return paint('text',first)..'\n'..paint('dim',table.concat(second,' · '))..note
-end
-
--- Scope shown on the Inventory tab: the overview's realm, faction and hidden
--- choice. Items are searched exactly there.
-local function scopeText(context)
-    local parts={context.realm or tr('All realms'),context.faction and tr(context.faction)or tr('All factions')}
-    if context.showHidden then parts[#parts+1]=tr('including hidden')end
-    return tr('Scope: %s',table.concat(parts,' · '))
-end
-local function holderItem(h,byKey)
-    local r=byKey[h.key];local place={}
-    local function part(name,count,at)
-        if count>0 then place[#place+1]=tr(name)..' '..count..(at and(' ('..tr('as of %s',when(at))..')')or'')end
-    end
-    part('Bags',h.bags,r and r.bagsAt);part('Bank',h.bank,r and r.bankAt)
-    local where=h.realm~=''and h.realm or''
-    if r and r.faction~=''then where=where..(where~=''and' / 'or'')..tr(r.faction)end
-    local item={text=h.name..(where~=''and(' · '..where)or''),subtitle=table.concat(place,' · '),noWrap=true,height=HOLDER_HEIGHT}
-    -- Holders are information, not a choice: flat row flush left (D-23).
-    if styled()then
-        item.flat,item.textInset=true,0
-        item.display=paint('text',h.name)..(where~=''and paint('dim',' · '..where)or'')
-        item.subtitleDisplay=paint('textSoft',item.subtitle)
-    end
-    return item
-end
-local function refreshItems(context)
-    local overview=O()
-    local hits,unresolved,query=U.MyCharactersItemHits(context)
-    U.itemScope:SetText(scopeText(context))
-    local notes={tr('Search the recorded bags and bank compartments of your characters.'),tr('Bag and bank recording must be on. Bank contents exist only after you opened the bank while recording. Saved amounts can be older than your current inventory.')}
-    if unresolved>0 then notes[#notes+1]=tr('%d item names are still loading. Search again in a moment.',unresolved)end
-    if not overview.InventoryEnabled()then notes[#notes+1]=tr('Bags and bank are only searched once their recording is on.')end
-    U.itemsNote:SetText(notes[1]..'\n'..notes[2]..(#notes>2 and ('\n'..table.concat({unpack(notes,3)},' '))or''))
-    local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
-    U.itemsNote:SetHeight(noteHeight)
-    local selectedHit
-    for _,hit in ipairs(hits)do if hit.id==U.itemHitId then selectedHit=hit end end
-    if not selectedHit then selectedHit=hits[1];U.itemHitId=selectedHit and selectedHit.id end
-    if not selectedHit then U.itemsDetailOpen=false end
-    local items={}
-    for _,hit in ipairs(hits)do
-        local item={text=hit.name..' · '..hit.total,noWrap=true,height=HIT_HEIGHT,selected=selectedHit==hit,
-            click=function()U.itemHitId=hit.id;U.itemsDetailOpen=true;U.CloseDropdowns();U.RefreshMyCharacters()end}
-        -- Item icon in front, name bright, amount dim.
-        if styled()then
-            item.display=paint('text',hit.name)..paint('dim',' · '..hit.total)
-            local icon=S.itemIcon and S.itemIcon(hit.id)
-            item.icon=icon or T.IconSpec('search')
-            item.iconSize,item.textInset=20,36
-            if not icon then item.iconColor='dim'end
-        end
-        items[#items+1]=item
-    end
-    local hint
-    if #query<2 and not tonumber(query)then hint=tr('Enter an item name with at least 2 characters or an item ID to search recorded bags and banks.')
-    elseif #hits==0 then hint=tr('No matching items in recorded bags and banks.')end
-    U.SetEmptyHint(U.itemHitList,hint,hint and'search'or nil)
-    S.rows(U.itemHitList,items,HIT_HEIGHT)
-    local byKey={};for _,r in ipairs(context.scoped)do byKey[r.key]=r end
-    local holders={}
-    if selectedHit then
-        local bags,bank=0,0;for _,h in ipairs(selectedHit.holders)do bags=bags+(h.bags or 0);bank=bank+(h.bank or 0)end
-        local headText=selectedHit.name..' · '..selectedHit.total
-        local headSub=tr('%d characters · Bags %d · Bank %d',#selectedHit.holders,bags,bank)
-        holders[1]={text=GOLD..headText..'|r\n'..headSub,height=38,header=true}
-        if styled()then
-            holders[1].section,holders[1].textInset=true,0
-            holders[1].display=paint('goldBright',headText)..'\n'..paint('dim',headSub)
-        end
-        for _,h in ipairs(selectedHit.holders)do holders[#holders+1]=holderItem(h,byKey)end
-    end
-    U.SetEmptyHint(U.itemHolderList,#hits>0 and tr('Select an item to see which characters hold it.')or nil,#hits>0 and'search'or nil)
-    S.rows(U.itemHolderList,holders,HOLDER_HEIGHT)
 end
 
 local function onOff(value)return value and tr('on')or tr('off')end
@@ -366,8 +281,8 @@ end
 function U.SetMyCharactersTab(tab)setTab(TAB_SPEC[tab]and tab or'overview')end
 
 -- Route selection {characterKey, profession, recipe, itemID}: kept for the tab it
--- belongs to. A character on the overview route opens its details; an item on
--- the Inventory route fills the item search.
+-- belongs to. A character on the overview route opens its details; the Inventory
+-- route shows that character's bags or searches that item.
 function U.ApplyMyCharactersSelection(route)
     local selection=type(route.selection)=='table'and route.selection or nil
     U.myCharactersSelection=selection
@@ -375,8 +290,8 @@ function U.ApplyMyCharactersSelection(route)
     if selection.characterKey then U.characterKey=selection.characterKey end
     if route.view=='overview'and selection.characterKey then
         setTab('overview');U.myCharactersDetailOpen=true;U.RefreshMyCharacters()
-    elseif route.view=='items'and selection.itemID and U.itemSearch then
-        U.itemSearch:SetText(tostring(selection.itemID));U.RefreshMyCharacters()
+    elseif route.view=='items'and U.ApplyMyCharactersInventorySelection then
+        U.ApplyMyCharactersInventorySelection(selection);U.RefreshMyCharacters()
     end
 end
 local function openRoute(view,selection)
@@ -411,57 +326,6 @@ U.MyCharactersUI={paint=paint,styled=styled,when=when,duration=duration,classNam
     end,
     closeDetail=function()U.myCharactersDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end}
 
--- Inventory tab: its own search, hits on the left and holders on the right.
-local function createItems(body,helpers)
-    local label,button=helpers.label,helpers.button
-    local function reset()U.RefreshMyCharacters()end
-    U.itemSearch=helpers.edit(body,'Item name (2+ characters) or item ID',0,0,300,64);U.itemSearch:SetScript('OnTextChanged',reset)
-    -- Small search symbol inside the field (pattern: U.memberSearchIcon).
-    if Z.Kit and T then
-        local icon=Z.Kit.Icon(U.itemSearch,'search',14,'muted');icon:SetPoint('LEFT',8,0);U.itemSearchIcon=icon
-        if U.itemSearch.SetTextInsets then U.itemSearch:SetTextInsets(26,8,4,4)end
-    end
-    U.itemScope=label(body,'',320,-17,300)
-    U.itemsNote=label(body,'',0,-48,800)
-    U.itemsNote:SetHeight(60)
-    U.itemHitList=helpers.list(body,0,-82,300,260)
-    -- Who holds the item is information only: flat rows, no sunken well (D-23).
-    U.itemHolderList=helpers.list(body,320,-82,400,260)
-    if Z.Kit then Z.Kit.InfoBlock(U.itemHolderList)end
-    U.itemsBack=button(body,'Back to results',0,-82,140,function()U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
-end
-local function placeList(view,x,y,w,h)
-    local changed=view:GetWidth()~=w or view:GetHeight()~=h
-    place(view,x,y,w,h);view.width,view.height=w-24,h;view.child:SetWidth(w-24)
-    if changed and view.zenialRender then view.zenialRender()end
-end
-local function placeEdit(e,x,y,w)place(e.caption,x,y,w);place(e,x,y-17,w)end
-local function layoutItems(_,_,width,height)
-    local wide=width>=WIDE_WIDTH
-    local focused=not wide and U.itemsDetailOpen
-    for _,control in ipairs({U.itemSearch,U.itemSearch.caption,U.itemScope,U.itemsNote})do shown(control,not focused)end
-    local top=0
-    if not focused then
-        local searchWidth=math.min(360,math.floor(width*.5))
-        placeEdit(U.itemSearch,0,0,searchWidth)
-        place(U.itemScope,searchWidth+16,-17,width-searchWidth-16,24)
-        place(U.itemsNote,0,-48,width)
-        local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
-        U.itemsNote:SetHeight(noteHeight)
-        top=48+noteHeight+12
-    end
-    local body=math.max(120,height-top)
-    local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
-    local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
-    local itemsDetail=wide or U.itemsDetailOpen
-    local itemsList=wide or not U.itemsDetailOpen
-    shown(U.itemHitList,itemsList);shown(U.itemHolderList,itemsDetail)
-    shown(U.itemsBack,not wide and U.itemsDetailOpen)
-    placeList(U.itemHitList,0,-top,listWidth,body)
-    local holderTop=top
-    if itemsDetail and not wide then fitButton(U.itemsBack,96);place(U.itemsBack,0,-top);holderTop=top+34 end
-    placeList(U.itemHolderList,detailX,-holderTop,detailWidth,body-(holderTop-top))
-end
 function U.RegisterMyCharactersTab(id,spec)
     if not TAB_LABEL[id]or type(spec)~='table'then return false end
     TAB_SPEC[id]=spec
@@ -472,8 +336,6 @@ function U.RegisterMyCharactersTab(id,spec)
     end
     return true
 end
-U.RegisterMyCharactersTab('items',{filters=false,create=createItems,layout=layoutItems,
-    refresh=function(_,context)refreshItems(context)end})
 -- Professions and Recipes get their own files; until then the tab shows an empty state.
 for _,id in ipairs({'professions','recipes'})do
     local state
