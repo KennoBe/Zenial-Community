@@ -7,7 +7,7 @@
 ## IconTexture: Interface\AddOns\ZenialCommunity\Media\Icon.tga
 ## AddonCompartmentFunc: ZenialCommunity_OnAddonCompartmentClick
 ## SavedVariables: ZenialCommunityDB, ZenialMinimapDB, ZenialRivalryDB, ZenialPublicLFGDB
-## X-License: MIT
+## X-License: All Rights Reserved
 Core.lua
 Adapter.lua
 Network3.lua
