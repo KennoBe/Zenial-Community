@@ -1051,6 +1051,130 @@ local function createStream(parent)
     return stream
 end
 -- items: { type = 'section', text, count } | { type = 'card', row } | { type = 'hint', text }
+-- Role filter of the "Players looking for a group" sections (_dev/addons/ZenialCommunity/SEEKER-ROLE-FILTER-DESIGN.md):
+-- one choice per character for every view, all roles on by default, the last role stays on, a row whose roles are
+-- unknown stays visible.
+function F.SeekerRoles()
+    local saved = Z.db and Z.db.finderSeekerRoles
+    local out, any = {}, false
+    for _, role in ipairs(ROLES) do
+        out[role] = type(saved) ~= 'table' or saved[role] ~= false
+        any = any or out[role]
+    end
+    if not any then
+        for _, role in ipairs(ROLES) do
+            out[role] = true
+        end
+    end
+    return out
+end
+-- Switches a role; false when the role is unknown or the last one switched on.
+function F.ToggleSeekerRole(role)
+    local roles = F.SeekerRoles()
+    if roles[role] == nil or not Z.db then
+        return false
+    end
+    if roles[role] then
+        local on = 0
+        for _, other in ipairs(ROLES) do
+            if roles[other] then
+                on = on + 1
+            end
+        end
+        if on <= 1 then
+            return false
+        end
+    end
+    roles[role] = not roles[role]
+    Z.db.finderSeekerRoles = roles
+    return true
+end
+-- Roles a seeker offers as a set; nil when they are unknown.
+local function offeredRoles(row)
+    local offered = {}
+    if row.source == 'PUBLIC' then
+        if type(row.soloRoles) ~= 'table' then
+            return nil
+        end
+        offered = row.soloRoles
+    else
+        for _, role in ipairs(C.SearchRoles(type(row.data) == 'table' and row.data or {})) do
+            offered[role] = true
+        end
+    end
+    for _, role in ipairs(ROLES) do
+        if offered[role] then
+            return offered
+        end
+    end
+    return nil
+end
+-- New list of the seekers that offer at least one switched-on role (or whose roles are unknown), order kept.
+function F.FilterSeekers(rows)
+    local roles, out = F.SeekerRoles(), {}
+    for _, row in ipairs(rows) do
+        local offered, fits = offeredRoles(row), false
+        if offered then
+            for _, role in ipairs(ROLES) do
+                fits = fits or (offered[role] == true and roles[role])
+            end
+        end
+        if not offered or fits then
+            out[#out + 1] = row
+        end
+    end
+    return out
+end
+-- The three role icons left of the count of a section header; hidden on every other header of the pool.
+local function setSeekerIcons(header, shown)
+    if not shown then
+        if header.roleButtons then
+            for _, b in ipairs(header.roleButtons) do
+                b:Hide()
+            end
+            header.line:SetPoint('RIGHT', header.count, 'LEFT', -10, 0)
+        end
+        return
+    end
+    if not header.roleButtons then
+        header.roleButtons = {}
+        for index, role in ipairs(ROLES) do
+            local b = CreateFrame('Button', nil, header)
+            b:SetSize(14, 14)
+            b.icon = b:CreateTexture(nil, 'ARTWORK')
+            b.icon:SetAllPoints()
+            b.zenialRole = role
+            b:SetScript('OnClick', function(self)
+                if F.ToggleSeekerRole(self.zenialRole) then
+                    U.RefreshFinder()
+                end
+            end)
+            b:SetScript('OnEnter', function(self)
+                if GameTooltip and GameTooltip.SetOwner then
+                    GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+                    GameTooltip:AddLine(Z.Locale.Role(self.zenialRole), 1, 1, 1)
+                    GameTooltip:Show()
+                end
+            end)
+            b:SetScript('OnLeave', function()
+                if GameTooltip and GameTooltip.Hide then
+                    GameTooltip:Hide()
+                end
+            end)
+            header.roleButtons[index] = b
+        end
+    end
+    local roles, previous = F.SeekerRoles(), header.count
+    for index = #ROLES, 1, -1 do
+        local b = header.roleButtons[index]
+        b:ClearAllPoints()
+        b:SetPoint('RIGHT', previous, 'LEFT', previous == header.count and -10 or -4, 0)
+        setRoleIcon(b.icon, b.zenialRole, not roles[b.zenialRole] and 'muted' or nil)
+        b:Show()
+        previous = b
+    end
+    header.line:SetPoint('RIGHT', previous, 'LEFT', -10, 0)
+end
 local function renderStream(stream, width, height, items, columns, context)
     local inner = math.max(1, width - GUTTER)
     local cardWidth = math.floor((inner - (columns - 1) * GAP) / columns)
@@ -1079,6 +1203,7 @@ local function renderStream(stream, width, height, items, columns, context)
             header.count:SetWidth(0)
             header:SetText(item.text)
             header:SetCount(item.count)
+            setSeekerIcons(header, item.seekerRoles == true)
             header:Show()
             y = y + (y > 0 and 6 or 0) + 26
         elseif item.type == 'card' then
@@ -1122,8 +1247,17 @@ local function renderStream(stream, width, height, items, columns, context)
     end
     stream:Fit(width, height, y)
 end
-local function addSection(items, text, rows, emptyText, limit)
-    items[#items + 1] = { type = 'section', text = text, count = #rows }
+-- opts.seekerRoles: the section of players looking for a group, filtered by the role icons in its header.
+local function addSection(items, text, rows, emptyText, limit, opts)
+    local seekerRoles = opts ~= nil and opts.seekerRoles == true or nil
+    if seekerRoles then
+        local all = #rows
+        rows = F.FilterSeekers(rows)
+        if all > 0 and #rows == 0 then
+            emptyText = tr('Nobody with this role is looking right now.')
+        end
+    end
+    items[#items + 1] = { type = 'section', text = text, count = #rows, seekerRoles = seekerRoles }
     if #rows == 0 then
         if emptyText then
             items[#items + 1] = { type = 'hint', text = emptyText }
@@ -1457,7 +1591,7 @@ local function renderNow(snap, top, width, height)
             addSection(items, tr('Open groups'), groups)
         end
         if #snap.seekers > 0 then
-            addSection(items, tr('Players looking for a group'), snap.seekers)
+            addSection(items, tr('Players looking for a group'), snap.seekers, nil, nil, { seekerRoles = true })
         end
         if #snap.planned > 0 then
             addSection(items, tr('Planned'), snap.planned)
@@ -1504,7 +1638,7 @@ local function renderCategory(snap, top, width, height)
     -- Sections without entries are left out here; the open groups above keep their hint.
     local looking, planned = ofCategory(snap.seekers, category), ofCategory(snap.planned, category)
     if #looking > 0 then
-        addSection(items, tr('Players looking for a group'), looking)
+        addSection(items, tr('Players looking for a group'), looking, nil, nil, { seekerRoles = true })
     end
     if #planned > 0 then
         addSection(items, tr('Planned'), planned)
@@ -1625,7 +1759,7 @@ local function renderDetail(snap, top, width, height)
     if #stats.rows.planned > 0 then
         addSection(left, tr('Planned'), stats.rows.planned)
     end
-    addSection(right, tr('Players looking for a group'), seekers, tr('Nobody is looking for this instance right now.'))
+    addSection(right, tr('Players looking for a group'), seekers, tr('Nobody is looking for this instance right now.'), nil, { seekerRoles = true })
     detail.left:ClearAllPoints()
     detail.left:SetPoint('TOPLEFT', 0, -y)
     renderStream(detail.left, columnWidth, listHeight, left, 1, { named = false, thumbs = false })
