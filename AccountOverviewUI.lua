@@ -426,9 +426,7 @@ function U.RefreshMyCharacters()
     for _,block in ipairs(U.sheetBlocks)do texts[#texts+1]={text=(block.head and(block.head..': ')or'')..block.text,flat=true,section=block.head~=nil or nil}end
     U.accountOverviewDetails.zenialItems=texts
     U.setMainButton:SetEnabled(canSetMain(selected)==true)
-    local utility=overview.UtilityLoaded()and not overview.readOnly
-    U.myCharactersMore:SetEnabled(selected~=nil or utility)
-    U.importUtilityButton:SetShown(utility)
+    U.myCharactersMore:SetEnabled(selected~=nil)
     U.hideCharacterButton:SetText(tr(selected and selected.hidden and'Show in overview again'or'Hide from overview'))
     U.hideCharacterButton:SetEnabled(canHide(selected)==true)
     U.removeCharacterButton:SetEnabled(canDelete(selected)==true)
@@ -462,7 +460,6 @@ local function toggleRecordMenu()togglePopup(U.myCharactersRecordMenu)end
 function layoutMenus()
     local menu=U.myCharactersMenu;if not menu then return end
     local buttons={U.hideCharacterButton,U.removeCharacterButton}
-    if U.importUtilityButton:IsShown()then buttons[#buttons+1]=U.importUtilityButton end
     local widest=160;for _,b in ipairs(buttons)do widest=math.max(widest,buttonTextWidth(b)+28)end
     local y=8
     for _,b in ipairs(U.menuButtons)do b:Hide()end
@@ -578,18 +575,7 @@ function U.CreateMyCharacters(frame,helpers)
     U.removeCharacterButton=button(menu,'Delete character data…',8,-40,234,confirmDelete,'danger')
     U.myCharactersMenuNote=label(menu,'',10,-74,230)
     U.myCharactersMenuNote:SetHeight(48)
-    -- Only offered while ZENIAL Utility is loaded; reads it, never writes it.
-    -- Repeating it replaces the earlier copy.
-    U.importUtilityButton=button(menu,'Take over data from ZENIAL Utility',8,-124,234,function()
-        U.CloseDropdowns()
-        local n,ambiguous=overview.ImportUtility()
-        if not n then U.Message(tr(ambiguous))
-        elseif ambiguous>0 then U.Message(tr('%d characters taken over from ZENIAL Utility, %d not assignable.',n,ambiguous))
-        else U.Message(tr('%d characters taken over from ZENIAL Utility.',n))end
-        U.RefreshMyCharacters()
-    end)
-    U.importUtilityButton:Hide()
-    U.menuButtons={U.hideCharacterButton,U.removeCharacterButton,U.importUtilityButton}
+    U.menuButtons={U.hideCharacterButton,U.removeCharacterButton}
     menu:Hide()
     -- Recording options popup: the two existing switches with their handlers.
     local record=CreateFrame('Frame',nil,frame,BackdropTemplateMixin and'BackdropTemplate'or nil)

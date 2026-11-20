@@ -14,21 +14,25 @@
 -- (inventoryBy says who set it); after that the player's switch decides.
 -- Bags and bank are kept per slot (only complete scans are stored) next to
 -- the aggregated item counts.
--- Played time is only recorded when the player types /played: requesting it
--- automatically would print to the chat frame on every login.
+-- Played time is requested automatically (20 s after the first login of a
+-- session, then every 30 minutes, never in combat). The chat line is kept out
+-- of the chat by unregistering TIME_PLAYED_MSG on the chat frames that have it
+-- for the duration of the request; a /played typed by the player stays visible
+-- and is stored as well.
 -- Characters can be hidden from the "My characters" view; hiding only changes
 -- that view and keeps every stored value and link.
--- Community is the leading local source. ZENIAL Utility is optional: its rows
--- are only read when the player takes them over explicitly, and then kept as
--- a separate, labelled snapshot that a newer Community value always replaces.
+-- Community is the only live source. Rows once taken over from ZENIAL Utility
+-- stay readable as a separate, labelled snapshot that a newer Community value
+-- always replaces; Utility itself is never read.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local O={VERSION=2,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_CONTAINERS=12,BANK_RETRIES=3,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200}
+local O={VERSION=2,MAX_CHARACTERS=100,MAX_BAG_ITEMS=400,MAX_BANK_ITEMS=800,MAX_CONTAINERS=12,BANK_RETRIES=3,MAX_SEARCH=50,MAX_REQUESTS=50,MAX_UTILITY=200,PLAYED_FIRST=20,PLAYED_EVERY=1800,PLAYED_TIMEOUT=10}
 Z.AccountOverview=O
 local MAX_TIME=4102444800
 local MAX_MONEY=99999999999
 local EVENTS={"PLAYER_ENTERING_WORLD","PLAYER_MONEY","TIME_PLAYED_MSG","PLAYER_XP_UPDATE","UPDATE_EXHAUSTION","PLAYER_UPDATE_RESTING","PLAYER_LEVEL_UP","PLAYER_REGEN_ENABLED"}
 local INVENTORY_EVENTS={"BAG_UPDATE_DELAYED","BANKFRAME_OPENED","BANKFRAME_CLOSED","PLAYERBANKSLOTS_CHANGED"}
 local frame
+local played,startPlayed={}
 
 local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=true,inventoryBy="default",characters={},hidden={}}end
 local function stamp()local now=A.Now();return now>0 and now or nil end
@@ -130,7 +134,7 @@ function O.Enabled()return O.store~=nil and not O.readOnly and O.store.enabled==
 function O.InventoryEnabled()return O.Enabled()and O.store.inventory==true end
 function O.SetEnabled(value)
     if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
-    O.store.enabled=value==true;O.store.enabledBy="user";setEvents();if O.store.enabled then O.Sample()end;changed();return true
+    O.store.enabled=value==true;O.store.enabledBy="user";setEvents();if O.store.enabled then O.Sample();startPlayed()end;changed();return true
 end
 -- Hides a character from the overview without touching any stored data.
 function O.SetHidden(key,value)
@@ -178,6 +182,52 @@ end
 function O.SamplePlayed(total,level)
     local c=own();if not c or not L.Int(total,0,2147483646)then return end
     c.played=total;c.playedLevel=L.Int(level,0,2147483646)and level or nil;c.playedAt=stamp();c.updatedAt=c.playedAt or c.updatedAt;changed()
+end
+-- Automatic played time. Only one request at a time; the chat frames that show
+-- TIME_PLAYED_MSG are unregistered while it is open and registered again after
+-- the reply (deferred by one frame) or after a 10 s timeout. Without the chat
+-- frame API, RequestTimePlayed or C_Timer there is no automatic request.
+local function playedFrames()
+    local n=L.Int(NUM_CHAT_WINDOWS,1,50)and NUM_CHAT_WINDOWS or 10;local out={}
+    for i=1,n do
+        local f=_G["ChatFrame"..i]
+        if f~=nil then
+            if type(f)~="table"or type(f.IsEventRegistered)~="function"or type(f.RegisterEvent)~="function"or type(f.UnregisterEvent)~="function"then return nil end
+            if A.Call(f.IsEventRegistered,f,"TIME_PLAYED_MSG")==true then out[#out+1]=f end
+        end
+    end
+    return out
+end
+local function restorePlayed(frames)
+    for _,f in ipairs(frames or{})do A.Call(f.RegisterEvent,f,"TIME_PLAYED_MSG")end
+end
+local function timerReady()return C_Timer~=nil and type(C_Timer.After)=="function"end
+function O.RequestPlayed()
+    if not O.Enabled()or played.inflight or type(RequestTimePlayed)~="function"or not timerReady()then return false end
+    if A.Call(InCombatLockdown)==true then played.waiting=true;return false end
+    local frames=playedFrames();if not frames then return false end
+    played.waiting=false;played.inflight=true;played.frames=frames;played.token=(played.token or 0)+1
+    local token=played.token
+    for _,f in ipairs(frames)do A.Call(f.UnregisterEvent,f,"TIME_PLAYED_MSG")end
+    A.Call(RequestTimePlayed)
+    C_Timer.After(O.PLAYED_TIMEOUT,function()
+        if played.inflight and played.token==token then played.inflight=false;restorePlayed(played.frames);played.frames=nil end
+    end)
+    return true
+end
+local function playedTick()
+    if not O.Enabled()then played.started=false;return end
+    O.RequestPlayed()
+    if timerReady()then C_Timer.After(O.PLAYED_EVERY,playedTick)end
+end
+function startPlayed()
+    if played.started or not O.Enabled()or not timerReady()then return end
+    played.started=true;C_Timer.After(O.PLAYED_FIRST,playedTick)
+end
+local function playedReply()
+    if not played.inflight then return end
+    played.inflight=false;local frames=played.frames;played.frames=nil
+    C_Timer.After(0,function()restorePlayed(frames)end)
 end
 -- PLAYER_LEVEL_UP passes the new level before UnitLevel reports it. Level 0
 -- while the client is still loading is ignored and keeps the known value.
@@ -285,12 +335,12 @@ local function queueBank()
 end
 function O.OnEvent(event,...)
     if not O.Enabled()then return end
-    if event=="PLAYER_ENTERING_WORLD"then O.Sample()
+    if event=="PLAYER_ENTERING_WORLD"then O.Sample();startPlayed()
     elseif event=="PLAYER_MONEY"then O.SampleMoney(true)
-    elseif event=="TIME_PLAYED_MSG"then O.SamplePlayed(...)
+    elseif event=="TIME_PLAYED_MSG"then O.SamplePlayed(...);playedReply()
     elseif event=="PLAYER_LEVEL_UP"then O.SampleLevel(...);O.SampleXP()
     elseif event=="PLAYER_XP_UPDATE"or event=="UPDATE_EXHAUSTION"or event=="PLAYER_UPDATE_RESTING"then O.SampleXP()
-    elseif event=="PLAYER_REGEN_ENABLED"then if O.bagsDirty then O.ScanBags()end;if O.bankDirty then O.ScanBank()end
+    elseif event=="PLAYER_REGEN_ENABLED"then if O.bagsDirty then O.ScanBags()end;if O.bankDirty then O.ScanBank()end;if played.waiting then O.RequestPlayed()end
     elseif event=="BAG_UPDATE_DELAYED"then O.ScanBags();if O.bankOpen then O.ScanBank()end
     elseif event=="BANKFRAME_OPENED"then O.bankOpen=true;O.bankRetries=0;O.ScanBank()
     elseif event=="BANKFRAME_CLOSED"then O.bankOpen=false
@@ -304,10 +354,8 @@ function O.Forget(key)
     return removed
 end
 
--- ZENIAL Utility keeps its own record of the player's characters. It is never
--- required and never written. Its rows are only read on an explicit takeover,
--- which stores a copy with source and time in this store; repeating the
--- takeover replaces that copy, so nothing is ever counted twice.
+-- Rows taken over from ZENIAL Utility by earlier versions (copy with source and
+-- time in this store). Nothing new is imported; the copy is only read.
 local FACTIONS={Alliance=true,Horde=true,Neutral=true}
 local function norm(value)return type(value)=="string"and(value:lower():gsub("[%s%-%'_]",""))or""end
 local function identity(realm,faction,name)return norm(realm).."|"..tostring(faction).."|"..norm(name)end
@@ -327,36 +375,6 @@ function O.SanitizeImported(raw)
         if r and id==identity(r.realm,r.faction,r.name)then out.characters[id]=r;n=n+1 end
     end
     return out
-end
-function O.UtilityLoaded()
-    local loaded=C_AddOns and type(C_AddOns.IsAddOnLoaded)=="function"and A.Call(C_AddOns.IsAddOnLoaded,"ZenialUtility")or A.Call(IsAddOnLoaded,"ZenialUtility")
-    return loaded==true and type(ZenialUtilityDB)=="table"and type(ZenialUtilityDB.characters)=="table"
-end
--- Valid Utility rows by identity. Two rows with one identity are ambiguous and
--- left out entirely.
-function O.UtilityRows()
-    local out,seen,ambiguous,n={},{},0,0;if not O.UtilityLoaded()then return out,0 end
-    for _,raw in pairs(ZenialUtilityDB.characters)do
-        if n>=O.MAX_UTILITY then break end
-        local r=utilityRow(raw)
-        if r then
-            local id=identity(r.realm,r.faction,r.name)
-            if seen[id]then if out[id]then out[id]=nil;n=n-1;ambiguous=ambiguous+1 end;ambiguous=ambiguous+1
-            else seen[id]=true;out[id]=r;n=n+1 end
-        end
-    end
-    return out,ambiguous
-end
--- Copies the current Utility rows into this store. Safe to repeat: the copy is
--- replaced, Utility's own data stays untouched.
-function O.ImportUtility()
-    if not O.store or O.readOnly then return nil,"The account overview uses a newer format."end
-    if not O.UtilityLoaded()then return nil,"ZENIAL Utility is not loaded."end
-    local at=stamp();if not at then return nil,"Character data is not available yet."end
-    local rows,ambiguous=O.UtilityRows();local copy,n={},0
-    for id,r in pairs(rows)do copy[id]={name=r.name,realm=r.realm,faction=r.faction,level=r.level,classFile=r.classFile,money=r.money,seen=r.seen};n=n+1 end
-    O.store.imported={source="utility",at=at,ambiguous=ambiguous,characters=copy};changed()
-    return n,ambiguous
 end
 -- Drops the taken-over rows of a deleted character, so it does not return as
 -- a Utility-only row.
@@ -393,6 +411,28 @@ local function professions(key)
     end
     table.sort(out,function(a,b)return a.name<b.name end)
     return out
+end
+-- Professions of the profile split into main and secondary lists, validated
+-- with L.ValidProfession. An ID the kind table does not know counts as primary.
+local function professionLists(key)
+    local profile=type(ZenialCommunityDB)=="table"and type(ZenialCommunityDB.characters)=="table"and ZenialCommunityDB.characters[key]
+    local primary,secondary={},{}
+    for _,p in ipairs(type(profile)=="table"and type(profile.professions)=="table"and profile.professions or{})do
+        if L.ValidProfession(p)then
+            local e={id=p.id,name=p.name,rank=p.rank,max=p.max}
+            if L.ProfessionKind(p.id)=="secondary"then secondary[#secondary+1]=e else primary[#primary+1]=e end
+        end
+    end
+    local function byName(a,b)return a.name<b.name end
+    table.sort(primary,byName);table.sort(secondary,byName)
+    local states,at={},nil
+    if type(profile)=="table"then
+        at=L.Int(profile.professionsAt,1,MAX_TIME)and profile.professionsAt or nil
+        for name,st in pairs(type(profile.recipeStates)=="table"and profile.recipeStates or{})do
+            if type(name)=="string"and type(st)=="table"then states[name]={complete=st.complete,at=st.at,fullAt=st.fullAt,count=st.count}end
+        end
+    end
+    return primary,secondary,at,states
 end
 local RULESETS={["forever-normal"]="Normal",["forever-pvp"]="PvP",["forever-rp"]="RP",["forever-hardcore"]="Hardcore"}
 function O.Ruleset(realm)
@@ -451,6 +491,7 @@ function O.List(filter)
             sameScope=Z.me~=nil and c.realm==Z.me.realm and c.faction==Z.me.faction}
         local mainKey,mainName=mainFor(characters,c.realm,c.faction)
         local r=rows[#rows]
+        r.primary,r.secondary,r.professionsAt,r.recipeStates=professionLists(key);r.inventory=O.Inventory(key)
         if mainKey==key then r.role="main"elseif mainKey then r.role,r.mainName="alt",mainName end
     end end
     -- Characters only the taken-over Utility data knows: never logged in with
@@ -459,7 +500,7 @@ function O.List(filter)
         local key="utility:"..u.realm.."@"..u.faction.."@"..u.name
         rows[#rows+1]={key=key,name=u.name,realm=u.realm,faction=u.faction,utilityOnly=true,hidden=hidden[key]==true or nil,importedAt=imported.at,
             classFile=u.classFile,classFromUtility=u.classFile~=nil or nil,level=u.level,levelAt=u.level and u.seen,levelFromUtility=u.level~=nil or nil,
-            lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={}}
+            lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={},primary={},secondary={},recipeStates={},inventory=O.Inventory(key)}
     end
     local out={}
     for _,r in ipairs(rows)do
@@ -479,6 +520,11 @@ function O.ImportStatus()
     local index=accountIndex(accountCharacters());local n,ambiguous=0,imported.ambiguous or 0
     for id in pairs(imported.characters)do n=n+1;if index[id]==false then ambiguous=ambiguous+1 end end
     return{source=imported.source,at=imported.at,count=n,ambiguous=ambiguous}
+end
+-- One row as in O.List, without filter.
+function O.Get(key)
+    if type(key)~="string"then return nil end
+    for _,r in ipairs(O.List())do if r.key==key then return r end end
 end
 function O.Realms()
     local seen,out={},{}
