@@ -110,33 +110,33 @@ local function place(f,x,y,w,h)
 end
 local function shown(f,value)if f then f:SetShown(value==true)end end
 
--- Filter options come from the known characters only, so a realm or faction
--- filter never offers a choice that has no character behind it. The first time
--- characters exist, the filters start on the logged-in character's realm and
--- faction (when that realm and faction are among the options).
-local function refreshFilters(all)
-    local realms,factions,seenRealm,seenFaction={},{},{},{}
-    for _,r in ipairs(all)do
-        if r.realm~=''and not seenRealm[r.realm]then seenRealm[r.realm]=true;realms[#realms+1]=r.realm end
-        local option=FACTION_OPTIONS[r.faction];if option and not seenFaction[option]then seenFaction[option]=true;factions[#factions+1]=option end
-    end
-    table.sort(realms);table.sort(factions)
-    local realmValues={'AO_ALL'};for _,realm in ipairs(realms)do realmValues[#realmValues+1]='AO_R:'..realm end
-    local factionValues={'AO_ALL'};for _,option in ipairs(factions)do factionValues[#factionValues+1]=option end
+-- The list always shows the characters of the current realm; there is no realm choice. Faction options come from
+-- those characters only, so the filter never offers a choice that has no character behind it. The first time
+-- characters exist, the faction filter starts on the logged-in character's faction (when it is among the options).
+local function currentRealm()
     local me=Z.me or{}
-    local first=not U.myCharactersScopeDefaulted and #all>0
-    local defaults={first and me.realm and('AO_R:'..tostring(me.realm))or nil,first and FACTION_OPTIONS[me.faction]or nil}
-    for index,spec in ipairs({{U.accountOverviewRealm,realmValues},{U.accountOverviewFaction,factionValues}})do
-        local selector,values=spec[1],spec[2];local current=selector:GetText();local keep='AO_ALL'
-        for _,v in ipairs(values)do if v==current then keep=v end end
-        if defaults[index]then for _,v in ipairs(values)do if v==defaults[index]then keep=v end end end
-        selector:SetOptions(values,keep);selector:SetText(keep)
+    return type(me.realm)=='string'and me.realm or''
+end
+local function refreshFilters(all)
+    local realm=currentRealm();local factions,seenFaction,count={},{},0
+    for _,r in ipairs(all)do
+        if r.realm==realm then
+            count=count+1
+            local option=FACTION_OPTIONS[r.faction];if option and not seenFaction[option]then seenFaction[option]=true;factions[#factions+1]=option end
+        end
     end
+    table.sort(factions)
+    local values={'AO_ALL'};for _,option in ipairs(factions)do values[#values+1]=option end
+    local first=not U.myCharactersScopeDefaulted and count>0
+    local default=first and FACTION_OPTIONS[(Z.me or{}).faction]or nil
+    local selector=U.accountOverviewFaction;local current=selector:GetText();local keep='AO_ALL'
+    for _,v in ipairs(values)do if v==current then keep=v end end
+    if default then for _,v in ipairs(values)do if v==default then keep=v end end end
+    selector:SetOptions(values,keep);selector:SetText(keep)
     if first then U.myCharactersScopeDefaulted=true end
 end
 local function scopeFilter()
-    local realm=U.accountOverviewRealm:GetText()
-    return{realm=type(realm)=='string'and realm:match('^AO_R:(.+)$')or nil,faction=FACTION_VALUES[U.accountOverviewFaction:GetText()]}
+    return{realm=currentRealm(),faction=FACTION_VALUES[U.accountOverviewFaction:GetText()]}
 end
 
 -- Visible rows after realm, faction, hidden and name filters, plus the
@@ -150,7 +150,7 @@ function U.MyCharactersRows()
     local showHidden=U.myCharactersShowHidden:GetChecked()==true
     local scoped,hidden={},0
     for _,r in ipairs(all)do
-        if(not f.realm or r.realm==f.realm)and(not f.faction or r.faction==f.faction)then
+        if r.realm==f.realm and(not f.faction or r.faction==f.faction)then
             if r.hidden and not r.current and not showHidden then hidden=hidden+1 else scoped[#scoped+1]=r end
         end
     end
@@ -158,7 +158,7 @@ function U.MyCharactersRows()
     for _,r in ipairs(scoped)do
         if query==''or string.lower(r.name):find(needle,1,true)~=nil then rows[#rows+1]=r end
     end
-    return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=f.realm~=nil or f.faction~=nil,
+    return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=true,
         realm=f.realm,faction=f.faction,showHidden=showHidden}
 end
 local function summary(context)
@@ -378,9 +378,8 @@ function U.CreateMyCharacters(frame,helpers)
     tooltip(U.myCharactersSummaryHit,function()return plain(U.myCharactersSummary:GetText())end)
     local function reset()U.RefreshMyCharacters()end
     U.accountOverviewSearch=S.edit(frame,'Search character',0,-60,200,64);U.accountOverviewSearch:SetScript('OnTextChanged',reset)
-    U.accountOverviewRealm=S.selector(frame,'Realm',210,-60,200,{'AO_ALL'},reset,function(v)return v=='AO_ALL'and tr('All')or(v:match('^AO_R:(.+)$')or v)end)
-    U.accountOverviewFaction=S.selector(frame,'Faction',420,-60,150,{'AO_ALL'},reset,function(v)return tr(FACTION_NAMES[v]or v)end)
-    U.accountOverviewRealm:SetText('AO_ALL');U.accountOverviewFaction:SetText('AO_ALL')
+    U.accountOverviewFaction=S.selector(frame,'Faction',210,-60,150,{'AO_ALL'},reset,function(v)return tr(FACTION_NAMES[v]or v)end)
+    U.accountOverviewFaction:SetText('AO_ALL')
     U.myCharactersShowHidden=checkbox(frame,tr('Show hidden'),600,-78,170,reset)
     -- Details head of the Overview tab: shared controls with the existing handlers; the tab places them.
     U.myCharactersIcon=frame:CreateTexture(nil,'ARTWORK');U.myCharactersIcon:SetSize(36,36)
@@ -474,16 +473,15 @@ function U.LayoutProfileCharacters()
     -- the whole width (its details page).
     local focused=spec and spec.focused and spec.focused()==true
     local filters=spec~=nil and spec.filters~=false and not focused
-    local filterControls={U.accountOverviewSearch,U.accountOverviewSearch.caption,U.accountOverviewRealm,U.accountOverviewFaction,U.accountOverviewRealm.caption,U.accountOverviewFaction.caption,
+    local filterControls={U.accountOverviewSearch,U.accountOverviewSearch.caption,U.accountOverviewFaction,U.accountOverviewFaction.caption,
         U.myCharactersShowHidden,U.myCharactersShowHidden.text,U.myCharactersSummary,U.myCharactersSummaryHit}
     for _,control in ipairs(filterControls)do shown(control,filters)end
     if filters then
         local hiddenWidth=labelTextWidth(U.myCharactersShowHidden.text)+31
         local rest=width-hiddenWidth-30
-        local search=math.floor(rest*.4);local realm=math.floor(rest*.35);local faction=rest-search-realm
+        local search=math.floor(rest*.6);local faction=rest-search
         place(U.accountOverviewSearch.caption,0,-60,search);place(U.accountOverviewSearch,0,-77,search)
-        placeSelector(U.accountOverviewRealm,search+10,-60,realm)
-        placeSelector(U.accountOverviewFaction,search+realm+20,-60,faction)
+        placeSelector(U.accountOverviewFaction,search+10,-60,faction)
         placeCheck(U.myCharactersShowHidden,width-hiddenWidth,-78,hiddenWidth)
         place(U.myCharactersSummary,0,-108,width,30)
         place(U.myCharactersSummaryHit,0,-108,width,30)

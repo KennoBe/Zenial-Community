@@ -79,6 +79,21 @@ end
 -- Retain the exported compatibility entry point. Build metadata is diagnostic
 -- only; feature-specific API checks determine whether an operation can run.
 A.Build=A.RuntimeAvailable
+-- GetRealmName() can return an empty text (seen on Forever on 2026-11-20). The player then keeps the realm of the
+-- last login with the same name and faction from the saved account data, or an empty realm without one; other
+-- units use the same realm.
+local function savedRealm(target)
+    local db=ZenialCommunityDB;local a=type(db)=="table"and db.account;local list=type(a)=="table"and a.characters
+    if type(list)~="table"then return nil end
+    local faction=A.Call(UnitFactionGroup,"player");local name=string.lower(target);local best,latest=nil,-1
+    for _,c in pairs(list)do
+        if type(c)=="table"and type(c.target)=="string"and string.lower(c.target)==name and c.faction==faction and L.Text(c.realm,64)then
+            local at=tonumber(c.lastLogin)or 0
+            if at>latest then best,latest=c.realm,at end
+        end
+    end
+    return best
+end
 function A.UnitIdentity(unit)
     local givenOrFull,surname=A.Call(UnitFullName,unit)
     local full=A.Call(GetUnitName,unit,true);local key,target=L.Identity(full)
@@ -91,9 +106,13 @@ function A.UnitIdentity(unit)
     -- Forever identities have a first name and surname. Neither name API return
     -- provides a world scope; only the dedicated API scopes local saved data.
     local realm=L.Text(localRealm,64)and localRealm
-    if not realm then return nil end
+    if not realm then
+        if unit=="player"then A.fallbackRealm=savedRealm(target)or""end
+        realm=A.fallbackRealm or""
+    end
     local surnameReturn=L.Text(surname,24)and string.lower(surname)==string.lower(family)
-    local oldRealm=surnameReturn and string.lower(surname)~=string.lower(realm)and surname or nil
+    -- Without any realm the surname is never taken for an old realm, so no surname migration runs into the empty scope.
+    local oldRealm=realm~=""and surnameReturn and string.lower(surname)~=string.lower(realm)and surname or nil
     return key,target,realm,oldRealm
 end
 function A.Identity()

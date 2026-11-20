@@ -81,6 +81,7 @@ function P.Receive(sender,wire)
     return false
 end
 function P.SyncLive()
+    if not Z.db then return end
     local e=Z.db.lfg[1];if not e then P.liveBaseline=nil;return end
     -- A search (mode LFG) is no group: its role flags are the roles the player offers and are never counted
     -- down. It ends as soon as the player is in a group.
