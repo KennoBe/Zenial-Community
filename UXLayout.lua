@@ -346,7 +346,10 @@ function S.applyRoute(route)
         U.SetTradeView(subview)
     elseif section == 'profile' then
         U.SetProfileView(subview)
-        if route.view == 'items' then U.SetMyCharactersTab('items') end
+        if route.view == 'items' or route.view == 'professions' or route.view == 'recipes' then
+            U.SetMyCharactersTab(route.view)
+        end
+        if U.ApplyMyCharactersSelection then U.ApplyMyCharactersSelection(route) end
     elseif section == 'settings' and subview then
         U.SetSettingsView(subview)
     elseif section == 'addons' then

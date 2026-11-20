@@ -66,6 +66,8 @@ local ROUTES = {
     ['characters'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
     ['characters/overview'] = r('characters', 'overview', 6, 'profile', 'characters', 'character'),
     ['characters/items'] = r('characters', 'items', 6, 'profile', 'characters', 'character'),
+    ['characters/professions'] = r('characters', 'professions', 6, 'profile', 'characters', 'character'),
+    ['characters/recipes'] = r('characters', 'recipes', 6, 'profile', 'characters', 'character'),
     ['profile/display'] = r('settings', 'display', 11, 'settings', 'display'),
     ['settings/display'] = r('settings', 'display', 11, 'settings', 'display'),
     ['profile/network'] = r('settings', 'privacy', 11, 'settings', 'privacy'),
@@ -122,15 +124,28 @@ function N.Resolve(section, subview, selection)
             end
             route.selection = selection
         elseif def[6] == 'character' then
-            if type(selection) ~= 'table' or type(selection.characterKey) ~= 'string' or selection.characterKey == '' then
+            -- {characterKey, profession, recipe, itemID}: every field optional, at least one given.
+            if type(selection) ~= 'table' then
                 return nil, 'invalid-selection'
             end
-            for k in pairs(selection) do
-                if k ~= 'characterKey' then
+            local clean = {}
+            for k, v in pairs(selection) do
+                if k == 'characterKey' and type(v) == 'string' and v ~= '' and #v <= 260 then
+                    clean.characterKey = v
+                elseif k == 'profession' and type(v) == 'string' and v ~= '' and #v <= 64 then
+                    clean.profession = v
+                elseif k == 'recipe' and (type(v) == 'number' and v % 1 == 0 and v > 0 or type(v) == 'string' and v ~= '' and #v <= 64) then
+                    clean.recipe = v
+                elseif k == 'itemID' and type(v) == 'number' and v % 1 == 0 and v > 0 and v < 2147483647 then
+                    clean.itemID = v
+                else
                     return nil, 'invalid-selection'
                 end
             end
-            route.selection = { characterKey = selection.characterKey }
+            if next(clean) == nil then
+                return nil, 'invalid-selection'
+            end
+            route.selection = clean
         else
             return nil, 'invalid-selection'
         end

@@ -1,10 +1,12 @@
 -- "My characters": the player's own characters in one view on the profile page.
--- Two tabs: Overview (character list plus a character sheet with gold, rested
--- XP, played time, professions and recorded bags/bank) and Inventory search (item
--- search over the recorded bags and banks). Reads local data only; nothing
--- here sends data to other players. Main changes go through Z.SetMain,
--- deletion through the existing Z.RemoveCharacter confirmation; hiding only
--- affects this view.
+-- This file is the shell: head, tab row, shared filters, footer with the recording
+-- options and the character menu. Every tab registers itself with
+-- U.RegisterMyCharactersTab(id, {create, layout, refresh}); the shell only calls
+-- the visible one. The Overview tab (character cards and details) lives in
+-- MyCharactersCards.lua; the Inventory tab (item search over the recorded bags and
+-- banks) is still built here. Reads local data only; nothing here sends data to
+-- other players. Main changes go through Z.SetMain, deletion through the existing
+-- Z.RemoveCharacter confirmation; hiding only affects this view.
 local Z,U,A=ZenialCommunity,ZenialCommunity.UI,ZenialCommunity.Adapter
 local L,T=Z.Logic,Z.Theme
 local S
@@ -22,16 +24,21 @@ local function paint(key,text)
     return text
 end
 local function styled()return Z.Kit~=nil and T~=nil and T.PaletteHex~=nil end
-local ROW_HEIGHT=46
 local HIT_HEIGHT=30
 local HOLDER_HEIGHT=40
--- Content widths from here on use the wide two-column layout; below it the
--- list and the detail alternate (list first, selection opens the detail).
+-- Content widths from here on use the wide two-column layout of the Inventory
+-- tab; below it the hits and the holders alternate (hits first).
 local WIDE_WIDTH=840
-local SHEET_TWO_COLUMNS=520
 local BUTTON_HEIGHT=28
+-- Tabs of the view in their order. The public profile is the last tab and
+-- belongs to the profile page, not to this registry.
+local TAB_ORDER={'overview','professions','recipes','items'}
+local TAB_LABEL={overview='Overview',professions='Professions',recipes='Recipes',items='Inventory'}
+local TAB_SPEC={}
 
 U.myCharactersTab=U.myCharactersTab or'overview'
+U.myCharactersBodies=U.myCharactersBodies or{}
+U.myCharactersTabButtons=U.myCharactersTabButtons or{}
 
 local function when(at)return at and Z.ScheduleTime.Format(at)or tr('Unknown')end
 local function duration(seconds)
@@ -40,8 +47,10 @@ local function duration(seconds)
     return tr('%dh %dm',hours,minutes)
 end
 local function className(r)
-    if r.className then return r.className end
-    return r.classFile and Z.Locale.Class(nil,r.classFile)or''
+    -- A known class file is always shown localized; the stored class name is only the fallback.
+    local localized=r.classFile and Z.Locale.Class(nil,r.classFile)
+    if localized and localized~=''then return localized end
+    return r.className or''
 end
 local function trim(v)return type(v)=='string'and v:match('^%s*(.-)%s*$')or''end
 local function plain(text)return(text or''):gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|r','')end
@@ -95,9 +104,18 @@ local function buttonTooltip(button,text)
     end)
     button:HookScript('OnLeave',function()if GameTooltip then GameTooltip:Hide()end end)
 end
+-- Explicit placement relative to the parent's top left corner.
+local function place(f,x,y,w,h)
+    f:ClearAllPoints();f:SetPoint('TOPLEFT',x,y)
+    if w then f:SetWidth(w)end
+    if h then f:SetHeight(h)end
+end
+local function shown(f,value)if f then f:SetShown(value==true)end end
 
 -- Filter options come from the known characters only, so a realm or faction
--- filter never offers a choice that has no character behind it.
+-- filter never offers a choice that has no character behind it. The first time
+-- characters exist, the filters start on the logged-in character's realm and
+-- faction (when that realm and faction are among the options).
 local function refreshFilters(all)
     local realms,factions,seenRealm,seenFaction={},{},{},{}
     for _,r in ipairs(all)do
@@ -107,11 +125,16 @@ local function refreshFilters(all)
     table.sort(realms);table.sort(factions)
     local realmValues={'AO_ALL'};for _,realm in ipairs(realms)do realmValues[#realmValues+1]='AO_R:'..realm end
     local factionValues={'AO_ALL'};for _,option in ipairs(factions)do factionValues[#factionValues+1]=option end
-    for _,spec in ipairs({{U.accountOverviewRealm,realmValues},{U.accountOverviewFaction,factionValues}})do
+    local me=Z.me or{}
+    local first=not U.myCharactersScopeDefaulted and #all>0
+    local defaults={first and me.realm and('AO_R:'..tostring(me.realm))or nil,first and FACTION_OPTIONS[me.faction]or nil}
+    for index,spec in ipairs({{U.accountOverviewRealm,realmValues},{U.accountOverviewFaction,factionValues}})do
         local selector,values=spec[1],spec[2];local current=selector:GetText();local keep='AO_ALL'
         for _,v in ipairs(values)do if v==current then keep=v end end
+        if defaults[index]then for _,v in ipairs(values)do if v==defaults[index]then keep=v end end end
         selector:SetOptions(values,keep);selector:SetText(keep)
     end
+    if first then U.myCharactersScopeDefaulted=true end
 end
 local function scopeFilter()
     local realm=U.accountOverviewRealm:GetText()
@@ -120,8 +143,8 @@ end
 
 -- Visible rows after realm, faction, hidden and name filters, plus the
 -- context needed to explain an empty list. The name search only filters
--- characters; items are searched on the Inventory search tab (U.MyCharactersItemHits).
--- context.scoped is the scope shared by both tabs (before the name search).
+-- characters; items are searched on the Inventory tab (U.MyCharactersItemHits).
+-- context.scoped is the scope shared by all tabs (before the name search).
 function U.MyCharactersRows()
     local overview=O();local all=overview.List()
     refreshFilters(all)
@@ -140,7 +163,7 @@ function U.MyCharactersRows()
     return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=f.realm~=nil or f.faction~=nil,
         realm=f.realm,faction=f.faction,showHidden=showHidden}
 end
--- Item hits of the Inventory search tab: only AccountOverview.Search over the
+-- Item hits of the Inventory tab: only AccountOverview.Search over the
 -- characters of the overview scope. An empty query finds nothing.
 function U.MyCharactersItemHits(context)
     local query=trim(U.itemSearch:GetText())
@@ -175,147 +198,8 @@ local function summary(context)
     return paint('text',first)..'\n'..paint('dim',table.concat(second,' · '))..note
 end
 
-local function openDetail()
-    -- Below the wide width a selection replaces the list by the detail.
-    U.myCharactersDetailOpen=true
-end
-local function listItem(r)
-    local b=badge(r)
-    local title=(r.hidden and DIM or'')..r.name..(r.hidden and'|r'or'')..(b and('  '..b)or'')
-        ..(r.current and('  '..GOLD..'· '..tr('Logged in')..'|r')or'')
-    local sub={r.level and(tr('Level')..' '..r.level)or(tr('Level')..' ?')}
-    if r.realm~=''then sub[#sub+1]=r.realm end
-    if r.faction~=''then sub[#sub+1]=tr(r.faction)end
-    local updated=math.max(r.updatedAt or 0,r.lastLogin or 0)
-    sub[#sub+1]=tr('updated %s',updated>0 and S.age(updated)or tr('never'))
-    if r.hidden then sub[#sub+1]=tr('hidden')end
-    local subtitle=table.concat(sub,' · ')
-    local item={icon=classIcon(r),text=title,subtitle=subtitle,noWrap=true,height=ROW_HEIGHT,selected=r.key==U.characterKey,
-        tooltip=r.name..'\n'..subtitle,click=function()U.characterKey=r.key;U.CloseDropdowns();openDetail();U.RefreshMyCharacters()end}
-    -- Weighting only through display: the name bright (dim while hidden), role and logged-in marker in their own
-    -- tones, level, realm and meta dim. The words stay those of text/subtitle.
-    if styled()then
-        local role=badge(r,true)
-        item.display=paint(r.hidden and'dim'or'text',r.name)..(role and('  '..role)or'')
-            ..(r.current and('  '..paint('goldBright','· '..tr('Logged in')))or'')
-        item.subtitleDisplay=paint('dim',subtitle)
-    end
-    return item
-end
-
-local function restedText(r)
-    if r.maxLevel then return tr('Maximum level')end
-    if not r.rested or not r.xpMax then return tr('Unknown')end
-    local percent=math.floor(r.rested*100/r.xpMax+.5)
-    return tr('%d%% of a level',percent)..(r.resting and(' · '..tr('Resting'))or'')..' · '..tr('as of %s',when(r.restedAt))
-end
-local function header(r)
-    local b=badge(r,true)
-    local line=paint('goldBright',r.name)..(b and('  '..b)or'')..(r.current and('  '..paint('textSoft','· '..tr('Logged in')))or'')
-    local info={}
-    if className(r)~=''then info[#info+1]=className(r)end
-    info[#info+1]=tr('Level')..' '..(r.level or tr('Unknown'))
-    local ruleset=r.realm~=''and O().Ruleset(r.realm)
-    if r.realm~=''then info[#info+1]=r.realm..(ruleset and(' ('..tr(ruleset)..')')or'')end
-    if r.faction~=''then info[#info+1]=tr(r.faction)end
-    return line..'\n'..paint('textSoft',table.concat(info,' · '))
-end
-local function roleText(r)
-    if r.utilityOnly then return nil end
-    if not r.sameScope then return tr('Main and alts are set in the game world and faction you are logged in to. Log in there to change this character.')end
-    if r.role=='main'then return tr('Main of this game world and faction. Without your own choice the first character saved with ZENIAL becomes main; you can change it on any alt.')end
-    if r.role=='alt'then return tr('Alt of %s. Other members see this link only while your profile is visible.',r.mainName or tr('Unknown'))end
-end
-
--- Character sheet: notes spanning the full width plus typed sections
--- (heading and value). Missing data keeps its "unknown" wording, never zero.
-local function sheet(r)
-    local out={}
-    -- key/role: palette colour and type role of the block's text (see layoutSheet).
-    local function note(text,key)out[#out+1]={full=true,text=text,key=key or'textSoft'}end
-    local function section(head,text,role)out[#out+1]={head=tr(head),text=text,key='text',role=role or'body'}end
-    local role=roleText(r);if role then note(role)end
-    if r.hidden then note(tr('Hidden from this overview. Its data is kept; show hidden characters to see it again.'))end
-    section('GOLD',r.money and(A.MoneyText(r.money)..' · '..tr('as of %s',when(r.moneyAt)))or tr('Unknown'),'heading')
-    -- Values from the taken-over Utility copy are named, with the takeover time.
-    local fields={}
-    if r.moneyFromUtility then fields[#fields+1]=tr('Gold')end
-    if r.levelFromUtility then fields[#fields+1]=tr('Level')end
-    if r.classFromUtility then fields[#fields+1]=tr('Class')end
-    if #fields>0 and r.importedAt then
-        note(tr('From ZENIAL Utility')..': '..table.concat(fields,', ')..' · '..tr('taken over %s',when(r.importedAt)),'dim')
-    end
-    if r.utilityOnly then
-        note(tr('Only known from the data taken over from ZENIAL Utility. Log in with this character to record more.'))
-    else
-        section('RESTED XP',restedText(r))
-        section('PLAYED TIME',r.played and(duration(r.played)..' · '..tr('as of %s',when(r.playedAt)))or tr('Type /played on this character.'))
-        local professions={}
-        for _,p in ipairs(r.professions)do professions[#professions+1]=tr(L.ProfessionName(p.name))..' '..p.rank..(p.max and('/'..p.max)or'')end
-        section('PROFESSIONS',#professions>0 and table.concat(professions,'\n')or tr('None recorded'))
-        section('BAGS',r.bagsAt and(tr('%d items',r.bagCount or 0)..' · '..tr('as of %s',when(r.bagsAt)))or tr('Not recorded'))
-        section('BANK',r.bankAt and(tr('%d items',r.bankCount or 0)..' · '..tr('as of %s',when(r.bankAt)))or tr('Bank never opened while recording.'))
-    end
-    -- Data line: where the values come from and how old they are.
-    local data={tr('Last login')..': '..when(r.lastLogin)}
-    if r.updatedAt then data[#data+1]=tr('Last updated')..': '..when(r.updatedAt)end
-    note(table.concat(data,' · '),'dim')
-    return out
-end
-local function sheetNode(index)
-    local nodes=U.sheetNodes;local node=nodes[index]
-    if not node then
-        local child=U.accountOverviewDetails.child
-        local function text(font)
-            local fs=T and T.Text(child,'',font)or child:CreateFontString(nil,'OVERLAY',font)
-            if not T then fs:SetJustifyH('LEFT');fs:SetJustifyV('TOP')end
-            return fs
-        end
-        node={head=text('GameFontNormalSmall'),body=text('GameFontHighlightSmall')};nodes[index]=node
-    end
-    return node
-end
--- Places the sheet blocks: sections in two columns once the scroll area is
--- wide enough, otherwise one column; notes always use the full width.
-local function layoutSheet()
-    local view=U.accountOverviewDetails;local blocks=U.sheetBlocks or{}
-    local width=math.max(120,view.width or 400);local two=width>=SHEET_TWO_COLUMNS;local gap=16
-    local column=two and math.floor((width-gap)/2)or width
-    local y,pending=0,nil
-    local function place(node,block,x,w)
-        node.body:ClearAllPoints();node.head:ClearAllPoints()
-        local top=0
-        if block.head then
-            node.head:SetPoint('TOPLEFT',x,-y);node.head:SetWidth(w);node.head:SetHeight(14);node.head:Show();top=16
-            if T and T.Font then node.head:SetText(block.head);T.Font(node.head,'overline','goldDim')
-            else node.head:SetText(GOLD..block.head..'|r')end
-        else node.head:Hide()end
-        node.body:SetPoint('TOPLEFT',x,-(y+top));node.body:SetWidth(w);node.body:SetText(block.text)
-        -- Sheet text through type roles and palette: values bright, notes receding.
-        if T and T.Font then T.Font(node.body,block.role or'caption',block.key or'text')end
-        local height=math.max(14,math.ceil(node.body:GetStringHeight()))
-        node.body:SetHeight(height);node.body:Show()
-        return top+height+10
-    end
-    for index,block in ipairs(blocks)do
-        local node=sheetNode(index)
-        if block.full or not two then
-            if pending then y=y+pending;pending=nil end
-            y=y+place(node,block,0,width)
-        elseif not pending then
-            pending=place(node,block,0,column)
-        else
-            local second=place(node,block,column+gap,column);y=y+math.max(pending,second);pending=nil
-        end
-    end
-    if pending then y=y+pending end
-    for index=#blocks+1,#U.sheetNodes do local node=U.sheetNodes[index];node.head:Hide();node.body:Hide()end
-    view.child:SetHeight(math.max(1,y))
-    if U.sheetKey~=U.characterKey then U.sheetKey=U.characterKey;view:SetVerticalScroll(0)end
-end
-
--- Scope shown on the Inventory search tab: the overview's realm, faction and
--- hidden choice. Items are searched exactly there.
+-- Scope shown on the Inventory tab: the overview's realm, faction and hidden
+-- choice. Items are searched exactly there.
 local function scopeText(context)
     local parts={context.realm or tr('All realms'),context.faction and tr(context.faction)or tr('All factions')}
     if context.showHidden then parts[#parts+1]=tr('including hidden')end
@@ -388,18 +272,6 @@ local function refreshItems(context)
     S.rows(U.itemHolderList,holders,HOLDER_HEIGHT)
 end
 
-local function emptyHint(context)
-    if context.query~=''then return tr('No character matches this search.')end
-    if context.hidden>0 then return tr('All matching characters are hidden. Turn on "Show hidden" to see them.')end
-    if context.filtered then return tr('No character for this realm and faction.')end
-    return tr('No characters recorded yet.')
-end
-
-local function selectedRow(rows)
-    for _,r in ipairs(rows)do if r.key==U.characterKey then return r end end
-    for _,r in ipairs(rows)do if r.current then U.characterKey=r.key;return r end end
-    if rows[1]then U.characterKey=rows[1].key;return rows[1]end
-end
 local function onOff(value)return value and tr('on')or tr('off')end
 local layoutMenus
 function U.RefreshMyCharacters()
@@ -411,20 +283,16 @@ function U.RefreshMyCharacters()
     local recording,inventory=overview.Enabled(),overview.InventoryEnabled()
     U.myCharactersRecordStatus:SetText(paint('dim',tr('Recording: %s · Bags and bank: %s',onOff(recording),onOff(recording and inventory))))
     local rows,context=U.MyCharactersRows()
-    local selected=selectedRow(rows)
+    -- A deleted character closes its details (the delete handler selects the logged-in character).
+    local deleting=U.myCharactersDeleting
+    if deleting and not U.characterConfirm:IsShown()then
+        if not overview.Get(deleting)then U.myCharactersDetailOpen=false end
+        U.myCharactersDeleting=nil
+    end
+    local selected=U.myCharactersDetailOpen and overview.Get(U.characterKey)or nil
     if not selected then U.myCharactersDetailOpen=false end
-    local items={};for _,r in ipairs(rows)do items[#items+1]=listItem(r)end
-    U.SetEmptyHint(U.characterList,emptyHint(context),'characters')
-    S.rows(U.characterList,items,ROW_HEIGHT)
-    U.myCharactersSummary:SetText(summary(context))
     U.myCharactersSelected=selected
-    U.myCharactersHeader:SetText(selected and header(selected)or tr('Select a character.'))
-    if selected and U.myCharactersIcon and T then T.SetTexture(U.myCharactersIcon,classIcon(selected))end
-    U.sheetBlocks=selected and sheet(selected)or{}
-    -- The sheet is drawn by layoutSheet; these flat items only mirror its words (information, nothing clickable).
-    local texts={}
-    for _,block in ipairs(U.sheetBlocks)do texts[#texts+1]={text=(block.head and(block.head..': ')or'')..block.text,flat=true,section=block.head~=nil or nil}end
-    U.accountOverviewDetails.zenialItems=texts
+    U.myCharactersSummary:SetText(summary(context))
     U.setMainButton:SetEnabled(canSetMain(selected)==true)
     U.myCharactersMore:SetEnabled(selected~=nil)
     U.hideCharacterButton:SetText(tr(selected and selected.hidden and'Show in overview again'or'Hide from overview'))
@@ -434,7 +302,8 @@ function U.RefreshMyCharacters()
     if selected and selected.current then note=tr('The logged-in character always stays visible and cannot be deleted.')
     elseif selected and not canDelete(selected)then note=tr('Data can only be deleted for characters of the game world and faction you are logged in to.')end
     U.myCharactersMenuNote:SetText(note or'')
-    if U.myCharactersTab=='items'then refreshItems(context)end
+    local spec=TAB_SPEC[U.myCharactersTab or'overview']
+    if spec and spec.refresh then spec.refresh(rows,context)end
     layoutMenus()
     U.LayoutProfileCharacters()
 end
@@ -443,7 +312,7 @@ end
 local function confirmDelete()
     local r=U.myCharactersSelected;U.CloseDropdowns()
     if not canDelete(r)then return end
-    U.removeCharacterKey=r.key
+    U.removeCharacterKey=r.key;U.myCharactersDeleting=r.key
     U.characterConfirmText:SetText(tr('Delete all data of %s? This removes its saved profile, professions, recipes, drafts and private overview data (gold, rested XP, bags, bank) as well as notes, favorites and categories stored for it. History is kept. If it is your main, the logged-in character becomes main. This cannot be undone.',r.name))
     U.characterConfirm:Show()
 end
@@ -494,30 +363,153 @@ local function setTab(tab)
     U.myCharactersTab=tab;U.myCharactersDetailOpen=false;U.itemsDetailOpen=false
     U.RefreshMyCharacters()
 end
-function U.SetMyCharactersTab(tab)setTab(tab=='items'and'items'or'overview')end
+function U.SetMyCharactersTab(tab)setTab(TAB_SPEC[tab]and tab or'overview')end
+
+-- Route selection {characterKey, profession, recipe, itemID}: kept for the tab it
+-- belongs to. A character on the overview route opens its details; an item on
+-- the Inventory route fills the item search.
+function U.ApplyMyCharactersSelection(route)
+    local selection=type(route.selection)=='table'and route.selection or nil
+    U.myCharactersSelection=selection
+    if not selection then return end
+    if selection.characterKey then U.characterKey=selection.characterKey end
+    if route.view=='overview'and selection.characterKey then
+        setTab('overview');U.myCharactersDetailOpen=true;U.RefreshMyCharacters()
+    elseif route.view=='items'and selection.itemID and U.itemSearch then
+        U.itemSearch:SetText(tostring(selection.itemID));U.RefreshMyCharacters()
+    end
+end
+local function openRoute(view,selection)
+    U.Create()
+    if not U.frame:IsShown()then U.frame:Show()end
+    local ok=U.Navigate('characters',view,selection)
+    if ok then U.Refresh()end
+    return ok
+end
+local function cleanSelection(selection,allowed)
+    local out={}
+    if type(selection)=='table'then for _,field in ipairs(allowed)do if selection[field]~=nil then out[field]=selection[field]end end end
+    return next(out)and out or nil
+end
+function U.OpenMyCharactersDetail(key)
+    if type(key)~='string'or key==''then return false end
+    return openRoute('overview',{characterKey=key})
+end
+function U.OpenMyCharactersRecipes(selection)
+    return openRoute('recipes',cleanSelection(selection,{'characterKey','profession','recipe'}))
+end
+function U.OpenMyCharactersInventory(selection)
+    return openRoute('items',cleanSelection(selection,{'characterKey','itemID'}))
+end
+
+-- Pieces the tab files share with the shell.
+U.MyCharactersUI={paint=paint,styled=styled,when=when,duration=duration,className=className,plain=plain,badge=badge,classIcon=classIcon,
+    canDelete=canDelete,canSetMain=canSetMain,canHide=canHide,buttonTextWidth=buttonTextWidth,fitButton=fitButton,place=place,shown=shown,
+    BUTTON_HEIGHT=BUTTON_HEIGHT,
+    showDetail=function(key)
+        U.characterKey=key;U.myCharactersDetailOpen=true;U.CloseDropdowns();U.RefreshMyCharacters()
+    end,
+    closeDetail=function()U.myCharactersDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end}
+
+-- Inventory tab: its own search, hits on the left and holders on the right.
+local function createItems(body,helpers)
+    local label,button=helpers.label,helpers.button
+    local function reset()U.RefreshMyCharacters()end
+    U.itemSearch=helpers.edit(body,'Item name (2+ characters) or item ID',0,0,300,64);U.itemSearch:SetScript('OnTextChanged',reset)
+    -- Small search symbol inside the field (pattern: U.memberSearchIcon).
+    if Z.Kit and T then
+        local icon=Z.Kit.Icon(U.itemSearch,'search',14,'muted');icon:SetPoint('LEFT',8,0);U.itemSearchIcon=icon
+        if U.itemSearch.SetTextInsets then U.itemSearch:SetTextInsets(26,8,4,4)end
+    end
+    U.itemScope=label(body,'',320,-17,300)
+    U.itemsNote=label(body,'',0,-48,800)
+    U.itemsNote:SetHeight(60)
+    U.itemHitList=helpers.list(body,0,-82,300,260)
+    -- Who holds the item is information only: flat rows, no sunken well (D-23).
+    U.itemHolderList=helpers.list(body,320,-82,400,260)
+    if Z.Kit then Z.Kit.InfoBlock(U.itemHolderList)end
+    U.itemsBack=button(body,'Back to results',0,-82,140,function()U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
+end
+local function placeList(view,x,y,w,h)
+    local changed=view:GetWidth()~=w or view:GetHeight()~=h
+    place(view,x,y,w,h);view.width,view.height=w-24,h;view.child:SetWidth(w-24)
+    if changed and view.zenialRender then view.zenialRender()end
+end
+local function placeEdit(e,x,y,w)place(e.caption,x,y,w);place(e,x,y-17,w)end
+local function layoutItems(_,_,width,height)
+    local wide=width>=WIDE_WIDTH
+    local focused=not wide and U.itemsDetailOpen
+    for _,control in ipairs({U.itemSearch,U.itemSearch.caption,U.itemScope,U.itemsNote})do shown(control,not focused)end
+    local top=0
+    if not focused then
+        local searchWidth=math.min(360,math.floor(width*.5))
+        placeEdit(U.itemSearch,0,0,searchWidth)
+        place(U.itemScope,searchWidth+16,-17,width-searchWidth-16,24)
+        place(U.itemsNote,0,-48,width)
+        local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
+        U.itemsNote:SetHeight(noteHeight)
+        top=48+noteHeight+12
+    end
+    local body=math.max(120,height-top)
+    local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
+    local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
+    local itemsDetail=wide or U.itemsDetailOpen
+    local itemsList=wide or not U.itemsDetailOpen
+    shown(U.itemHitList,itemsList);shown(U.itemHolderList,itemsDetail)
+    shown(U.itemsBack,not wide and U.itemsDetailOpen)
+    placeList(U.itemHitList,0,-top,listWidth,body)
+    local holderTop=top
+    if itemsDetail and not wide then fitButton(U.itemsBack,96);place(U.itemsBack,0,-top);holderTop=top+34 end
+    placeList(U.itemHolderList,detailX,-holderTop,detailWidth,body-(holderTop-top))
+end
+function U.RegisterMyCharactersTab(id,spec)
+    if not TAB_LABEL[id]or type(spec)~='table'then return false end
+    TAB_SPEC[id]=spec
+    -- A tab that registers after the view was built gets its body at once.
+    if U.myCharactersBuilt and not U.myCharactersBodies[id]and spec.create then
+        local body=CreateFrame('Frame',nil,U.myCharactersFrame);body:SetSize(100,100);body:Hide()
+        U.myCharactersBodies[id]=body;spec.create(body,S)
+    end
+    return true
+end
+U.RegisterMyCharactersTab('items',{filters=false,create=createItems,layout=layoutItems,
+    refresh=function(_,context)refreshItems(context)end})
+-- Professions and Recipes get their own files; until then the tab shows an empty state.
+for _,id in ipairs({'professions','recipes'})do
+    local state
+    U.RegisterMyCharactersTab(id,{
+        create=function(body)
+            state=Z.Kit.EmptyState(body,{icon='characters',title=tr(TAB_LABEL[id]),width=320});state:SetPoint('TOP',body,'TOP',0,-40)
+        end,
+        layout=function()end,refresh=function()end})
+end
 
 -- Builds the view into the profile page's characters frame.
 function U.CreateMyCharacters(frame,helpers)
     S=helpers;local overview=O()
     local label,button,checkbox=S.label,S.button,S.checkbox
-    U.sheetNodes={}
+    U.myCharactersFrame=frame
     -- Head: title and the private-storage note with its explanation.
     U.profileCharactersTitle=label(frame,paint('goldBright',tr('My characters')),0,0,400,'GameFontNormalLarge')
     U.myCharactersPrivacy=label(frame,tr('Stored privately'),400,-4,200)
     U.myCharactersPrivacy:SetJustifyH('RIGHT')
     U.myCharactersPrivacyHit=CreateFrame('Frame',nil,frame)
     tooltip(U.myCharactersPrivacyHit,function()return tr('Stored only on this computer. This list itself is not sent to other players. While your public profile is visible, your main character and up to 10 other characters of the same realm and faction are published with it. The optional Companion export is a separate setting.')end)
-    -- Tabs.
-    -- Three tabs of one view. The public profile is the third tab: it keeps this head and tab row and
+    -- Tabs: the registered tabs plus the public profile as the last one. It keeps this head and tab row and
     -- shows its form below (U.profilePublicFrame); leaving it returns to the chosen characters tab.
     local function openTab(tab)
         if U.profileView=='public'then U.myCharactersTab=nil;U.SetProfileView('characters')end
         setTab(tab)
     end
-    U.myCharactersOverviewTab=S.navButton(frame,'Overview',0,-26,110,function()openTab('overview')end)
-    U.myCharactersItemsTab=S.navButton(frame,'Inventory search',120,-26,150,function()openTab('items')end)
+    for _,id in ipairs(TAB_ORDER)do
+        U.myCharactersTabButtons[id]=S.navButton(frame,TAB_LABEL[id],0,-26,110,function()openTab(id)end)
+    end
+    U.myCharactersOverviewTab=U.myCharactersTabButtons.overview
+    U.myCharactersProfessionsTab=U.myCharactersTabButtons.professions
+    U.myCharactersRecipesTab=U.myCharactersTabButtons.recipes
+    U.myCharactersItemsTab=U.myCharactersTabButtons.items
     U.myCharactersPublicTab=S.navButton(frame,'Public profile: current character',280,-26,260,function()U.CloseDropdowns();U.SetProfileView('public')end)
-    -- Overview filters.
+    -- Shared filters.
     U.myCharactersSummary=label(frame,'',0,-108,800)
     U.myCharactersSummary:SetHeight(30)
     U.myCharactersSummaryHit=CreateFrame('Frame',nil,frame)
@@ -528,12 +520,11 @@ function U.CreateMyCharacters(frame,helpers)
     U.accountOverviewFaction=S.selector(frame,'Faction',420,-60,150,{'AO_ALL'},reset,function(v)return tr(FACTION_NAMES[v]or v)end)
     U.accountOverviewRealm:SetText('AO_ALL');U.accountOverviewFaction:SetText('AO_ALL')
     U.myCharactersShowHidden=checkbox(frame,tr('Show hidden'),600,-78,170,reset)
-    U.characterList=S.list(frame,0,-142,300,260)
-    -- Character sheet.
-    U.myCharactersIcon=frame:CreateTexture(nil,'ARTWORK');U.myCharactersIcon:SetSize(32,32)
+    -- Details head of the Overview tab: shared controls with the existing handlers; the tab places them.
+    U.myCharactersIcon=frame:CreateTexture(nil,'ARTWORK');U.myCharactersIcon:SetSize(36,36)
     U.myCharactersHeader=label(frame,'',320,-142,400,'GameFontHighlight')
     U.myCharactersHeader:SetHeight(36)
-    U.myCharactersBack=button(frame,'Back to results',320,-142,140,function()U.myCharactersDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
+    U.myCharactersBack=button(frame,'Back to overview',320,-142,140,function()U.myCharactersDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
     U.setMainButton=button(frame,'Set as main character',320,-182,200,function()
         local r=U.myCharactersSelected
         if canSetMain(r)and Z.SetMain(r.key)then U.Message(tr('%s is now your main.',r.name))end
@@ -541,27 +532,17 @@ function U.CreateMyCharacters(frame,helpers)
     end,'primary')
     buttonTooltip(U.setMainButton,tr('While your public profile is visible, other players can see your main character and up to 10 other characters of this realm and faction.'))
     U.myCharactersMore=button(frame,'More',530,-182,80,toggleMenu)
-    -- The character sheet is information only: no sunken well (D-23).
-    U.accountOverviewDetails=S.list(frame,320,-216,400,180)
-    if Z.Kit then Z.Kit.InfoBlock(U.accountOverviewDetails)end
-    -- Inventory search: its own search, hits on the left and holders on the right.
-    U.itemSearch=S.edit(frame,'Item name (2+ characters) or item ID',0,-60,300,64);U.itemSearch:SetScript('OnTextChanged',reset)
-    -- Small search symbol inside the field (pattern: U.memberSearchIcon).
-    if Z.Kit and T then
-        local icon=Z.Kit.Icon(U.itemSearch,'search',14,'muted');icon:SetPoint('LEFT',8,0);U.itemSearchIcon=icon
-        if U.itemSearch.SetTextInsets then U.itemSearch:SetTextInsets(26,8,4,4)end
-    end
-    U.itemScope=label(frame,'',320,-77,300)
-    U.itemsNote=label(frame,'',0,-108,800)
-    U.itemsNote:SetHeight(60)
-    U.itemHitList=S.list(frame,0,-142,300,260)
-    -- Who holds the item is information only: flat rows, no sunken well (D-23).
-    U.itemHolderList=S.list(frame,320,-142,400,260)
-    if Z.Kit then Z.Kit.InfoBlock(U.itemHolderList)end
-    U.itemsBack=button(frame,'Back to results',0,-142,140,function()U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()end)
     -- Footer: recording status and the options popup.
     U.myCharactersRecordStatus=label(frame,'',0,-380,400)
     U.myCharactersRecordButton=button(frame,'Recording options',600,-374,160,toggleRecordMenu)
+    -- Tab bodies, below the tab row (and the filters when the tab uses them).
+    for _,id in ipairs(TAB_ORDER)do
+        local spec=TAB_SPEC[id]
+        if spec and spec.create then
+            local body=CreateFrame('Frame',nil,frame);body:SetSize(100,100);body:Hide()
+            U.myCharactersBodies[id]=body;spec.create(body,S)
+        end
+    end
     -- Secondary menu: the reversible hide action apart from the destructive deletion.
     local menu=CreateFrame('Frame',nil,frame,BackdropTemplateMixin and'BackdropTemplate'or nil)
     U.myCharactersMenu=menu;menu:SetFrameStrata('TOOLTIP');menu:SetClampedToScreen(true);menu:SetSize(250,128)
@@ -596,23 +577,10 @@ function U.CreateMyCharacters(frame,helpers)
 end
 
 -- Explicit reflow. The characters view runs at native scale (see
--- U.PageUsesNativeScale), so the frame width is the real content width and the
--- layout switches between one and two columns by it. The bottom row stays
--- free for the page-wide Settings button.
-local function place(f,x,y,w,h)
-    f:ClearAllPoints();f:SetPoint('TOPLEFT',x,y)
-    if w then f:SetWidth(w)end
-    if h then f:SetHeight(h)end
-end
-local function placeList(view,x,y,w,h)
-    local changed=view:GetWidth()~=w or view:GetHeight()~=h
-    place(view,x,y,w,h);view.width,view.height=w-24,h;view.child:SetWidth(w-24)
-    if changed and view.zenialRender then view.zenialRender()end
-end
-local function placeCheck(c,x,y,w)place(c,x,y);place(c.text,x+27,y-4,w-27)end
+-- U.PageUsesNativeScale), so the frame width is the real content width. The
+-- bottom row stays free for the page-wide Settings button.
 local function placeSelector(s,x,y,w)place(s.caption,x,y);place(s.button,x,y-17);s:SetWidth(w)end
-local function placeEdit(e,x,y,w)place(e.caption,x,y,w);place(e,x,y-17,w)end
-local function shown(f,value)if f then f:SetShown(value==true)end end
+local function placeCheck(c,x,y,w)place(c,x,y);place(c.text,x+27,y-4,w-27)end
 function U.LayoutProfileCharacters()
     local frame=U.profileCharactersFrame
     if not frame or not U.myCharactersBuilt then return end
@@ -620,9 +588,10 @@ function U.LayoutProfileCharacters()
     local width=math.max(620,math.floor(page:GetWidth()))
     local height=math.max(300,page:GetHeight())
     frame:SetSize(width,height)
-    local items=U.myCharactersTab=='items'
-    local wide=width>=WIDE_WIDTH
-    U.myCharactersWide=wide
+    local public=U.profileView=='public'
+    local active=not public and(U.myCharactersTab or'overview')or nil
+    local spec=active and TAB_SPEC[active]
+    U.myCharactersWide=width>=WIDE_WIDTH
     -- Head: title left, private-storage note right.
     local privacyWidth=math.min(math.floor(width*.4),labelTextWidth(U.myCharactersPrivacy)+4)
     place(U.profileCharactersTitle,0,0,width-privacyWidth-10)
@@ -630,71 +599,42 @@ function U.LayoutProfileCharacters()
     place(U.myCharactersPrivacyHit,width-privacyWidth,-2,privacyWidth,20)
     -- Tabs: widths from their text.
     local x=0
-    for _,tab in ipairs({U.myCharactersOverviewTab,U.myCharactersItemsTab,U.myCharactersPublicTab})do
-        local tabWidth=fitButton(tab,96);place(tab,x,-26);x=x+tabWidth+6
+    local tabs={}
+    for _,id in ipairs(TAB_ORDER)do tabs[#tabs+1]=U.myCharactersTabButtons[id]end
+    tabs[#tabs+1]=U.myCharactersPublicTab
+    for _,tab in ipairs(tabs)do
+        local tabWidth=fitButton(tab,72);place(tab,x,-26);x=x+tabWidth+6
     end
-    local public=U.profileView=='public'
-    S.selectNav(U.myCharactersOverviewTab,not items and not public);S.selectNav(U.myCharactersItemsTab,items and not public);S.selectNav(U.myCharactersPublicTab,public)
+    for _,id in ipairs(TAB_ORDER)do S.selectNav(U.myCharactersTabButtons[id],active==id)end
+    S.selectNav(U.myCharactersPublicTab,public)
     for _,control in ipairs({U.myCharactersPrivacy,U.myCharactersPrivacyHit,U.myCharactersRecordButton,U.myCharactersRecordStatus})do shown(control,not public)end
-    -- Filter row (head, tabs and filters end at y=104, within 120).
-    shown(U.accountOverviewSearch,not items);shown(U.accountOverviewSearch.caption,not items)
-    U.accountOverviewRealm:SetShown(not items);U.accountOverviewFaction:SetShown(not items)
-    shown(U.myCharactersShowHidden,not items);shown(U.myCharactersShowHidden.text,not items)
-    shown(U.myCharactersSummary,not items);shown(U.myCharactersSummaryHit,not items)
-    shown(U.itemSearch,items);shown(U.itemSearch.caption,items);shown(U.itemScope,items);shown(U.itemsNote,items)
-    if items then
-        local searchWidth=math.min(360,math.floor(width*.5))
-        placeEdit(U.itemSearch,0,-60,searchWidth)
-        place(U.itemScope,searchWidth+16,-77,width-searchWidth-16,24)
-        place(U.itemsNote,0,-108,width)
-        local noteHeight=math.max(60,(U.itemsNote:GetStringHeight() or 60)+8)
-        U.itemsNote:SetHeight(noteHeight)
-    else
+    -- Filter row (head, tabs and filters end at y=104, within 120). A tab can hide it (own search) or ask for
+    -- the whole width (its details page).
+    local focused=spec and spec.focused and spec.focused()==true
+    local filters=spec~=nil and spec.filters~=false and not focused
+    local filterControls={U.accountOverviewSearch,U.accountOverviewSearch.caption,U.accountOverviewRealm,U.accountOverviewFaction,U.accountOverviewRealm.caption,U.accountOverviewFaction.caption,
+        U.myCharactersShowHidden,U.myCharactersShowHidden.text,U.myCharactersSummary,U.myCharactersSummaryHit}
+    for _,control in ipairs(filterControls)do shown(control,filters)end
+    if filters then
         local hiddenWidth=labelTextWidth(U.myCharactersShowHidden.text)+31
         local rest=width-hiddenWidth-30
         local search=math.floor(rest*.4);local realm=math.floor(rest*.35);local faction=rest-search-realm
-        placeEdit(U.accountOverviewSearch,0,-60,search)
+        place(U.accountOverviewSearch.caption,0,-60,search);place(U.accountOverviewSearch,0,-77,search)
         placeSelector(U.accountOverviewRealm,search+10,-60,realm)
         placeSelector(U.accountOverviewFaction,search+realm+20,-60,faction)
         placeCheck(U.myCharactersShowHidden,width-hiddenWidth,-78,hiddenWidth)
         place(U.myCharactersSummary,0,-108,width,30)
         place(U.myCharactersSummaryHit,0,-108,width,30)
     end
-    -- Body: list left (wide) or list/detail alternating (narrow).
-    local focusedDetail=not wide and (items and U.itemsDetailOpen or not items and U.myCharactersDetailOpen)
-    local top=focusedDetail and 60 or (items and (108+U.itemsNote:GetHeight()+12) or 142);local body=math.max(120,height-top-34)
-    local listWidth=wide and math.max(280,math.min(340,math.floor(width*.32)))or width
-    local detailX=wide and listWidth+16 or 0;local detailWidth=width-detailX
-    local overviewDetail=wide or U.myCharactersDetailOpen
-    local overviewList=wide or not U.myCharactersDetailOpen
-    local itemsDetail=wide or U.itemsDetailOpen
-    if not wide and overviewDetail then
-        for _, control in ipairs({ U.accountOverviewSearch, U.accountOverviewSearch.caption, U.accountOverviewRealm, U.accountOverviewFaction, U.myCharactersShowHidden, U.myCharactersShowHidden.text, U.myCharactersSummary, U.myCharactersSummaryHit }) do shown(control,false) end
-    elseif not wide and itemsDetail then
-        for _, control in ipairs({ U.itemSearch, U.itemSearch.caption, U.itemScope, U.itemsNote }) do shown(control,false) end
-    end
-    local itemsList=wide or not U.itemsDetailOpen
-    shown(U.characterList,not items and overviewList)
-    for _,f in ipairs({U.myCharactersIcon,U.myCharactersHeader,U.setMainButton,U.myCharactersMore,U.accountOverviewDetails})do shown(f,not items and overviewDetail)end
-    local backShown=not items and not wide and U.myCharactersDetailOpen
-    shown(U.myCharactersBack,backShown)
-    shown(U.itemHitList,items and itemsList);shown(U.itemHolderList,items and itemsDetail)
-    shown(U.itemsBack,items and not wide and U.itemsDetailOpen)
-    if not items then
-        placeList(U.characterList,0,-top,listWidth,body)
-        local headerX=detailX
-        if backShown then headerX=headerX+fitButton(U.myCharactersBack,96)+10;place(U.myCharactersBack,detailX,-top)end
-        place(U.myCharactersIcon,headerX,-top)
-        place(U.myCharactersHeader,headerX+40,-top,math.max(100,width-headerX-40),36)
-        local mainWidth=fitButton(U.setMainButton,120);fitButton(U.myCharactersMore,64)
-        place(U.setMainButton,detailX,-(top+40));place(U.myCharactersMore,detailX+mainWidth+8,-(top+40))
-        placeList(U.accountOverviewDetails,detailX,-(top+74),detailWidth,body-74)
-        layoutSheet()
-    else
-        placeList(U.itemHitList,0,-top,listWidth,body)
-        local holderTop=top
-        if itemsDetail and not wide then fitButton(U.itemsBack,96);place(U.itemsBack,0,-top);holderTop=top+34 end
-        placeList(U.itemHolderList,detailX,-holderTop,detailWidth,body-(holderTop-top))
+    -- The shared details controls belong to the visible tab, which shows them when it needs them.
+    for _,control in ipairs({U.myCharactersIcon,U.myCharactersHeader,U.setMainButton,U.myCharactersMore,U.myCharactersBack})do shown(control,false)end
+    local top=filters and 142 or 60
+    for id,body in pairs(U.myCharactersBodies)do body:SetShown(id==active)end
+    if spec then
+        local bodyHeight=math.max(120,height-top-34)
+        local body=U.myCharactersBodies[active]
+        if body then place(body,0,-top,width,bodyHeight)end
+        if spec.layout then spec.layout(0,top,width,bodyHeight)end
     end
     -- Footer: recording state left, options right.
     local recordWidth=fitButton(U.myCharactersRecordButton,120)
@@ -704,9 +644,7 @@ function U.LayoutProfileCharacters()
     U.myCharactersRecordMenu:ClearAllPoints();U.myCharactersRecordMenu:SetPoint('BOTTOMRIGHT',U.myCharactersRecordButton,'TOPRIGHT',0,2)
     -- Public profile tab: only the head and the tab row of this frame stay; the profile form follows below.
     if public then
-        for _,control in ipairs({U.accountOverviewSearch,U.accountOverviewSearch.caption,U.accountOverviewRealm,U.accountOverviewFaction,U.myCharactersShowHidden,U.myCharactersShowHidden.text,
-            U.myCharactersSummary,U.myCharactersSummaryHit,U.itemSearch,U.itemSearch.caption,U.itemScope,U.itemsNote,U.characterList,U.myCharactersIcon,U.myCharactersHeader,U.setMainButton,
-            U.myCharactersMore,U.accountOverviewDetails,U.myCharactersBack,U.itemHitList,U.itemHolderList,U.itemsBack,U.myCharactersMenu,U.myCharactersRecordMenu})do shown(control,false)end
+        U.myCharactersMenu:Hide();U.myCharactersRecordMenu:Hide()
     end
     if U.LayoutProfilePublic then U.LayoutProfilePublic()end
 end

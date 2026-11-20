@@ -1237,6 +1237,18 @@ DE["All factions"]="Alle Fraktionen"
 DE["including hidden"]="inkl. ausgeblendete"
 DE["Enter an item name with at least 2 characters or an item ID to search recorded bags and banks."]="Gib einen Gegenstandsnamen mit mindestens 2 Zeichen oder eine Gegenstands-ID ein, um erfasste Taschen und Banken zu durchsuchen."
 DE["Select an item to see which characters hold it."]="Wähle einen Gegenstand, um zu sehen, welche Charaktere ihn haben."
+-- My characters 2.0: tabs, character cards and details
+DE["Inventory"]="Inventar"
+DE["No professions recorded"]="Keine Berufe erfasst"
+DE["Primary professions"]="Hauptberufe"
+DE["Secondary professions"]="Nebenberufe"
+DE["Gold"]="Gold"
+DE["XP"]="EP"
+DE["Data"]="Daten"
+DE["Bags and bank"]="Taschen und Bank"
+DE["%d of %d slots used"]="%d von %d Plätzen belegt"
+DE["1 recipe"]="1 Rezept"
+DE["%d recipes"]="%d Rezepte"
 
 -- Visual overhaul: sidebar groups and page subtitles.
 DE["Play"]="Spielen"
