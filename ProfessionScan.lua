@@ -28,6 +28,7 @@ function S.ApplyProfessions(professions)
     local recipes={};for _,r in ipairs(Z.db.recipes or{})do if names[L.ProfessionName(r.profession)]then recipes[#recipes+1]=r else changed=true end end
     for _,states in ipairs({Z.db.recipeStates,Z.db.recipeScans})do for name in pairs(states)do if not names[L.ProfessionName(name)]then states[name]=nil;changed=true end end end
     Z.db.professions=professions;Z.db.recipes=recipes;S.professionsKnown=true
+    local stamp=A.Now();if #professions>0 and stamp>0 then Z.db.professionsAt=stamp end
     local covered=0;for name in pairs(names)do if Z.db.recipeStates[name]and Z.db.recipeStates[name].complete then covered=covered+1 end end
     Z.db.recipeComplete=#professions>0 and covered==#professions
     if changed then
@@ -38,13 +39,11 @@ function S.ApplyProfessions(professions)
     end
     return true,changed
 end
-function S.RefreshProfessions(confirmEmpty)
+function S.RefreshProfessions()
     local professions,message=A.ScanProfessions()
     if not professions then S.emptyProfessions=false;return nil,message end
-    if #professions==0 and #(Z.db.professions or{})>0 and not confirmEmpty then
-        S.emptyProfessions=S.emptyProfessions or A.Clock()
-        if A.Clock()<S.emptyProfessions+1.5 then S.professionDue=S.emptyProfessions+1.5;return nil,"Profession data is not ready yet."end
-    end
+    -- An empty list never replaces known professions: the client may still be loading.
+    if #professions==0 and #(Z.db.professions or{})>0 then S.emptyProfessions=false;return nil,"Profession data is not ready yet."end
     S.emptyProfessions=false;S.professionRetries=0
     local ok,changed=S.ApplyProfessions(professions);return ok,message,changed
 end
@@ -95,6 +94,10 @@ function S.Run(generation)
         return false
     end
     if complete and #recipes==0 and S.emptyRecipes~=profession then S.emptyRecipes=profession;S.due=A.Clock()+1.5;S.state="waiting";return false end
+    if complete and #recipes==0 then
+        local stored=false;for _,r in ipairs(Z.db.recipes or{})do if L.ProfessionName(r.profession)==L.ProfessionName(profession)then stored=true;break end end
+        if stored then S.emptyRecipes=nil;S.due=nil;S.state="partial";S.lastMessage=Z.T("Partial scan: %s",message or"");if Z.MarkDirty then Z.MarkDirty("profession")end;return false end
+    end
     S.emptyRecipes=nil;S.due=nil;local ok,status,changed=S.Commit(recipes,profession,complete,message)
     if not ok then S.state="partial";S.lastMessage=status;if Z.MarkDirty then Z.MarkDirty("profession")end end
     return ok,status,changed
