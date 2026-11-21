@@ -252,7 +252,7 @@ function H.HI(id,wire,r)
     local p=peerFor(id,r);local first=not p.hello
     p.hello=A.Clock();p.caps=caps;p.mesh=mesh==1;p.load=load;p.size=size;p.rx=A.Clock()
     if p.helloSent~=r.session then sendHello(id,p)end
-    if first then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil;LN.maintainDue=0 end
+    if first then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil end
     trace("hello",r.name,caps);return true
 end
 local function directPeer(id,r)
@@ -303,7 +303,11 @@ local function score(id,p)
     return value
 end
 local function maintain(clock)
-    local presence=Z.Network3.PresenceWire and Z.Network3.PresenceWire()
+    -- The presence wire reads location APIs; build it at most every 5 s.
+    if not LN.presenceAt or clock-LN.presenceAt>=5 or clock<LN.presenceAt then
+        LN.presenceAt=clock;LN.presence=Z.Network3.PresenceWire and Z.Network3.PresenceWire()
+    end
+    local presence=LN.presence
     local caps=LN.Capabilities()
     local list={}
     for id,p in pairs(LN.peers)do
@@ -352,7 +356,7 @@ function LN.Reset(reason)
     if not LN.stats then return end
     LN.peers,LN.direct,LN.out,LN.assemblies,LN.inbound,LN.probes,LN.candidates={},{},{},{},{},{},{}
     LN.outBytes,LN.outFrames,LN.assemblyBytes,LN.inFlight=0,0,0,0
-    LN.tokens=4;LN.lastClock=A.Clock();LN.nextProbe=0;LN.probeWindow={};LN.maintainDue=0
+    LN.tokens=4;LN.lastClock=A.Clock();LN.nextProbe=0;LN.probeWindow={};LN.presenceAt=nil
     if LN.ResetGateway then LN.ResetGateway(reason)end
     -- A privacy change rebuilds the transport; peers confirmed in this session are tried again within the budget.
     if reason=="privacy"then
