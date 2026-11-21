@@ -193,17 +193,21 @@ function D.WorldProbe()
     scan("",_G)
     for key,value in pairs(_G)do if type(key)=="string"and key:match("^C_")and type(value)=="table"then scan(key..".",value)end end
     table.sort(found)
+    -- Names only: calling unknown client functions can hit one reserved for the Blizzard UI.
     add("functions ("..#found..")",table.concat(found,", "))
-    for _,name in ipairs(found)do
-        local short=name:match("([^%.]+)$")
-        if short:match("^Is")or short:match("^Get")and(short:find("Realm")or short:find("Server")or short:find("GameMode"))and not short:find("By")then
-            local holder,fn=_G,nil
-            for part in name:gmatch("[^%.]+")do holder=type(holder)=="table"and holder[part]or nil end
-            fn=holder;call("  "..name.."()",fn)
-        end
+    if type(GetNativeRealmID)=="function"then call("GetNativeRealmID",GetNativeRealmID)end
+    if type(IsOnTournamentRealm)=="function"then call("IsOnTournamentRealm",IsOnTournamentRealm)end
+    if type(GetServerExpansionLevel)=="function"then call("GetServerExpansionLevel",GetServerExpansionLevel)end
+    if type(rules)=="table"then
+        call("C_GameRules.GetCurrentGameModeRecordID",rules.GetCurrentGameModeRecordID)
+        local okInfo,info=pcall(function()return rules.GetCurrentGameModeDisplayInfo and rules.GetCurrentGameModeDisplayInfo()end)
+        if okInfo and type(info)=="table"then for key,value in pairs(info)do add("C_GameRules.GetCurrentGameModeDisplayInfo."..tostring(key),value)end end
     end
     add("Community realm",Z.me and Z.me.realm,"world",Z.CommunityDirectory and Z.me and Z.CommunityDirectory.World(Z.me.realm))
-    return table.concat(out,"\n")
+    local text=table.concat(out,"\n")
+    -- Kept in the saved variables as well, so the report can be read from the WTF folder after a /reload.
+    if type(ZenialCommunityDB)=="table"then ZenialCommunityDB.worldProbe=text end
+    return text
 end
 function D.Export()
     local out={"ZENIAL Community diagnostic report", "addon="..printable(Z.ADDON_VERSION).." time="..A.Now(),
