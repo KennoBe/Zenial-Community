@@ -23,7 +23,7 @@ local function scopeOf(key)
     if type(key) ~= 'string' then
         return nil
     end
-    local realm, faction, name = key:match('^([^@]+)@([^@]+)@(.+)$')
+    local realm, faction, name = key:match('^([^@]*)@([^@]+)@(.+)$')
     if not realm then
         return nil
     end

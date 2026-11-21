@@ -152,7 +152,7 @@ local function rosterName(key)
     local cached=guild.ids[key]
     if cached~=nil then return cached or nil end
     local id
-    local realm,faction,name=key:match("^([^@]+)@([^@]+)@(.+)$")
+    local realm,faction,name=key:match("^([^@]*)@([^@]+)@(.+)$")
     if realm then
         if realm.."@"..faction==scope()then id=(L.Identity(name))end
     else id=(L.Identity(key))end

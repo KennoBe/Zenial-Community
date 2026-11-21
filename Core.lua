@@ -49,7 +49,7 @@ end
 function L.ValidIdentityKey(value)
     if L.Identity(value)then return true end
     if not L.Text(value,180)then return false end
-    local realm,faction,name=value:match("^([^@]+)@([^@]+)@(.+)$")
+    local realm,faction,name=value:match("^([^@]*)@([^@]+)@(.+)$")
     return realm~=nil and(faction=="alliance"or faction=="horde"or faction=="neutral")and L.Identity(name)~=nil
 end
 function L.ApplicationState(value)return STATE_ALIASES[value]end

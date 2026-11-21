@@ -16,7 +16,7 @@ local function definitions(raw)
 end
 local function targetMatches(key,target)
     if not L.ValidIdentityKey(key)then return false end
-    local realm,faction=key:match("^([^@]+)@([^@]+)@")
+    local realm,faction=key:match("^([^@]*)@([^@]+)@")
     return realm and L.ScopeKey(target,realm,faction)==key or false
 end
 local function changed()
@@ -77,7 +77,7 @@ function C.Set(key,id,enabled)
     -- Removing the last shared tag on an alt keeps that explicitly selected
     -- contact locally accessible, including its favorite and private note.
     if row and not contact and not enabled and row.tags[id]and L.Count(row.tags)==1 then
-        local realm,faction=key:match("^([^@]+)@([^@]+)@")
+        local realm,faction=key:match("^([^@]*)@([^@]+)@")
         if L.Contact(Z.db,row.target,"Private contact",false,realm,faction)~=key then return nil,"Contact storage is full."end
     end
     if not row and enabled then
@@ -122,7 +122,7 @@ function C.Remove(id)
     -- favorites and notes accessible; a failed materialization leaves all tags.
     for key,row in pairs(C.store.contacts)do
         if row.tags[id]and L.Count(row.tags)==1 and not Z.db.contacts[key]then
-            local realm,faction=key:match('^([^@]+)@([^@]+)@')
+            local realm,faction=key:match('^([^@]*)@([^@]+)@')
             if L.Contact(Z.db,row.target,'Private contact',false,realm,faction)~=key then return nil,'Contact storage is full.'end
         end
     end
@@ -136,7 +136,7 @@ function C.LastTogether(key)
     if cached and cached.revision==(H.revision or 0)and cached.untilAt>now then return cached.at end
     local newest
     for _,e in ipairs(H.byPeer and H.byPeer[key]or{})do
-        local realm,faction=e.ownKey:match("^([^@]+)@([^@]+)@")
+        local realm,faction=e.ownKey:match("^([^@]*)@([^@]+)@")
         if e.event=="joined"and e.observedAt and realm==string.lower((Z.me.realm or""):gsub("%s+",""))and faction==string.lower(Z.me.faction)
             and e.at>=now-H.RETENTION and e.observedAt<=now and e.observedAt>=now-H.RETENTION and(not newest or e.observedAt>newest)then newest=e.observedAt end
     end
