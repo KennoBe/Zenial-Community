@@ -248,6 +248,7 @@ function D.WorldProbe()
     add("lounge members in WoW checked",checked,"IsGameAccountOnSameRealm",type(sameRealm)=="function"and"present"or"missing")
     for _,number in ipairs(order)do local row=stats[number];add("  realm number "..number,"same realm yes "..row.yes,"no "..row.no,"unknown "..row.unknown,"project "..tostring(row.project))end
     add("Community realm",Z.me and Z.me.realm,"world",Z.CommunityDirectory and Z.me and Z.CommunityDirectory.World(Z.me.realm))
+    add("advertised world",Z.CommunityDirectory and Z.me and Z.CommunityDirectory.WorldToken(),Z.CommunityDirectory and Z.me and Z.CommunityDirectory.OwnWorld())
     local text=table.concat(out,"\n")
     -- Kept in the saved variables as well, so the report can be read from the WTF folder after a /reload.
     if type(ZenialCommunityDB)=="table"then ZenialCommunityDB.worldProbe=text end

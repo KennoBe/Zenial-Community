@@ -452,7 +452,7 @@ end
 -- The same field rules as a mesh presence record (CommunityMesh validate, kind P).
 local function validPresence(f)
     local D=Z.CommunityDirectory
-    if not f or#f~=17 or f[1]~="P"or f[2]~="3"or f[5]~=Z.me.faction or not D or D.World(f[4])~=D.World(Z.me.realm)then return false end
+    if not f or#f~=17 or f[1]~="P"or f[2]~="3"or f[5]~=Z.me.faction or not D or D.World(f[4])~=D.OwnWorld()then return false end
     if not L.Text(f[6],16,true)or not L.Text(f[8],16,true)or not AVAILABILITY[f[9]]or not L.Text(f[10],48,true)
         or f[10]~=""and not f[10]:match("^[%d,]+$")or(f[16]~="all"and f[16]~="zone")then return false end
     for _,i in ipairs({7,11,12,13,14,15,17})do
@@ -517,7 +517,7 @@ function LN.CanServe()
 end
 function LN.IsGatewayRelation(id)return LN.gw and LN.gw.primary==id or LN.serve and LN.serve.clients[id]~=nil or false end
 local function encodeEntry(n,rec)
-    local realm=rec.realm==Z.me.realm and"="or rec.realm
+    local realm=rec.realm==Z.CommunityDirectory.WorldToken()and"="or rec.realm
     return table.concat({n,rec.origin,rec.session,rec.at,realm,rec.hop,table.concat(rec.values,SEP)},SEP)
 end
 local function split(text)

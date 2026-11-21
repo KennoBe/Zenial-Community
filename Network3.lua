@@ -99,7 +99,8 @@ local function availability()
 end
 local function presenceWire()
     local loc=Z.location or A.PlayerLocation()
-    local visible=Z.db.visible;local pvp=Z.PvPHelp and Z.PvPHelp.store;local values={"P","3",Z.session,Z.me.realm,Z.me.faction,visible and Z.me.classFile or"",visible and Z.me.level or 0,visible and Z.db.roles or"",visible and availability()or"AVAILABLE",professionIDs(),Z.db.rev,Z.db.recipeRev,Z.db.publicRev,visible and(loc.instanceID and 900000+loc.instanceID or loc.mapID or 0)or 0,pvp and pvp.receive and 1 or 0,pvp and pvp.scope or"all",visible and A.CurrentMapID()or 0}
+    local visible=Z.db.visible;local pvp=Z.PvPHelp and Z.PvPHelp.store;local world=Z.CommunityDirectory and Z.CommunityDirectory.WorldToken and Z.CommunityDirectory.WorldToken()or Z.me.realm
+    local values={"P","3",Z.session,world,Z.me.faction,visible and Z.me.classFile or"",visible and Z.me.level or 0,visible and Z.db.roles or"",visible and availability()or"AVAILABLE",professionIDs(),Z.db.rev,Z.db.recipeRev,Z.db.publicRev,visible and(loc.instanceID and 900000+loc.instanceID or loc.mapID or 0)or 0,pvp and pvp.receive and 1 or 0,pvp and pvp.scope or"all",visible and A.CurrentMapID()or 0}
     for i=1,#values do values[i]=encodeField(values[i])end
     local wire=joined(values)
     return#wire<=238 and wire or nil

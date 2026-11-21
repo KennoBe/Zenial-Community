@@ -13,7 +13,7 @@ local function key(transport,target)
     local name=L.Identity(target);return name and"WHISPER:"..name or nil
 end
 local function identity(nonce,kind)
-    return Z.Network3.Pack({"1",kind,nonce,Z.me.target,Z.me.guid or"",Z.me.realm,Z.me.faction,D.Region()or 0,D.Project()or 0,Z.session,D.OwnGameAccountID()})
+    return Z.Network3.Pack({"1",kind,nonce,Z.me.target,Z.me.guid or"",D.WorldToken(),Z.me.faction,D.Region()or 0,D.Project()or 0,Z.session,D.OwnGameAccountID()})
 end
 local function parse(wire)
     local f=Z.Network3.Unpack(wire)
@@ -21,7 +21,7 @@ local function parse(wire)
     if not L.Text(f[3],64)or not f[3]:match("^[%w%.]+$")or not L.Text(f[4],49)or not L.Identity(f[4])or not f[4]:find(" ",1,true)
         or not L.Text(f[5],80,true)or not L.Text(f[6],64)or not L.Text(f[10],32)then return nil,"identity_frame"end
     if f[7]~=Z.me.faction then return nil,"faction"end
-    if D.World(f[6])~=D.World(Z.me.realm)then return nil,"world"end
+    if D.World(f[6])~=D.OwnWorld()then return nil,"world"end
     if not D.RegionMatches(tonumber(f[8]))then return nil,"region"end
     if tonumber(f[9])~=D.Project()then return nil,"project"end
     return f
@@ -64,7 +64,7 @@ local function freshAccount(id)
     -- Both native APIs can report different internal subrealms or spellings.
     -- The world must match; name and GUID still bind the actual character.
     if info.characterName~=candidate.info.characterName then return nil,"roster_character_changed"end
-    if D.World(info.realmName)~=D.World(candidate.info.realmName)then return nil,"roster_realm_changed"end
+    if not D.SameWorld(info.realmName,candidate.info.realmName)then return nil,"roster_realm_changed"end
     if info.playerGuid~=candidate.info.playerGuid then return nil,"roster_guid_changed"end
     return info
 end
@@ -81,7 +81,7 @@ local function routeAccount(route)
     local bound=boundIdentity(info,{[4]=route.name,[5]=route.guid})
     if not bound then return nil,"character_changed"end
     if bound=="whisper-proof"and route.identityProof~="whisper"then return nil,"identity_proof_missing"end
-    if D.World(info.realmName)~=D.World(route.realm)then return nil,"world_changed"end
+    if not D.SameWorld(info.realmName,route.realm)then return nil,"world_changed"end
     return info
 end
 local function jobRoute(job)

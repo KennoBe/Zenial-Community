@@ -15,6 +15,9 @@ local function trace(reason,...)
 end
 local function norm(value)return type(value)=="string"and value:lower():gsub("[%s%-%'_]","")or nil end
 function D.World(realm)
+    -- A game-mode token (see D.WorldToken) is a world of its own kind; it never equals a realm-name world.
+    local mode=type(realm)=="string"and realm:match("^gamemode:(%d+)$")
+    if mode then return "gamemode:"..mode end
     local key=norm(realm);if not key or key==""then return nil end
     -- Live PvP realm and pool numbers are internal subrealms. Match the
     -- region and PvP type; neither internal number identifies a separate world.
@@ -25,6 +28,28 @@ function D.World(realm)
     if key:match("^classicbetarp%d*$")then return "forever-rp"end
     if key:match("^classicbetahardcore%d*$")then return "forever-hardcore"end
     return "realm:"..key -- Unknown worlds are exact-match only, never merged by guesswork.
+end
+-- Since Forever 1.60.1 Live-Update 2 realm names and IDs are blank. The game mode record of C_GameRules still tells
+-- the world (owner's probe 2026-11-21, EU live: PvP 14, PvE 15; Hardcore has its own mode). Every client advertises
+-- "gamemode:<id>" in handshakes, presence and mesh records and compares only that; without the API it falls back to
+-- the realm name. Local storage keys keep the realm name.
+local function gameMode()
+    local rules=C_GameRules
+    local id=type(rules)=="table"and A.Call(rules.GetCurrentGameModeRecordID)
+    return L.Int(id,1,1000000)and id or nil
+end
+function D.WorldToken()
+    local mode=gameMode();if mode then return "gamemode:"..mode end
+    return Z.me and Z.me.realm or""
+end
+function D.OwnWorld()return D.World(D.WorldToken())end
+-- Battle.net metadata may lack a realm (blank since the hotfix) or carry a realm name while the other side has a
+-- game-mode token. Those cannot be compared and are no boundary; the handshake compares the advertised worlds.
+function D.SameWorld(a,b)
+    local x,y=D.World(a),D.World(b)
+    if not x or not y then return true end
+    if(x:match("^gamemode:")~=nil)~=(y:match("^gamemode:")~=nil)then return true end
+    return x==y
 end
 function D.Project()
     if D.projectGUID==(Z.me and Z.me.guid)and A.Clock()<(D.projectUntil or 0)then return D.projectValue end
@@ -197,7 +222,7 @@ function D.Eligible(info)
     if info.isInCurrentRegion~=true and not(region and info.regionID==region)then return false,"region_unverified"end
     if info.wowProjectID~=D.Project()then return false,"project"end
     if not Z.me or info.factionName~=Z.me.faction then return false,"faction"end
-    if D.World(info.realmName)~=D.World(Z.me.realm)then return false,"world"end
+    if not D.SameWorld(info.realmName,D.WorldToken())then return false,"world"end
     if not L.Text(info.characterName or"",64)then return false,"character"end
     return true
 end

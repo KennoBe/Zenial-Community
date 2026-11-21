@@ -54,7 +54,7 @@ local function validate(row,now)
     if type(row)~="table"or not PUBLIC[row.kind]or not L.Text(row.origin,49)or not L.Identity(row.origin)or not row.origin:find(" ",1,true)
         or not validSession(row.session,now)or not L.Int(row.seq,0,2147483646)
         or not L.Int(row.at,1,4102444800)or row.at>now+120 or now-row.at>lifetime(row)
-        or not L.Text(row.realm,64)or D.World(row.realm)~=D.World(Z.me.realm)or not D.RegionMatches(row.region)or row.project~=D.Project()
+        or not L.Text(row.realm,64)or D.World(row.realm)~=D.OwnWorld()or not D.RegionMatches(row.region)or row.project~=D.Project()
         or type(row.wire)~="string"or#row.wire>L.MAX_BYTES then return false end
     if scheduled then local e=Z.ScheduledGroups and Z.ScheduledGroups.DecodeRecord(row.wire);return e and e.session==row.session and e.at==row.at or false end
     if optional then local q=Z.QuestHelper.DecodeRecord(row.wire);return q and q.session==row.session and q.at==row.at or false end
@@ -110,9 +110,9 @@ function M.Initialize()
     M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={};M.replay={}
     M.stats={published=0,received=0,forwarded=0,duplicates=0,rejected=0,dropped=0,reconciled=0}
     M.region=D.Region()
-    M.scope=tostring(M.region or 0)..":"..tostring(D.Project()or 0)..":"..tostring(D.World(Z.me.realm))..":"..Z.me.faction
+    M.scope=tostring(M.region or 0)..":"..tostring(D.Project()or 0)..":"..tostring(D.OwnWorld())..":"..Z.me.faction
     local raw=not optional and not scheduled and M.region and D.config.stores[M.scope]or nil
-    D.config.stores["0:"..tostring(D.Project()or 0)..":"..tostring(D.World(Z.me.realm))..":"..Z.me.faction]=nil
+    D.config.stores["0:"..tostring(D.Project()or 0)..":"..tostring(D.OwnWorld())..":"..Z.me.faction]=nil
     local now=A.Now();if A.PublicTable(raw)then for _,row in pairs(raw)do
         if M.bytes>=M.MAX_STORE_BYTES or#M.keys>=M.MAX_RECORDS then break end
         if A.PublicTable(row)and A.Safe(row.origin,row.session,row.seq,row.at,row.kind,row.wire,row.realm,row.region,row.project)and durable(row)and validate(row,now)then
@@ -236,12 +236,12 @@ end
 -- and forwarded like any received record. Used for scheduled events carried on by their confirmed participants.
 function M.Relay(origin,session,seq,at,kind,wire)
     if not enabled()or not PUBLIC[kind]then return false end
-    return M.Accept({origin=origin,session=session,seq=seq,at=at,kind=kind,wire=wire,realm=Z.me.realm,region=D.Region()or 0,project=D.Project()},nil,false)
+    return M.Accept({origin=origin,session=session,seq=seq,at=at,kind=kind,wire=wire,realm=D.WorldToken(),region=D.Region()or 0,project=D.Project()},nil,false)
 end
 function M.Publish(kind,wire)
     if not enabled()or not PUBLIC[kind]then return nil end
     D.config.serial=math.min(2147483646,D.config.serial+1)
-    local row={origin=Z.me.target,session=Z.session,seq=D.config.serial,at=A.Now(),kind=kind,wire=wire,realm=Z.me.realm,region=D.Region()or 0,project=D.Project()}
+    local row={origin=Z.me.target,session=Z.session,seq=D.config.serial,at=A.Now(),kind=kind,wire=wire,realm=D.WorldToken(),region=D.Region()or 0,project=D.Project()}
     if scheduled then local e=Z.ScheduledGroups.DecodeRecord(wire);if not e then return nil end;row.at=e.at end
     if optional then local q=Z.QuestHelper.DecodeRecord(wire);if not q then return nil end;row.at=q.at end
     if kind=="MP"then
