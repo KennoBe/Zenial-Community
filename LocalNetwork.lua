@@ -201,7 +201,10 @@ local function probeTick(clock)
             and(not best or row.priority>best.priority or row.priority==best.priority and row.due<best.due)then best,bestID=row,id end
     end
     if not best then return end
-    LN.candidates[bestID]=nil;LN.nextProbe=clock+LN.HANDSHAKE_GAP
+    LN.candidates[bestID]=nil
+    local blockedKey=L.ScopeKey(best.name,Z.me.realm,Z.me.faction)
+    if blockedKey and Z.db.blocked[blockedKey]then trace("probe_blocked",best.name);return end
+    LN.nextProbe=clock+LN.HANDSHAKE_GAP
     local ok,why=b.Probe("WHISPER",best.name,"local_"..best.source)
     if ok then window[#window+1]=clock;LN.probes[bestID]={at=clock,name=best.name,source=best.source};stat("probes");trace("probe",best.name,best.source)
     else LN.failed[bestID]=clock+LN.RETRY;trace("probe_skipped",best.name,why)end
@@ -254,7 +257,8 @@ function H.HI(id,wire,r)
     -- A peer that asks for an answer has lost its local state (reset) and needs our hello and data again.
     local restarted=f[7]=="1"and not first
     p.hello=A.Clock();p.caps=caps;p.mesh=mesh==1;p.load=load;p.size=size;p.rx=A.Clock()
-    if p.helloSent~=r.session or restarted then sendHello(id,p)end
+    -- An answer request is always answered (the answer carries 0, so there is no ping-pong).
+    if p.helloSent~=r.session or restarted or f[7]=="1"then sendHello(id,p)end
     if first or restarted then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil end
     trace("hello",r.name,caps);return true
 end
@@ -319,27 +323,34 @@ local function maintain(clock)
         if not r or r.session~=p.session then
             LN.peers[id]=nil;trace("route_lost",p.name)
             if LN.OnPeerLost then LN.OnPeerLost(id,p)end
-        elseif p.hello then
+        elseif not p.hello then
+            -- No hello from the peer yet: ours may have been lost. Ask again a few times.
+            if(p.helloTries or 0)<3 and clock-(p.helloSentAt or -1000)>=LN.HELLO_GAP then p.helloTries=(p.helloTries or 0)+1;sendHello(id,p)end
+        else
             -- Capabilities changed (mesh up/down, gateway ready): tell the peer, at most every 30 s.
             if p.helloCaps~=caps and clock-(p.helloSentAt or -1000)>=LN.HELLO_GAP then sendHello(id,p)end
             if needsDirect(p)then list[#list+1]={id=id,p=p,score=score(id,p)}else p.maintained=false end
         end
     end
     table.sort(list,function(a,b)if a.score~=b.score then return a.score>b.score end;return a.id<b.id end)
+    local bundle
     for i,row in ipairs(list)do
         local id,p=row.id,row.p
         p.maintained=i<=LN.MAX_DIRECT
         -- A peer that keeps talking to us gets heartbeats as well, so neither side's route runs out.
         local echo=p.rx and clock-p.rx<LN.HEARTBEAT
         if p.maintained or echo then
-            -- A visibility change is a privacy decision and skips the minimum gap.
-            if presence and p.presenceSig~=presence and(clock-(p.presenceAt or -1000)>=LN.PRESENCE_GAP or p.presenceVisible~=visible)then
+            -- A visibility change is a privacy decision and skips the minimum gap; peers beyond the
+            -- maintained ones only get heartbeats, except for that privacy update.
+            local changedVisibility=p.presenceSig and p.presenceVisible~=visible
+            if presence and p.presenceSig~=presence and(p.maintained and clock-(p.presenceAt or -1000)>=LN.PRESENCE_GAP or changedVisibility)then
                 if LN.Queue(id,"PR",presence,LN.PRIORITY_PRESENCE,"PR:"..id)then p.presenceSig=presence;p.presenceAt=clock;p.presenceVisible=visible;p.sentAt=clock;stat("presenceSent")end
             elseif clock-(p.sentAt or -1000)>=LN.HEARTBEAT then
                 if queueValues(id,"PT",{Z.session},LN.PRIORITY_PRESENCE,"PT:"..id)then p.sentAt=clock;stat("heartbeats")end
             end
             if p.maintained and has(p.caps,LN.CAP_BUNDLE)and p.bundleRev~=Z.db.publicRev and clock-(p.bundleAt or -1000)>=LN.BUNDLE_GAP then
-                local wire=Z.Network3.BundleWire and Z.Network3.BundleWire()
+                if bundle==nil then bundle=Z.Network3.BundleWire and Z.Network3.BundleWire()or false end
+                local wire=bundle
                 if wire and LN.Queue(id,"BU",wire,LN.PRIORITY_BACKGROUND,"BU:"..id)then p.bundleRev=Z.db.publicRev;p.bundleAt=clock;stat("bundlesSent")end
             end
         end
@@ -366,7 +377,10 @@ function LN.Reset(reason)
     -- A privacy change rebuilds the transport; peers confirmed in this session are tried again within the budget.
     if reason=="privacy"then
         local clock=A.Clock()
-        for id,row in pairs(LN.known)do LN.candidates[id]={name=row.name,source="known",priority=SOURCE_PRIORITY.known,due=clock+math.random(2,15),at=clock}end
+        for id,row in pairs(LN.known)do
+            local key=L.ScopeKey(row.name,Z.me.realm,Z.me.faction)
+            if not(key and Z.db.blocked[key])then LN.candidates[id]={name=row.name,source="known",priority=SOURCE_PRIORITY.known,due=clock+math.random(2,15),at=clock}end
+        end
     else LN.known={}end
     trace("reset",reason or"")
 end
@@ -392,11 +406,12 @@ function LN.Tick()
         LN.nextSecond=clock+1
         LN.meshCount=meshRoutes()
         if LN.meshCount>0 then LN.noMeshSince=nil else LN.noMeshSince=LN.noMeshSince or clock end
-        probeTick(clock)
-        maintain(clock)
-        if LN.GatewayTick then LN.GatewayTick(clock)end
+        -- A fault in the optional local network must never stop the modules ticking after it.
+        local ok,err=pcall(function()probeTick(clock);maintain(clock);if LN.GatewayTick then LN.GatewayTick(clock)end end)
+        if not ok then stat("tickErrors");trace("tick_error",err)end
     end
-    pump(clock)
+    local ok,err=pcall(pump,clock)
+    if not ok then stat("tickErrors");trace("pump_error",err)end
 end
 
 -- ===== Presence gateway (level C) and limited relay =====
@@ -405,7 +420,7 @@ end
 -- so a gateway never queues more than one answer per client. Entries keep their original time; hop 2 is final.
 local GW={MAX_CLIENTS=2,MAX_ENTRIES=150,PAGE=8,POLL=60,POLL_JITTER=10,MORE=3,PAGE_TIMEOUT=20,DELTA_TIMEOUT=30,ATTEMPTS=3,
     COOLDOWN=600,CLIENT_IDLE=240,MAX_HOP=2,DELTA_BYTES=1400,DELTA_ITEMS=76,MAX_NEED=32,EXCLUDE_GAP=30,MAX_EXCLUDE=64,
-    SWITCH_GAP=300,MAX_IDS=2000,MAX_CLIENT_ENTRIES=300,OTHER_SYNC=4,OTHER_WINDOW=600}
+    SWITCH_GAP=300,MAX_IDS=2000,MAX_CLIENT_ENTRIES=300,OTHER_SYNC=4,OTHER_WINDOW=600,NEW_CONTACTS=200}
 LN.GW=GW
 local SEP="~"
 local AVAILABILITY={AVAILABLE=true,AFK=true,BUSY=true,GROUP=true}
@@ -439,7 +454,7 @@ local function fieldsOf(wire)
 end
 -- Hidden profiles (visible=false) publish an empty class and level 0; a gateway never passes them on.
 local function hidden(values)return values[1]==""and tonumber(values[2])==0 end
-local function buildOffer(requester)
+local function buildOffer(requester,keep)
     local offer={};local now=A.Now();local own=me()
     local function add(origin,session,at,realm,hop,values)
         local id=L.Identity(origin)
@@ -464,11 +479,14 @@ local function buildOffer(requester)
     if not LN.MeshActive()and gw and gw.synced then
         for _,e in pairs(gw.entries)do if e.hop<GW.MAX_HOP then add(e.origin,e.session,e.at,e.realm,e.hop+1,e.values)end end
     end
-    local list={};for _,rec in pairs(offer)do list[#list+1]=rec end
-    table.sort(list,function(a,b)if a.at~=b.at then return a.at>b.at end;return a.id<b.id end)
+    -- Above the bound, entries a client already holds stay first so the selection does not churn.
+    local valid={};local list={};for id,rec in pairs(offer)do valid[id]=true;list[#list+1]=rec end
+    table.sort(list,function(a,b)
+        local x,y=keep and keep[a.id]and 1 or 0,keep and keep[b.id]and 1 or 0
+        if x~=y then return x>y end;if a.at~=b.at then return a.at>b.at end;return a.id<b.id end)
     for i=#list,GW.MAX_ENTRIES+1,-1 do offer[list[i].id]=nil;list[i]=nil end
     LN.offerSize=#list
-    return offer,list
+    return offer,list,valid
 end
 LN.BuildOffer=buildOffer
 function LN.OfferSize()return LN.offerSize or 0 end
@@ -520,9 +538,15 @@ local function applyRelayed(e,gw)
     local peer=Z.db.peers[key];local source=LN.sources[key];local N=Z.Network3
     if peer and peer.reportedAt and peer.reportedAt>=e.at and not(source and source.via=="gateway")and N.IsOnline(key)then stat("stale");return false end
     local wasOnline=Z.IsOnline and Z.IsOnline(key)
+    -- New names from one gateway are bounded: relayed statements must not flood the contact list.
+    if not Z.db.contacts[key]then
+        if(gw.newContacts or 0)>=GW.NEW_CONTACTS then stat("newContactLimit");return false end
+        gw.newContacts=(gw.newContacts or 0)+1
+    end
     N.meshContext={at=e.at,origin=e.origin,session=e.session,seq=0}
-    local ok,changed=N.ProcessComplete(e.origin,"PUBLIC","P",e.wire)
+    local called,ok,changed=pcall(N.ProcessComplete,e.origin,"PUBLIC","P",e.wire)
     N.meshContext=nil
+    if not called then trace("relay_error",ok);ok=false end
     if not ok then return reject("relay_presence",e.origin)end
     LN.applied[e.id]={session=e.session,at=e.at}
     LN.sources[key]={via="gateway",gateway=gw.primary,gatewayName=gw.name,hop=e.hop,at=e.at}
@@ -615,7 +639,7 @@ function LN.OnPeerLost(id)
     if LN.serve then LN.serve.clients[id]=nil end
 end
 function LN.ResetGateway()
-    LN.gw=nil;LN.serve={clients={}};LN.gwCooldown={};LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=A.Clock();LN.backupName=""
+    LN.gw=nil;LN.serve={clients={},built={}};LN.gwCooldown={};LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=A.Clock();LN.backupName=""
 end
 function LN.GatewayTick(clock)
     local now=A.Now()
@@ -630,6 +654,7 @@ function LN.GatewayTick(clock)
         LN.backupName="";return
     end
     local gw=LN.gw
+    if gw and clock-(gw.newContactsAt or 0)>=GW.OTHER_WINDOW then gw.newContacts=0;gw.newContactsAt=clock end
     if gw and not route(gw.primary)then failGateway("route",false);gw=nil end
     local list=gatewayCandidates(clock)
     if not gw then
@@ -688,6 +713,9 @@ function H.GQ(id,wire,r)
     local c=LN.serve.clients[id]
     if epoch==""or not c or c.epoch~=epoch or c.session~=r.session then
         if page~=1 then return refuse(id,"epoch")end
+        -- A new snapshot reads the whole mesh store: at most one every 10 s per requester.
+        local last=LN.serve.built[id];if last and A.Clock()-last<10 then stat("rateLimited");return false end
+        LN.serve.built[id]=A.Clock()
         if not c and count(LN.serve.clients)>=GW.MAX_CLIENTS then return refuse(id,"busy")end
         local _,list=buildOffer(id)
         c={name=r.name,session=r.session,epoch=newEpoch(),list=list,pages=math.max(1,math.ceil(#list/GW.PAGE)),ids={},byId={},nextId=0,acked={},dseq=0,exclude={},lastSeen=A.Clock()}
@@ -703,19 +731,22 @@ function H.GL(id,wire,r)
     local c=LN.serve.clients[id]
     if not c or c.epoch~=f[1]or c.session~=r.session then return refuse(id,"epoch")end
     if not LN.CanServe()then LN.serve.clients[id]=nil;return refuse(id,"unavailable")end
+    if c.polledAt and A.Clock()-c.polledAt<2 then stat("rateLimited");return false end
+    c.polledAt=A.Clock()
     local ack=tonumber(f[2]);if not L.Int(ack,0,2147483646)or not L.Text(f[3],400,true)then return reject("gateway_poll",r.name)end
     c.lastSeen=A.Clock()
     -- The previous delta counts as delivered only once the client confirms it; otherwise it is recomputed.
     if c.pending and ack==c.dseq then for origin,v in pairs(c.pending)do c.acked[origin]=v or nil end end
     c.pending=nil
     local need={};for n in f[3]:gmatch("%d+")do n=tonumber(n);if c.byId[n]then need[n]=true end end
-    local offer=buildOffer(id)
+    local offer,_,valid=buildOffer(id,c.acked)
     local items,size,pending,more={},0,{},false
     local function push(item,origin,version)
         if size+#item+1>GW.DELTA_BYTES or#items>=GW.DELTA_ITEMS then more=true;return false end
         items[#items+1]=item;size=size+#item+1;pending[origin]=version;return true
     end
-    for origin in pairs(c.acked)do if not offer[origin]and c.ids[origin]then if not push("X"..SEP..c.ids[origin],origin,false)then break end end end
+    -- Only a state that became invalid is withdrawn, never one cut by the size bound.
+    for origin in pairs(c.acked)do if not valid[origin]and c.ids[origin]then if not push("X"..SEP..c.ids[origin],origin,false)then break end end end
     if not more then
         local list={};for _,rec in pairs(offer)do list[#list+1]=rec end
         table.sort(list,function(a,b)if a.at~=b.at then return a.at>b.at end;return a.id<b.id end)
@@ -770,7 +801,7 @@ function H.GP(id,wire,r)
         gw.page=page+1;gw.requestAt=clock;gw.attempts=1
         queueValues(id,"GQ",{gw.epoch,gw.page},LN.PRIORITY_GATEWAY,"GQ:"..id)
     else
-        gw.state="synced";gw.synced=true;gw.lastSync=A.Now();gw.pollAt=clock+poll();gw.attempts=0
+        gw.state="synced";gw.synced=true;gw.lastSync=A.Now();gw.pollAt=clock+poll();gw.attempts=0;gw.restarts=0
         stat("snapshots");trace("gateway_snapshot",gw.name,count(gw.entries))
     end
     return true
