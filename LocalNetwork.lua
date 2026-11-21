@@ -304,8 +304,9 @@ local function score(id,p)
 end
 local function maintain(clock)
     -- The presence wire reads location APIs; build it at most every 5 s.
-    if not LN.presenceAt or clock-LN.presenceAt>=5 or clock<LN.presenceAt then
-        LN.presenceAt=clock;LN.presence=Z.Network3.PresenceWire and Z.Network3.PresenceWire()
+    local visible=Z.db.visible==true
+    if not LN.presenceAt or clock-LN.presenceAt>=5 or clock<LN.presenceAt or LN.presenceVisible~=visible then
+        LN.presenceAt=clock;LN.presenceVisible=visible;LN.presence=Z.Network3.PresenceWire and Z.Network3.PresenceWire()
     end
     local presence=LN.presence
     local caps=LN.Capabilities()
@@ -328,8 +329,9 @@ local function maintain(clock)
         -- A peer that keeps talking to us gets heartbeats as well, so neither side's route runs out.
         local echo=p.rx and clock-p.rx<LN.HEARTBEAT
         if p.maintained or echo then
-            if presence and p.presenceSig~=presence and clock-(p.presenceAt or -1000)>=LN.PRESENCE_GAP then
-                if LN.Queue(id,"PR",presence,LN.PRIORITY_PRESENCE,"PR:"..id)then p.presenceSig=presence;p.presenceAt=clock;p.sentAt=clock;stat("presenceSent")end
+            -- A visibility change is a privacy decision and skips the minimum gap.
+            if presence and p.presenceSig~=presence and(clock-(p.presenceAt or -1000)>=LN.PRESENCE_GAP or p.presenceVisible~=visible)then
+                if LN.Queue(id,"PR",presence,LN.PRIORITY_PRESENCE,"PR:"..id)then p.presenceSig=presence;p.presenceAt=clock;p.presenceVisible=visible;p.sentAt=clock;stat("presenceSent")end
             elseif clock-(p.sentAt or -1000)>=LN.HEARTBEAT then
                 if queueValues(id,"PT",{Z.session},LN.PRIORITY_PRESENCE,"PT:"..id)then p.sentAt=clock;stat("heartbeats")end
             end
