@@ -611,6 +611,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
     elseif text=="setup"or text=="bnet"or text=="lounge"then Z.NetworkSetup.Show()
     elseif text=="network" or text=="netzwerk" then for _,line in ipairs(A.NetworkStatus())do if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end;if Z.UI then Z.UI.ShowDiagnostics()end
     elseif text=="debug"or text=="diagnose"or text=="diagnostics"or text=="logs"then if Z.UI then Z.UI.ShowDiagnostics()end
+    elseif text=="welt"or text=="world"or text=="realm"then if Z.UI then Z.UI.ShowDiagnostics("world")end
     elseif text=="finderart"then
         -- Which finder pictures the client resolves (GroupFinderArt.lua): one line per activity without a picture.
         local function say(line)if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end end

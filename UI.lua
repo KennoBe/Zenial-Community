@@ -61,7 +61,7 @@ function U.ShowDiscord()
 end
 
 function U.RefreshDiagnostics()
-    local report=Z.Diagnostics.Export()
+    local report=U.diagnosticMode=="world"and Z.Diagnostics.WorldProbe()or Z.Diagnostics.Export()
     U.diagnosticEdit:SetText(report)
     U.diagnosticScroll:SetVerticalScroll(0)
     U.diagnosticEdit:HighlightText()
@@ -84,7 +84,8 @@ function U.RefreshBackups()
     U.diagnosticScroll:SetShown(not U.backupPanel:IsShown())
 end
 
-function U.ShowDiagnostics()
+function U.ShowDiagnostics(mode)
+    U.diagnosticMode=mode
     if not U.diagnosticWindow then
         local f=CreateFrame("Frame","ZenialCommunityDiagnostics",UIParent,BackdropTemplateMixin and "BackdropTemplate"or nil)
         U.diagnosticWindow=f;f:SetSize(math.min(900,UIParent:GetWidth()-40),math.min(650,UIParent:GetHeight()-40))

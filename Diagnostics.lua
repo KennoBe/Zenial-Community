@@ -122,6 +122,89 @@ function D.Lines()
     end
     lines[#lines+1]=D.Capabilities();return lines
 end
+-- World probe (/zenial welt): which values the client still gives that tell the world (PvE, PvP, Hardcore, RP)
+-- after realm names and IDs went blank. Own character only; other players appear as counts and realm parts, never names.
+function D.WorldProbe()
+    local out={}
+    local function add(...)local parts={};for i=1,select("#",...)do parts[#parts+1]=printable((select(i,...)))end;out[#out+1]=table.concat(parts," | ")end
+    local function call(name,fn,...)
+        if type(fn)~="function"then add(name,"<missing>");return end
+        local results={pcall(fn,...)}
+        if not results[1]then add(name,"<error>",results[2]);return end
+        local shown={};for i=2,math.max(2,#results)do shown[#shown+1]=printable(results[i])end
+        add(name,table.concat(shown," , "))
+    end
+    local function fields(name,t,keys)
+        if type(t)~="table"then add(name,"<"..type(t)..">");return end
+        for _,key in ipairs(keys)do local ok,value=pcall(function()return t[key]end);add(name.."."..key,ok and value or"<error>")end
+    end
+    out[#out+1]="ZENIAL world probe "..printable(date and date("!%Y-%m-%d %H:%M UTC")or"")
+    call("GetBuildInfo",GetBuildInfo)
+    call("GetRealmName",GetRealmName);call("GetNormalizedRealmName",GetNormalizedRealmName);call("GetRealmID",GetRealmID)
+    call("GetCurrentRegion",GetCurrentRegion);call("GetCurrentRegionName",GetCurrentRegionName)
+    call("UnitFullName(player)",UnitFullName,"player");call("GetUnitName(player,true)",GetUnitName,"player",true)
+    local ok,guid=pcall(UnitGUID,"player")
+    add("UnitGUID(player)",ok and guid or"<error>")
+    if ok and type(guid)=="string"then
+        local kind,server=guid:match("^(%a+)%-(%d+)%-")
+        add("player GUID realm part",kind,server)
+        call("GetPlayerInfoByGUID(player)",GetPlayerInfoByGUID,guid)
+        local bn=C_BattleNet
+        local info=bn and type(bn.GetGameAccountInfoByGUID)=="function"and select(2,pcall(bn.GetGameAccountInfoByGUID,guid))or nil
+        fields("BN game account",info,{"realmName","realmID","realmDisplayName","wowProjectID","regionID","isInCurrentRegion","factionName","clientProgram","isOnline","isAppearOffline","isWowMobile"})
+        local account=bn and type(bn.GetAccountInfoByGUID)=="function"and select(2,pcall(bn.GetAccountInfoByGUID,guid))or nil
+        fields("BN account.gameAccountInfo",type(account)=="table"and account.gameAccountInfo or account,{"realmName","realmID","realmDisplayName","wowProjectID"})
+    end
+    call("BNConnected",BNConnected)
+    local rules=C_GameRules
+    if type(rules)=="table"then
+        call("C_GameRules.IsHardcoreActive",rules.IsHardcoreActive);call("C_GameRules.GetActiveGameMode",rules.GetActiveGameMode)
+        call("C_GameRules.IsSelfFoundAllowed",rules.IsSelfFoundAllowed)
+    else add("C_GameRules","<missing>")end
+    if type(C_Seasons)=="table"then call("C_Seasons.HasActiveSeason",C_Seasons.HasActiveSeason);call("C_Seasons.GetActiveSeason",C_Seasons.GetActiveSeason)end
+    -- Realm parts of other characters, without their names.
+    local suffixes,members={},0
+    local n=type(GetNumGuildMembers)=="function"and select(2,pcall(GetNumGuildMembers))or 0
+    for i=1,math.min(tonumber(n)or 0,50)do
+        local okName,name=pcall(GetGuildRosterInfo,i)
+        if okName and type(name)=="string"then members=members+1;local realm=name:match("%-(.+)$");suffixes[realm or"<none>"]=(suffixes[realm or"<none>"]or 0)+1 end
+    end
+    local list={};for realm,count in pairs(suffixes)do list[#list+1]=realm.."="..count end;table.sort(list)
+    add("guild roster realm suffixes ("..members.." read)",table.concat(list,", "))
+    local bn=C_BattleNet;local withRealm,withoutRealm=0,0
+    if bn and type(bn.GetFriendNumGameAccounts)=="function"and type(BNGetNumFriends)=="function"then
+        local okCount,total=pcall(BNGetNumFriends)
+        for f=1,math.min(okCount and tonumber(total)or 0,50)do
+            local okGames,games=pcall(bn.GetFriendNumGameAccounts,f)
+            for g=1,math.min(okGames and tonumber(games)or 0,5)do
+                local okInfo,info=pcall(bn.GetFriendGameAccountInfo,f,g)
+                if okInfo and type(info)=="table"and info.clientProgram=="WoW"then if type(info.realmName)=="string"and info.realmName~=""then withRealm=withRealm+1 else withoutRealm=withoutRealm+1 end end
+            end
+        end
+    end
+    add("BN friends in WoW with realm / without",withRealm,withoutRealm)
+    -- Every client function whose name points to realm, server, world rules or game mode.
+    local found={}
+    local function scan(prefix,t)
+        for key,value in pairs(t)do
+            if type(key)=="string"and type(value)=="function"and(key:find("Realm")or key:find("Server")or key:find("Hardcore")or key:find("GameMode")or key:find("RuleSet")or key:find("Shard"))then found[#found+1]=prefix..key end
+        end
+    end
+    scan("",_G)
+    for key,value in pairs(_G)do if type(key)=="string"and key:match("^C_")and type(value)=="table"then scan(key..".",value)end end
+    table.sort(found)
+    add("functions ("..#found..")",table.concat(found,", "))
+    for _,name in ipairs(found)do
+        local short=name:match("([^%.]+)$")
+        if short:match("^Is")or short:match("^Get")and(short:find("Realm")or short:find("Server")or short:find("GameMode"))and not short:find("By")then
+            local holder,fn=_G,nil
+            for part in name:gmatch("[^%.]+")do holder=type(holder)=="table"and holder[part]or nil end
+            fn=holder;call("  "..name.."()",fn)
+        end
+    end
+    add("Community realm",Z.me and Z.me.realm,"world",Z.CommunityDirectory and Z.me and Z.CommunityDirectory.World(Z.me.realm))
+    return table.concat(out,"\n")
+end
 function D.Export()
     local out={"ZENIAL Community diagnostic report", "addon="..printable(Z.ADDON_VERSION).." time="..A.Now(),
         "Session counters and recent local trace reset on /reload. API success does not confirm peer delivery.",
