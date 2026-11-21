@@ -145,7 +145,7 @@ function U.CreateSettings(helpers)
     U.profileNetworkText:SetFontObject('GameFontHighlightSmall')
     U.profileNetworkText:SetHeight(214)
     U.preferences = {}
-    for index, spec in ipairs({ { 'visible', 'Visible profile' }, { 'shareProfessions', 'Share professions and recipes' } }) do
+    for index, spec in ipairs({ { 'visible', 'Visible profile' }, { 'shareProfessions', 'Share professions and recipes' }, { 'localNetwork', 'Local network (guild, group, contacts)' } }) do
         local name = spec[1]
         local control = checkbox(U.profileNetworkFrame, spec[2], 574, -36 - (index - 1) * 40, 262, function(self)
             Z.SetPreference(name, self:GetChecked())
@@ -154,7 +154,7 @@ function U.CreateSettings(helpers)
         control:SetChecked(Z.db[name])
         U.preferences[name] = control
     end
-    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 578, -124, 256, 'GameFontHighlightSmall')
+    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 578, -152, 256, 'GameFontHighlightSmall')
     U.settingsVisibleNote:SetHeight(212)
     U.settingsVisibleNote:SetWordWrap(true)
     if T and T.Tint then

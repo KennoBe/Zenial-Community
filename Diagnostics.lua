@@ -105,8 +105,13 @@ function D.Capabilities()
     local function has(fn)return type(fn)=="function"and"yes"or"no"end
     return "Client: "..tostring(v or"?").." / "..tostring(b or"?").." / "..tostring(i or"?").."\nSkill indices: "..has(k.GetSkillLineInfo).." · full recipes: "..has(t.GetAllRecipeIDs).." · filtered recipes: "..has(t.GetFilteredRecipeIDs).." · own/linked check: "..has(t.IsTradeSkillLinked)..publicSearch()
 end
+function D.LocalLine()
+    local LN=Z.LocalNetwork;if not LN then return tr("Local network")..": -"end
+    local direct,indirect=LN.Counts();local st=LN.Status()
+    return tr("Local network")..": "..(direct or 0).." "..tr("direct").." · "..(indirect or 0).." "..tr("indirect").." · "..tr("gateway")..": "..((st.gateway or"")~=""and st.gateway or"-")
+end
 function D.Lines()
-    local s=D.State();local lines={s.label,tr("Mode: direct network without channel"),tr("Confirmed reachable")..": "..s.reachable.." · "..tr("Reported in network")..": "..s.reported,tr("Queue")..": "..s.queue.." / "..s.queueBytes.." Bytes · "..tr("Inbound")..": "..s.inbound.." · "..tr("fragments")..": "..s.assemblies}
+    local s=D.State();local lines={s.label,tr("Mode: direct network without channel"),tr("Confirmed reachable")..": "..s.reachable.." · "..tr("Reported in network")..": "..s.reported,D.LocalLine(),tr("Queue")..": "..s.queue.." / "..s.queueBytes.." Bytes · "..tr("Inbound")..": "..s.inbound.." · "..tr("fragments")..": "..s.assemblies}
     if s.lastReceive>0 then lines[#lines+1]=tr("Last received")..": "..date("%d.%m.%Y %H:%M:%S",s.lastReceive)end
     if s.lastError~=""then lines[#lines+1]=tr("Last error")..": "..s.lastError end
     if s.search then lines[#lines+1]=tr("Recipe search")..": "..s.search.checked.."/"..s.search.total.." "..tr("checked")..", "..s.search.matches.." "..tr("matches")end
@@ -127,7 +132,7 @@ function D.Export()
     summary(out,"Identity API",{unitFullName=unitName,unitFullNameSecond=unitSecond,unitFullNameThird=unitThird,getRealmName=A.Call(GetRealmName),getUnitName=A.Call(GetUnitName,"player",true),correctedSurnameRealm=Z.me and Z.me.surnameRealm})
     local backups={};for _,row in ipairs(D.Backups())do backups[row.name]=D.SizeText(row)end;summary(out,"Backups (SavedVariables)",backups)
     local db=Z.db or{}
-    summary(out,"Preferences",{consent=db.consent,autoDiscovery=db.autoDiscovery,visible=db.visible,shareProfessions=db.shareProfessions,shareGuild=db.shareGuild,shareQuests=db.shareQuests})
+    summary(out,"Preferences",{consent=db.consent,autoDiscovery=db.autoDiscovery,visible=db.visible,shareProfessions=db.shareProfessions,localNetwork=db.localNetwork,shareGuild=db.shareGuild,shareQuests=db.shareQuests})
     if Z.QuestHelper then summary(out,"Quest helper scan",Z.QuestHelper.Status())end
     summary(out,"Adapter counters (lastCode is historical)",A.network)
     summary(out,"Protocol 3 counters",Z.Network3 and Z.Network3.stats)
@@ -158,6 +163,7 @@ function D.Export()
             out[#out+1]="address="..row.address.." nativeRealm="..printable(row.nativeRealm).." characterRealm="..printable(row.characterRealm).." world="..printable(row.world).." proof="..printable(row.proof).." state="..printable(row.state)
         end
     end
+    if Z.LocalNetwork then summary(out,"Local network",Z.LocalNetwork.Status())end
     if Z.CommunityMesh then summary(out,"Public mesh",Z.CommunityMesh.Status());summary(out,"Public mesh counters",Z.CommunityMesh.stats)end
     if Z.CommunityMap then summary(out,"Community map",Z.CommunityMap.Status())end
     summary(out,"Receive and processing reasons",D.counts)
@@ -172,7 +178,7 @@ function D.Export()
     local keys={};for key in pairs(db.peers or{})do keys[#keys+1]=key end;table.sort(keys)
     out[#out+1]="total="..#keys
     for i=1,math.min(#keys,100)do local key=keys[i];local p=db.peers[key];local c=db.contacts and db.contacts[key]
-        out[#out+1]=table.concat({printable(c and c.target or key),"online="..tostring(Z.IsOnline(key)),"cap30="..printable(p.cap30),"presence="..tostring(p.presence~=nil),"profile="..tostring(p.data~=nil),"blocked="..tostring(db.blocked and db.blocked[key]==true),"lastContact="..printable(p.lastContact),"state="..printable(Z.Locale.PeerState(p.state)),"advertisedRealm="..printable(p.advertisedRealm)}," ")
+        out[#out+1]=table.concat({printable(c and c.target or key),"online="..tostring(Z.IsOnline(key)),"cap30="..printable(p.cap30),"presence="..tostring(p.presence~=nil),"profile="..tostring(p.data~=nil),"blocked="..tostring(db.blocked and db.blocked[key]==true),"lastContact="..printable(p.lastContact),"state="..printable(Z.Locale.PeerState(p.state)),"source="..printable(Z.LocalNetwork and Z.LocalNetwork.Source(key)or""),"advertisedRealm="..printable(p.advertisedRealm)}," ")
     end
     if #keys>100 then out[#out+1]="Peer list limited to 100 entries."end
     for _,name in ipairs({"lfg","quest","market","craftOrders","craftOrderOps","recipeStates","recipeCatalogs","sentApplications","interests","questInterests","sentQuestApplications"})do out[#out+1]=name.." entries="..L.Count(type(db[name])=="table"and db[name]or{})end

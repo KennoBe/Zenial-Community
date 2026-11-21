@@ -190,6 +190,10 @@ function A.NetworkStatus()
         "transport=direct channel=disabled restricted="..shown(A.Call(C_ChatInfo and C_ChatInfo.AreOutgoingAddonChatMessagesRestricted)).." lockdown="..shown(A.Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)),
         "contacts="..contacts.." sent="..stats.sent.." ok="..stats.ok.." noResult="..stats.noResult.." throttle="..stats.throttle.." blocked="..stats.blocked.." error="..stats.error..(stats.lastCode and" lastCode="..tostring(stats.lastCode)or"")..(stats.lastError and" lastError="..stats.lastError or""),
         "receivedNative="..stats.received,
+        (function()
+            local LN=Z.LocalNetwork;local st=LN and LN.Status and LN.Status()or{}
+            return "local=enabled="..shown(st.enabled).." connected="..tostring(st.connected or 0).." directOnline="..tostring(st.directOnline or 0).." indirectOnline="..tostring(st.indirectOnline or 0).." gateway="..tostring(st.gateway or"").." serving="..tostring(st.serving or 0).." outFrames="..tostring(st.outFrames or 0).." rejected="..tostring(st.rejected or 0)
+        end)(),
         "queue3="..tostring(Z.Network3 and#Z.Network3.jobs or 0).." legacyQueue="..tostring(Z.engine and#Z.engine.out or 0).." pending="..tostring(Z.engine and L.Count(Z.engine.pending)or 0).." engine="..(Z.engine and Z.engine.blocked and"blocked"or"ready")..(Z.engine and Z.engine.status~=""and" ("..Z.engine.status..")"or""),
     }
 end

@@ -451,6 +451,27 @@ local function contactTarget(m)
     return nil
 end
 S.memberContactTarget = contactTarget
+-- One short line on where the online/offline status of a member comes from.
+local function sourceLine(m)
+    if m.own then
+        return nil
+    end
+    if not m.online then
+        return tr('Saved · status unknown')
+    end
+    local LN = Z.LocalNetwork
+    local source, detail = nil, nil
+    if LN and LN.Source then
+        source, detail = LN.Source(m.key)
+    end
+    if source == 'direct' then
+        return tr('Online · directly confirmed')
+    end
+    if source == 'gateway' and type(detail) == 'table' and detail.at and detail.gatewayName and detail.gatewayName ~= '' then
+        return tr('Online · reported by the network') .. ' · ' .. Z.T('%s via %s', age(detail.at), detail.gatewayName)
+    end
+    return tr('Online · reported by the network')
+end
 -- Identity block of a linked group: main headline, active character, action targets and known characters.
 local function groupDetailLines(m, g, target)
     local lines = {}
@@ -548,6 +569,10 @@ local function refreshMemberDetail()
     if where ~= '' then
         lines[#lines + 1] = fact(m.online and tr('Current location:') or (tr('Last known location') .. ':'), where)
     end
+    local sourceText = sourceLine(m)
+    if sourceText then
+        lines[#lines + 1] = dimText(sourceText)
+    end
     if s.roles and s.roles ~= '' then
         lines[#lines + 1] = fact(tr('Preferred role') .. ':', roleName(s.roles))
     end
@@ -611,6 +636,8 @@ local function memberMatches(m, ctx)
         and (ctx.profession == 'ALL_PROFESSIONS' or m.prof:find(tr(ctx.profession), 1, true))
         and (not ctx.favoriteOnly or Z.Social.IsFavorite(m.key))
         and (ctx.selected ~= 'MY_GUILD' or Z.Social.IsGuildMember(m.key))
+        and (ctx.selected ~= 'MY_GROUP' or ctx.group and ctx.group[m.key])
+        and (ctx.selected ~= 'LOCAL' or ctx.localMember and ctx.localMember(m.key))
         and ctx.C.Matches(m.key, ctx.category)
 end
 local function sortRecords(records, sort)
@@ -713,6 +740,10 @@ local function characterItem(m, ctx)
     end
     if Z.Social.IsGuildMember(m.key) then
         tooltip = tooltip .. '\n' .. tr('Guild') .. ': ' .. Z.Social.GuildName()
+    end
+    local sourceText = sourceLine(m)
+    if sourceText then
+        tooltip = tooltip .. '\n' .. sourceText
     end
     local chip, layerText = layerChip(m)
     if layerText then
@@ -1022,7 +1053,7 @@ function refreshMembers()
         U.SyncCategoryControls()
     end
     local selected = U.memberFavoriteFilter and U.memberFavoriteFilter:GetText() or 'ALL'
-    local category = selected ~= 'FAVORITES' and selected ~= 'MY_GUILD' and selected or 'ALL'
+    local category = selected ~= 'FAVORITES' and selected ~= 'MY_GUILD' and selected ~= 'MY_GROUP' and selected ~= 'LOCAL' and selected or 'ALL'
     local ctx = {
         query = query,
         status = status,
@@ -1035,6 +1066,18 @@ function refreshMembers()
         C = C,
         sort = U.memberSort:GetText(),
     }
+    if selected == 'MY_GROUP' then
+        ctx.group = A.GroupMembers()
+    elseif selected == 'LOCAL' then
+        local LN = Z.LocalNetwork
+        ctx.localMember = function(key)
+            local source, detail = nil, nil
+            if LN and LN.Source then
+                source, detail = LN.Source(key)
+            end
+            return source == 'gateway' or source == 'direct' and type(detail) == 'table' and detail.localRoute == true
+        end
+    end
     -- Filters that pick characters (the online status is a group signal in the grouped view).
     ctx.filtering = query ~= '' or class ~= 'ALL_CLASSES' or profession ~= 'ALL_PROFESSIONS' or favoriteOnly or selected ~= 'ALL'
     local grouped = groupingEnabled()
