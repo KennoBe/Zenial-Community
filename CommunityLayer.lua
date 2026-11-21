@@ -39,6 +39,23 @@ local function field(t,key)
     local ok,value=pcall(function()return t[key]end);if not ok or secret(value)then return nil end
     return value
 end
+-- Forever 1.60.1 Live-Update 2 (Blizzard to addon developers, 2026-11-20): the server and spawn parts of creature
+-- and vehicle GUIDs become values that are stable only inside one client session, so they can no longer be compared
+-- between players; the same hotfix returns an empty realm name and realm ID 0. That realm signal switches layer
+-- detection off for the rest of the session: nothing is sampled, published, compared or shown.
+local function hotfixActive()
+    local name=safeCall(GetRealmName);local id=safeCall(GetRealmID)
+    return name==""and(id==nil or id==0)
+end
+function C.Available()
+    if C.unavailable then return false end
+    -- Before the addon has its character the client may not have its realm yet; never decide that early.
+    if Z.db and Z.me and hotfixActive()then
+        C.unavailable=true;C.own,C.stale,C.seen,C.ignore,C.rescans=nil,nil,nil,nil,nil;C.rows,C.rows2,C.window={},{},{}
+        markDirty();return false
+    end
+    return true
+end
 -- Strict GUID parser. Only Creature and Vehicle GUIDs qualify; the caller still
 -- rejects player-controlled units (pets, totems, guardians).
 local function parseGuid(guid)
@@ -84,7 +101,7 @@ local function openMap()
     local zone=raw and zoneOf(raw);return zone,raw
 end
 local function ownState(mapID)
-    local state=C.own;if not state then return nil end
+    local state=C.own;if not state or not C.Available()then return nil end
     local zone=openMap()
     if not zone or zone~=state.zoneMapID or A.Now()-state.at>C.SAMPLE_TTL then return nil end
     if mapID and zoneOf(mapID)~=state.zoneMapID then return nil end
@@ -102,6 +119,7 @@ end
 function C.Own(mapID)local state=ownState(mapID);return state and state.layerID end
 function C.Snapshot(mapID)local state=ownState(mapID);return state and snapshot(state)end
 local function remoteRow(key,mapID)
+    if not C.Available()then return nil end
     local row=C.rows2 and C.rows2[key];local peer=Z.db and Z.db.peers[key]
     if not row or not peer or not Z.IsOnline(key)or not peer.session or row.session~=peer.session or row.at>A.Now()+120
         or A.Now()-row.at>C.TTL then return nil end
@@ -125,6 +143,7 @@ function C.Relation(key)
     return mine.layerID==theirs.layerID and"probable"or"different"
 end
 function C.Call(key,id,rev,mapID)
+    if not C.Available()then return nil end
     local row=C.rows and C.rows[key];local peer=Z.db and Z.db.peers[key]
     -- The call layer travels in the legacy LY record; it is trusted only from
     -- senders that also publish the versioned L2 record (same layer semantics).
@@ -181,13 +200,16 @@ local function accept(store,decode,same,sender,wire,context)
     local changed=not old or old.session~=row.session or not same(old,row)
     rows[key]=row;return true,changed
 end
+-- Without comparable layers, records of other players are accepted as valid traffic but not kept.
 function C.Receive(sender,wire,context)
+    if not C.Available()then return C.Decode(wire)~=nil,false end
     return accept("rows",C.Decode,function(old,row)
         return old.mapID==row.mapID and old.layerID==row.layerID and old.callID==row.callID and old.callRev==row.callRev
             and old.callMapID==row.callMapID and old.callLayerID==row.callLayerID
     end,sender,wire,context)
 end
 function C.ReceiveV2(sender,wire,context)
+    if not C.Available()then return C.DecodeV2(wire)~=nil,false end
     return accept("rows2",C.DecodeV2,function(old,row)
         return old.zoneMapID==row.zoneMapID and old.layerID==row.layerID and old.algorithm==row.algorithm
     end,sender,wire,context)
@@ -360,7 +382,7 @@ end
 -- the full scan forward to at most EVENT_DELAY away. Later events never push
 -- an already scheduled scan back, so constant traffic cannot postpone it.
 function C.RequestScan(unit)
-    if not Z.db then return end
+    if not Z.db or not C.Available()then return end
     if not secret(unit)and type(unit)=="string"and(unit=="target"or unit=="mouseover"or unit:match("^nameplate%d+$"))then
         local zone=openMap()
         if zone then
@@ -371,7 +393,7 @@ function C.RequestScan(unit)
     C.nextScan=math.min(C.nextScan or 0,A.Clock()+C.EVENT_DELAY)
 end
 function C.Tick(force)
-    if not Z.db then return end
+    if not Z.db or not C.Available()then return end
     local clock=A.Clock()
     if C.ignore and clock>=C.ignore.untilAt then C.ignore=nil end
     if C.rescans then

@@ -572,9 +572,8 @@ local function refreshMemberDetail()
         lines[#lines + 1] = fact(tr('Social diary') .. ':', Z.T('%d encounters', met.count)
             .. (met.last and ' · ' .. tr('Last encounter') .. ' ' .. age(met.last) or ''))
     end
-    if not layerText then
-        lines[#lines + 1] = '\n|cff' .. paletteHex('muted') .. Z.CommunityLayer.Label(nil) .. '|r'
-    else
+    -- A layer is shown only when it is known; nothing is said about an unknown one.
+    if layerText then
         if m.layerRelation == 'probable' then
             lines[#lines + 1] = dimText(tr('Probably the same layer'))
         end
