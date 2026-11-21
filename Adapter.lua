@@ -10,6 +10,21 @@ function A.Safe(...)
     end
     return true
 end
+-- Battle.net game account data as a plain table. Since Forever 1.60.1 Live-Update 2 some fields (realm name and ID,
+-- the appear-offline flag) raise an error when they are read. Every field is read on its own; an unreadable or
+-- secret one becomes nil, so no caller can fail on a field the client withholds.
+local GAME_ACCOUNT_FIELDS={"gameAccountID","clientProgram","isOnline","isAppearOffline","isInCurrentRegion","regionID","wowProjectID",
+    "factionName","realmName","realmID","realmDisplayName","characterName","playerGuid","characterLevel","areaName","className","raceName",
+    "richPresence","isWowMobile","isGameAFK","isGameBusy"}
+function A.GameAccount(info)
+    if not A.PublicTable(info)then return nil end
+    local out={}
+    for _,key in ipairs(GAME_ACCOUNT_FIELDS)do
+        local ok,value=pcall(function()return info[key]end)
+        if ok and value~=nil and A.Safe(value)then out[key]=value end
+    end
+    return out
+end
 function A.PublicTable(v)
     if not A.Safe(v) or type(v) ~= "table" or type(canaccesstable) ~= "function" then return false end
     local ok, accessible = pcall(canaccesstable, v)

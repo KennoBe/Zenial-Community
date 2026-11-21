@@ -203,6 +203,50 @@ function D.WorldProbe()
         local okInfo,info=pcall(function()return rules.GetCurrentGameModeDisplayInfo and rules.GetCurrentGameModeDisplayInfo()end)
         if okInfo and type(info)=="table"then for key,value in pairs(info)do add("C_GameRules.GetCurrentGameModeDisplayInfo."..tostring(key),value)end end
     end
+    for _,source in ipairs({{"GetAutoCompleteRealms",GetAutoCompleteRealms},{"C_AutoComplete.GetAutoCompleteRealms",C_AutoComplete and C_AutoComplete.GetAutoCompleteRealms}})do
+        local okList,list=pcall(function()return type(source[2])=="function"and source[2]()or nil end)
+        if okList and type(list)=="table"then local values={};for _,value in pairs(list)do values[#values+1]=printable(value)end;add(source[1].." ("..#values..")",table.concat(values,", "))end
+    end
+    -- Lounge members playing WoW: realm number of their character GUID and whether the client calls their game account
+    -- "same realm". Numbers and counts only, no names.
+    local stats,order,checked={},{},0
+    local bn=C_BattleNet;local club=C_Club
+    local sameRealm=bn and bn.IsGameAccountOnSameRealm
+    if type(club)=="table"and type(club.GetSubscribedClubs)=="function"and bn and type(bn.GetAccountInfoByID)=="function"then
+        local okClubs,clubs=pcall(club.GetSubscribedClubs)
+        for _,entry in ipairs(okClubs and type(clubs)=="table"and clubs or{})do
+            local okType,clubType=pcall(function()return entry.clubType end)
+            local okId,clubId=pcall(function()return entry.clubId end)
+            if okType and clubType==nil and okId and type(club.GetClubInfo)=="function"then
+                local okClub,clubInfo=pcall(club.GetClubInfo,clubId);if okClub and type(clubInfo)=="table"then clubType=clubInfo.clubType end
+            end
+            if okType and okId and clubType==(Enum and Enum.ClubType and Enum.ClubType.BattleNet or 0)then
+                local okMembers,members=pcall(club.GetClubMembers,clubId)
+                for _,member in ipairs(okMembers and type(members)=="table"and members or{})do
+                    if checked>=200 then break end
+                    local okMember,memberInfo=pcall(club.GetMemberInfo,clubId,member)
+                    local okAccount,accountID=pcall(function()return memberInfo.bnetAccountId end)
+                    local okInfo,account=false,nil
+                    if okMember and okAccount and type(accountID)=="number"then okInfo,account=pcall(bn.GetAccountInfoByID,accountID)end
+                    local okGame,rawGame=false,nil
+                    if okInfo and type(account)=="table"then okGame,rawGame=pcall(function()return account.gameAccountInfo end)end
+                    local game=okGame and A.GameAccount(rawGame)
+                    if game and game.clientProgram=="WoW"and game.isOnline==true and type(game.playerGuid)=="string"then
+                        checked=checked+1
+                        local number=game.playerGuid:match("^Player%-(%d+)%-")or"?"
+                        local okSame,same=false,nil
+                        if type(sameRealm)=="function"and type(game.gameAccountID)=="number"then okSame,same=pcall(sameRealm,game.gameAccountID)end
+                        local row=stats[number]
+                        if not row then row={yes=0,no=0,unknown=0,project=game.wowProjectID};stats[number]=row;order[#order+1]=number end
+                        if okSame and same==true then row.yes=row.yes+1 elseif okSame and same==false then row.no=row.no+1 else row.unknown=row.unknown+1 end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(order)
+    add("lounge members in WoW checked",checked,"IsGameAccountOnSameRealm",type(sameRealm)=="function"and"present"or"missing")
+    for _,number in ipairs(order)do local row=stats[number];add("  realm number "..number,"same realm yes "..row.yes,"no "..row.no,"unknown "..row.unknown,"project "..tostring(row.project))end
     add("Community realm",Z.me and Z.me.realm,"world",Z.CommunityDirectory and Z.me and Z.CommunityDirectory.World(Z.me.realm))
     local text=table.concat(out,"\n")
     -- Kept in the saved variables as well, so the report can be read from the WTF folder after a /reload.

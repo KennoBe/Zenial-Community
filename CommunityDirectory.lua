@@ -28,7 +28,7 @@ function D.World(realm)
 end
 function D.Project()
     if D.projectGUID==(Z.me and Z.me.guid)and A.Clock()<(D.projectUntil or 0)then return D.projectValue end
-    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
+    local info=A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid))
     local project
     if A.PublicTable(info)and A.Safe(info.wowProjectID)and L.Int(info.wowProjectID,1,1000)then project=info.wowProjectID end
     local _,_,_,interface=A.Call(GetBuildInfo)
@@ -42,7 +42,7 @@ function D.Region()
     local name=A.Call(GetCurrentRegionName)
     local regions={US=1,KR=2,EU=3,TW=4,CN=5}
     if type(name)=="string"and regions[name:upper()]then D.regionSource="GetCurrentRegionName";return regions[name:upper()]end
-    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
+    local info=A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid))
     if A.PublicTable(info)and A.Safe(info.regionID)and L.Int(info.regionID,1,10)then D.regionSource="own game account";return info.regionID end
     if D.regionCandidateSource==D.candidates and A.Clock()<(D.regionCandidateUntil or 0)then
         D.regionSource=D.regionCandidateValue and"current-region lounge account"or"unavailable";return D.regionCandidateValue
@@ -62,7 +62,7 @@ function D.RegionMatches(region)
     local current=D.Region();return region==0 or current==nil or region==current
 end
 function D.OwnGameAccountID()
-    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
+    local info=A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid))
     return A.PublicTable(info)and A.Safe(info.gameAccountID)and L.Int(info.gameAccountID,1,2147483647)and info.gameAccountID or 0
 end
 -- Live Battle.net can keep an in-world account online with no character data.
@@ -77,6 +77,7 @@ local function checkOwnProfile()
     if type(lookup)~="function"or not guid or D.nextScan==math.huge then D.ownProfileEmptySince,D.ownProfileMissing=nil,false;return end
     local ok,info=pcall(lookup,guid);if not ok or not A.Safe(info)then return end
     if info~=nil then
+        info=A.GameAccount(info)
         if not A.PublicTable(info)or not A.Safe(info.characterName)then return end
         if L.Text(info.characterName or"",64)then D.ownProfileEmptySince,D.ownProfileMissing=nil,false;return end
     end
@@ -206,9 +207,12 @@ local function resolve(member)
     if not L.Int(id,1,2147483647)and guid and A.Call(C_AccountInfo and C_AccountInfo.IsGUIDBattleNetAccountType,guid)==true then id=A.Call(C_AccountInfo and C_AccountInfo.GetIDFromBattleNetAccountGUID,guid)end
     if L.Int(id,1,2147483647)then
         local account=A.Call(C_BattleNet and C_BattleNet.GetAccountInfoByID,id)
-        if A.PublicTable(account)and A.PublicTable(account.gameAccountInfo)then return account.gameAccountInfo end
+        if A.PublicTable(account)then
+            local ok,game=pcall(function()return account.gameAccountInfo end)
+            if ok and A.PublicTable(game)then return A.GameAccount(game)end
+        end
     end
-    if guid and A.Call(C_AccountInfo and C_AccountInfo.IsGUIDBattleNetAccountType,guid)~=true then return A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,guid)end
+    if guid and A.Call(C_AccountInfo and C_AccountInfo.IsGUIDBattleNetAccountType,guid)~=true then return A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,guid))end
 end
 function D.RequestScan(reset)
     D.regionCandidateUntil=0

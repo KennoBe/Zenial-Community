@@ -58,7 +58,7 @@ function B.Queue(transport,target,kind,nonce,reason)
 end
 local function freshAccount(id)
     local candidate=D.candidates[id];if not candidate then return nil,"roster_missing"end
-    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByID,id)
+    local info=A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByID,id))
     local eligible,reason=D.Eligible(info);if not eligible then return nil,"account_"..(reason or"unavailable")end
     if info.gameAccountID~=id then return nil,"account_address_changed"end
     -- Both native APIs can report different internal subrealms or spellings.

@@ -99,7 +99,7 @@ end
 function S.BattleNetState()
     local A=Z.Adapter
     if A.Call(BNConnected)==false then return"disconnected"end
-    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
+    local info=A.GameAccount(A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid))
     if A.PublicTable(info)and A.Safe(info.isAppearOffline)and info.isAppearOffline==true then return"appearOffline"end
     if A.Call(BNConnected)==true or A.PublicTable(info)then return"online"end
     return nil
