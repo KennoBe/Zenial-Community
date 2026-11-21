@@ -96,7 +96,7 @@ function L.ClassName(value,token)
     return token or value or"Unknown"
 end
 function L.New()
-    return {consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,localNetwork=true,community="",roles="",note="",professionNote="",availability="AUTO",rev=1,publicRev=1,seq=0,generation="",contacts={},peers={},blocked={},professions={},recipes={},recipeRev=1,recipeScan=0,recipeScans={},recipeStates={},recipeComplete=false,recipeResults={},recipeCatalogs={},lfg={},interests={},sentApplications={},quest=nil,questInterests={},sentQuestApplications={},applicationAlerts={group={},quest={}},groupFollows={},groupFollowSeen={},market={},tradeStore={drafts={},paused={},templates={},rules={},alertsSeen={}},groupTemplates={},favorites={},privateNotes={},craftOrders={},craftOrderOps={},craftOrderHistory={},scale=1,minimapAngle=225}
+    return {consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,community="",roles="",note="",professionNote="",availability="AUTO",rev=1,publicRev=1,seq=0,generation="",contacts={},peers={},blocked={},professions={},recipes={},recipeRev=1,recipeScan=0,recipeScans={},recipeStates={},recipeComplete=false,recipeResults={},recipeCatalogs={},lfg={},interests={},sentApplications={},quest=nil,questInterests={},sentQuestApplications={},applicationAlerts={group={},quest={}},groupFollows={},groupFollowSeen={},market={},tradeStore={drafts={},paused={},templates={},rules={},alertsSeen={}},groupTemplates={},favorites={},privateNotes={},craftOrders={},craftOrderOps={},craftOrderHistory={},scale=1,minimapAngle=225}
 end
 function L.ValidProfession(p) return type(p)=="table" and L.Int(p.id,1,100000) and L.Text(p.name,64) and L.Int(p.rank,0,10000) and L.Int(p.max,1,10000) and p.rank<=p.max end
 function L.ValidRecipe(r) return type(r)=="table" and L.Int(r.id,1,10000000) and L.Int(r.itemID or 0,0,10000000) and L.Text(r.name,96) and L.Text(r.itemName or "",96,true) and L.Text(r.profession or "",64,true) and L.Text(r.materials or "",320,true) end
@@ -173,7 +173,7 @@ function L.Load(raw)
     local d=L.New();if type(raw)~="table" then return d end
     -- Community connection, discovery, guild and quest sharing are always enabled
     -- in the normal configuration. Migrate former off switches when loading.
-    for _,k in ipairs({"visible","shareProfessions","minimapHidden","localNetwork"}) do if type(raw[k])=="boolean" then d[k]=raw[k] end end
+    for _,k in ipairs({"visible","shareProfessions","minimapHidden"}) do if type(raw[k])=="boolean" then d[k]=raw[k] end end
     for _,k in ipairs({"community","note","professionNote","generation"}) do local max=k=="community" and 32 or (k=="generation" and 32 or 64);if L.Text(raw[k],max,true) then d[k]=raw[k] end end
     if raw.availability=="AUTO"or raw.availability=="AVAILABLE"or raw.availability=="BUSY"then d.availability=raw.availability end
     d.roles=L.Role(raw.roles)or""

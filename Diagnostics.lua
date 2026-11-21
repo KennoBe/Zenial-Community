@@ -132,7 +132,7 @@ function D.Export()
     summary(out,"Identity API",{unitFullName=unitName,unitFullNameSecond=unitSecond,unitFullNameThird=unitThird,getRealmName=A.Call(GetRealmName),getUnitName=A.Call(GetUnitName,"player",true),correctedSurnameRealm=Z.me and Z.me.surnameRealm})
     local backups={};for _,row in ipairs(D.Backups())do backups[row.name]=D.SizeText(row)end;summary(out,"Backups (SavedVariables)",backups)
     local db=Z.db or{}
-    summary(out,"Preferences",{consent=db.consent,autoDiscovery=db.autoDiscovery,visible=db.visible,shareProfessions=db.shareProfessions,localNetwork=db.localNetwork,shareGuild=db.shareGuild,shareQuests=db.shareQuests})
+    summary(out,"Preferences",{consent=db.consent,autoDiscovery=db.autoDiscovery,visible=db.visible,shareProfessions=db.shareProfessions,shareGuild=db.shareGuild,shareQuests=db.shareQuests})
     if Z.QuestHelper then summary(out,"Quest helper scan",Z.QuestHelper.Status())end
     summary(out,"Adapter counters (lastCode is historical)",A.network)
     summary(out,"Protocol 3 counters",Z.Network3 and Z.Network3.stats)

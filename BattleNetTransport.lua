@@ -263,6 +263,7 @@ function B.ReceiveData(wire,transport,sender)
     end
     local protocol,payload=wire:match("^D|([13MQE])|(.*)$");if not protocol then return false end
     route.at=A.Clock()
+    if transport=="BNET"then B.lastBnetRx=A.Now()end
     local peer=Z.db.peers[Z.ResolvePeerKey(route.name)]
     if peer then peer.lastContact=A.Now();peer.lastContactClock=A.Clock()end
     if protocol=="E"then return Z.db.autoDiscovery and Z.ScheduledMesh and Z.ScheduledMesh.Receive(route,payload)or false end
@@ -422,6 +423,7 @@ function B.Tick()
     -- The native API may synchronously deliver an offline event which cancels jobs.
     for i,current in ipairs(B.jobs)do if current==job then table.remove(B.jobs,i);B.bytes=math.max(0,B.bytes-#job.wire);break end end
     complete(job,result=="cancelled"and"error"or result)
+    if result=="ok"and job.transport=="BNET"and job.name then B.lastBnetTx=A.Now()end
     if result=="ok"then B.stats.sent=B.stats.sent+1;trace("sent",job.transport,job.target,job.kind,job.reason,math.max(0,clock-(job.queuedAt or clock)))
     elseif result=="cancelled"then B.stats.cancelled=B.stats.cancelled+1;trace("cancelled",job.transport,job.name or job.target,job.kind,job.reason,error,math.max(0,clock-(job.queuedAt or clock)))
     else B.stats.errors=B.stats.errors+1;B.stats.lastError=error;trace("send_error",job.transport,error,job.name or job.target,job.kind,job.reason,math.max(0,clock-(job.queuedAt or clock)))end

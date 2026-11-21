@@ -408,7 +408,7 @@ function Z.OnGroupReceived(key,group)
     if Z.db.groupFollows[activity]and Z.UI and Z.UI.NotifyGroupFollow then Z.UI.NotifyGroupFollow(key,group.id,activity)end
 end
 function Z.SetPreference(name,value)
-    local allowed={consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,localNetwork=true}
+    local allowed={consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true}
     if not allowed[name]or type(value)~="boolean"or not Z.db then return false end
     Z.db[name]=value
     if Z.AccountPreferences then Z.AccountPreferences.Save()end

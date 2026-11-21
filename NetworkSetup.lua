@@ -73,9 +73,7 @@ function S.Refresh()
         end end
     end
     S.add:SetEnabled(selected~=nil);S.previous:SetEnabled(#available>1);S.next:SetEnabled(#available>1)
-    local LN=Z.LocalNetwork;local direct,indirect=0,0;local gateway=""
-    if LN then direct,indirect=LN.Counts();gateway=LN.Status().gateway or"" end
-    S.mode:SetText(tr("Mode: direct network without channel").."\n"..tr("Local network: %d direct · %d via gateway · gateway: %s",direct or 0,indirect or 0,gateway~=""and gateway or"—"))
+    S.mode:SetText(tr("Mode: direct network without channel"))
     local issue=state.joined==0 and#available==0 and D.SetupIssue()or D.ownProfileMissing and D.OWN_PROFILE_HINT or state.state
     S.status:SetText(tr(issue).."\n"..tr("Roster: %d/%d · eligible game accounts: %d",state.scanned,state.total,state.candidates).."\n"..tr("Confirmed: Battle.net %d · addon whisper %d · pending %d",transport.bnet,transport.whisper,transport.pending))
     if state.candidates==0 then
@@ -97,18 +95,66 @@ function S.Refresh()
         S.confirmed:SetText(table.concat(lines,"\n"))
     end
 end
+-- Own Battle.net state as far as the client tells it: "online", "appearOffline", "disconnected" or nil (unknown).
+function S.BattleNetState()
+    local A=Z.Adapter
+    if A.Call(BNConnected)==false then return"disconnected"end
+    local info=A.Call(C_BattleNet and C_BattleNet.GetGameAccountInfoByGUID,Z.me and Z.me.guid)
+    if A.PublicTable(info)and A.Safe(info.isAppearOffline)and info.isAppearOffline==true then return"appearOffline"end
+    if A.Call(BNConnected)==true or A.PublicTable(info)then return"online"end
+    return nil
+end
+-- Rows of the connection table: one per kind of connection, with the players currently online through it,
+-- what is exchanged there and when something was last received and sent. State: ok, warn, bad or idle.
+function S.ConnectionRows()
+    local A,LN=Z.Adapter,Z.LocalNetwork
+    local data=LN and LN.ConnectionData and LN.ConnectionData()or{}
+    local function part(name)return data[name]or{online=0}end
+    local rows={}
+    local function add(label,shared,row,state,status)
+        rows[#rows+1]={label=tr(label),shared=shared and tr(shared)or"",online=row and row.online,rx=row and row.rx,tx=row and row.tx,state=state,status=status}
+    end
+    local missing=S.MissingGroup()
+    local transport=B.Status()
+    local lounge=part("lounge")
+    if missing then add("ZENIAL Community","Presence, profile, offers, map",lounge,"bad",tr("Not joined"))
+    elseif(transport.bnet or 0)>0 then add("ZENIAL Community","Presence, profile, offers, map",lounge,"ok",tr("Joined"))
+    else add("ZENIAL Community","Presence, profile, offers, map",lounge,"warn",tr("No connection yet"))end
+    local bn=S.BattleNetState()
+    local bnRow={rx=lounge.rx,tx=lounge.tx}
+    if bn=="online"then add("Battle.net",nil,bnRow,"ok",tr("Online"))
+    elseif bn=="appearOffline"then add("Battle.net",nil,bnRow,"warn",tr("Appearing offline"))
+    elseif bn=="disconnected"then add("Battle.net",nil,bnRow,"bad",tr("Disconnected"))
+    else add("Battle.net",nil,bnRow,"idle",tr("Unknown"))end
+    local XF=Z.CrossFaction;local settings=XF and XF.Settings and XF.Settings()
+    local detection=not(type(settings)=="table"and settings.discovery==false)
+    local function contacts(label,name,none)
+        local row=part(name)
+        if not detection then add(label,"Presence, profile",row,"bad",tr("Detection off"))
+        elseif(row.online or 0)>0 then add(label,"Presence, profile",row,"ok",tr("Connected"))
+        else add(label,"Presence, profile",row,"idle",tr(none))end
+    end
+    contacts("Guild","guild",A.Call(IsInGuild)==true and"Nobody reachable"or"No guild")
+    contacts("Group","group",A.Call(IsInGroup)==true and"Nobody reachable"or"No group")
+    contacts("Other contacts","other","Nobody reachable")
+    local gateway=part("gateway")
+    if data.mesh then add("Through a community member","Presence",gateway,"idle",tr("Not needed"))
+    elseif gateway.name and gateway.loading then add("Through a community member","Presence",gateway,"warn",Z.T("Loading from %s",gateway.name))
+    elseif gateway.name then add("Through a community member","Presence",gateway,"ok",Z.T("Through %s",gateway.name))
+    else add("Through a community member","Presence",gateway,"idle",tr("No member reachable"))end
+    local serve=part("serve")
+    if(serve.online or 0)>0 then add("For other players","Presence",serve,"ok",tr("Answering"))
+    else add("For other players","Presence",serve,"idle",tr("Nobody asking"))end
+    return rows
+end
 function S.UserSummary()
     if not Z.db or not Z.db.consent then return tr("Community exchange is disabled.")end
     if not Z.db.autoDiscovery then return tr("Community member search is paused.")end
     local missing,ready=S.MissingGroup()
-    local transport=B.Status()
-    local LN=Z.LocalNetwork;local st=LN and LN.Status and LN.Status()or{}
-    local _,indirect=0,0;if LN and LN.Counts then _,indirect=LN.Counts()end
-    local localActive=(st.connected or 0)>0 or(indirect or 0)>0
-    if ready and not missing and(transport.bnet or 0)+(transport.whisper or 0)>0 then return tr("Connected to the community.")end
-    if localActive then return tr("Local network active – %d players directly connected, %d more known through a community gateway.",st.connected or 0,indirect or 0)end
-    if missing then return tr("Join the community for the server-wide network.")end
+    if missing then return tr("Join the community to connect.")end
     if not ready then return tr("Checking community membership.")end
+    local transport=B.Status()
+    if(transport.bnet or 0)+(transport.whisper or 0)>0 then return tr("Connected to the community.")end
     if D.ownProfileMissing then return tr(D.OWN_PROFILE_HINT)end
     return tr("Searching for active community members.")
 end
@@ -124,7 +170,7 @@ function S.CreateOverview()
     if Z.Theme then Z.Theme.Shell(f)end
     label(f,"Community connection",24,-24,500,32)
     S.overviewStatus=label(f,"",24,-82,500,56)
-    label(f,"Players from your guild, group and the community appear here.",24,-145,500,48)
+    label(f,"Connect with other players to find members and community activity.",24,-145,500,48)
     S.overviewMessage=label(f,"",24,-196,500,36)
     S.overviewRefresh=button(f,"Refresh connection",24,-245,210,function()
         S.overviewMessageKey="Connection check started. It may take a moment."
@@ -209,7 +255,7 @@ function S.Create()
     S.invite:SetScript("OnEscapePressed",function()f:Hide()end)
     S.add=button(f,"Add/update group",590,-235,190,function()local row=S.available[S.groupIndex or 1];if row then local ok,error=D.AddGroup(row.id,S.invite:GetText());S.Message(ok and"Group catalog saved."or error);S.Refresh()end end)
     button(f,"Copy/import catalog",590,-201,190,S.ShowCatalog)
-    S.mode=label(f,"",15,-275,560,30)
+    S.mode=label(f,"",15,-275,560,24)
     S.status=label(f,"",15,-307,775,58)
     S.test=button(f,"Test Battle.net",15,-377,180,function()local ok,error=B.Test();S.Message(ok and"Connection test started."or error);S.Refresh()end)
     button(f,"Refresh groups",205,-377,170,function()D.RequestScan();S.Refresh()end)
@@ -250,7 +296,7 @@ function S.ShowJoin(row)
         if Z.Theme then Z.Theme.Shell(f)end
         local function gold(region)if Z.Theme then Z.Theme.Tint(region,"SetTextColor","gold")end;return region end
         S.joinTitle=gold(label(f,"Welcome to ZENIAL Community",20,-18,440,24));S.joinTitle:SetFontObject("GameFontNormalLarge")
-        S.joinReason=label(f,"Join ZENIAL Community for the full server-wide network. Without it you still see players from your guild, group and other connections.",20,-50,480,34)
+        S.joinReason=label(f,"To see members, groups and offers, join ZENIAL Community once.",20,-50,480,34)
         S.joinStepTitles={}
         local function step(index,y,height,title)
             local p=CreateFrame("Frame",nil,f,BackdropTemplateMixin and"BackdropTemplate"or nil);p:SetPoint("TOPLEFT",16,y);p:SetSize(488,height)

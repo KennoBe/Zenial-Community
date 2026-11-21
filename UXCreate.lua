@@ -212,7 +212,7 @@ function U.Create()
     if T then
         T.StyleButton(U.joinBannerButton, 'primary')
     end
-    U.joinBannerText = label(U.joinBanner, tr('Recommended: join ZENIAL Community for server-wide members and offers.'), 0, 0, 500, 'GameFontHighlightSmall')
+    U.joinBannerText = label(U.joinBanner, tr('You are not in ZENIAL Community yet. Join to find members and offers.'), 0, 0, 500, 'GameFontHighlightSmall')
     U.joinBannerText:ClearAllPoints()
     U.joinBannerText:SetPoint('LEFT', K and 36 or 10, 0)
     U.joinBannerText:SetPoint('RIGHT', U.joinBannerButton, 'LEFT', -10, 0)

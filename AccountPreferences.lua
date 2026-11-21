@@ -9,7 +9,7 @@ local function account()
     return root.account.preferences
 end
 local function transfer(dst,src)
-    for _,name in ipairs({'visible','shareProfessions','localNetwork','minimapHidden'})do if type(src[name])=='boolean'then dst[name]=src[name]end end
+    for _,name in ipairs({'visible','shareProfessions','minimapHidden'})do if type(src[name])=='boolean'then dst[name]=src[name]end end
     if type(src.scale)=='number'and src.scale>=.65 and src.scale<=1.4 then dst.scale=src.scale end
     if type(src.minimapAngle)=='number'and src.minimapAngle>=-360 and src.minimapAngle<=360 then dst.minimapAngle=src.minimapAngle end
     if src.position==false then dst.position=nil

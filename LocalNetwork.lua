@@ -18,6 +18,25 @@ local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local function has(caps,bit)return math.floor((tonumber(caps)or 0)/bit)%2==1 end
 LN.Has=has
 local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record("local:"..event,...)end end
+-- Gateway messages count for the gateway role, everything else for the kind of contact (group, guild, other).
+local CLIENT_SENDS={GQ=true,GL=true,GX=true,GE=true}
+local SERVER_SENDS={GP=true,GD=true,GB=true}
+local function contactKind(id)
+    if LN.group and LN.group[id]then return"group"end
+    local p=LN.peers and LN.peers[id];local name=p and p.name or id
+    local key=Z.me and L.ScopeKey(name,Z.me.realm,Z.me.faction)
+    if key and Z.Social and Z.Social.IsGuildMember and Z.Social.IsGuildMember(key)then return"guild"end
+    return"other"
+end
+LN.ContactKind=contactKind
+local function activity(id,kind,direction)
+    local category
+    if CLIENT_SENDS[kind]then category=direction=="tx"and"gateway"or"serve"
+    elseif SERVER_SENDS[kind]then category=direction=="tx"and"serve"or"gateway"
+    else category=contactKind(id)end
+    LN.activity=LN.activity or{};local row=LN.activity[category]or{};LN.activity[category]=row
+    row[direction]=A.Now()
+end
 local function stat(field,n)LN.stats[field]=(LN.stats[field]or 0)+(n or 1)end
 local function reject(reason,...)
     stat("rejected");LN.stats.lastReject=reason;LN.rejects[reason]=(LN.rejects[reason]or 0)+1
@@ -29,7 +48,7 @@ local function route(id)local routes=transport()and transport().routes;return ro
 LN.Route=route
 function LN.Enabled()
     local b=transport()
-    return Z.db and Z.db.consent and Z.db.autoDiscovery and Z.db.localNetwork~=false and Z.identityReady and not Z.offlineOnly
+    return Z.db and Z.db.consent and Z.db.autoDiscovery and Z.identityReady and not Z.offlineOnly
         and LN.registered and b and b.registered and b.jobs and LN.stats and true or false
 end
 local function me()return Z.me and L.Identity(Z.me.target)end
@@ -84,7 +103,7 @@ local function pump(clock)
             local frame=m.parts[m.next]
             local accepted=b.QueueData(r,"L",frame,false,nil,m.priority,function(result)
                 LN.inFlight=math.max(0,LN.inFlight-1);LN.progressAt=A.Clock()
-                if result=="ok"then stat("sentFrames");stat("sentBytes",#frame)
+                if result=="ok"then stat("sentFrames");stat("sentBytes",#frame);activity(m.id,m.kind,"tx")
                 elseif result~="superseded"then m.failed=true;stat("sendErrors")end
             end,{reason="local_"..m.kind})
             if not accepted then stat("throttled");return end
@@ -243,6 +262,7 @@ function LN.Receive(sender,payload,r)
     local handler=H[kind];if not handler then return reject("kind",kind)end
     local ok,result=pcall(handler,id,wire,r)
     if not ok then trace("handler_error",kind,result);return reject("handler",kind)end
+    if result then activity(id,kind,"rx")end
     return result
 end
 function H.HI(id,wire,r)
@@ -874,6 +894,29 @@ function LN.Counts()
         if via=="direct"and s.via=="direct"then direct=direct+1 elseif via=="gateway"then indirect=indirect+1 end
     end
     return direct,indirect
+end
+-- Plain state of every connection kind for the connection overview: online players whose current
+-- state comes through that kind, and when something was last received and sent there.
+function LN.ConnectionData()
+    local data={lounge={online=0},group={online=0},guild={online=0},other={online=0},gateway={online=0},serve={online=0}}
+    local act=LN.activity or{}
+    for name,row in pairs(data)do local a=act[name];if a then row.rx,row.tx=a.rx,a.tx end end
+    data.lounge.rx,data.lounge.tx=transport()and transport().lastBnetRx,transport()and transport().lastBnetTx
+    if Z.db and LN.sources then
+        for key in pairs(Z.db.contacts)do
+            local via,detail=LN.Source(key)
+            if via=="mesh"or via=="direct"and not(detail and detail.localRoute)then data.lounge.online=data.lounge.online+1
+            elseif via=="gateway"then data.gateway.online=data.gateway.online+1
+            elseif via=="direct"then
+                local c=Z.db.contacts[key];local id=c and L.Identity(c.target)
+                local kind=id and contactKind(id)or"other";data[kind].online=data[kind].online+1
+            end
+        end
+    end
+    data.serve.online=LN.serve and count(LN.serve.clients)or 0
+    data.gateway.name=LN.gw and LN.gw.name or nil;data.gateway.loading=LN.gw and not LN.gw.synced or false
+    data.mesh=LN.MeshActive()
+    return data
 end
 function LN.Status()
     local s=LN.stats or{}

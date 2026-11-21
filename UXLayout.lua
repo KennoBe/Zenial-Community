@@ -671,7 +671,7 @@ function U.Refresh(all, revisionDriven)
         end
         U.homeAddonNavigationOption:SetChecked(not Z.ui or Z.ui.showAddonManager ~= false)
         if U.settingsView == 'privacy' and U.profileNetworkText then
-            U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
+            U.RefreshConnectionOverview()
         end
     end
     if U.page == 12 and U.RefreshPvPPage then

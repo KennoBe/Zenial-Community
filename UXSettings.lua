@@ -23,6 +23,28 @@ function U.LayoutSettings()
     end
 end
 
+-- Summary line and connection table of the privacy view.
+local STATE_COLORS = { ok = 'online', warn = 'warning', bad = 'dangerText', idle = 'dim' }
+function U.RefreshConnectionOverview()
+    if not U.profileNetworkText then
+        return
+    end
+    U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
+    local rows = Z.NetworkSetup.ConnectionRows and Z.NetworkSetup.ConnectionRows() or {}
+    local T, age = Z.Theme, U.Shared.age
+    for index, cells in ipairs(U.connectionRows or {}) do
+        local row = rows[index]
+        cells.name:SetText(row and row.label or '')
+        cells.shared:SetText(row and row.shared or '')
+        cells.online:SetText(row and row.online and tostring(row.online) or (row and '–' or ''))
+        cells.status:SetText(row and row.status or '')
+        cells.rx:SetText(row and age(row.rx) or '')
+        cells.tx:SetText(row and age(row.tx) or '')
+        if T and T.Tint then
+            T.Tint(cells.status, 'SetTextColor', STATE_COLORS[row and row.state] or 'dim')
+        end
+    end
+end
 function U.CreateSettings(helpers)
     local label, button, checkbox = helpers.label, helpers.button, helpers.checkbox
     local T, K = Z.Theme, Z.Kit
@@ -141,11 +163,39 @@ function U.CreateSettings(helpers)
     U.networkSetupButton = button(U.profileNetworkFrame, 'Community connection', 322, -8, 210, function()
         Z.NetworkSetup.Show()
     end)
-    U.profileNetworkText = label(U.profileNetworkFrame, '', 16, -44, 516, 'GameFontHighlight')
+    U.profileNetworkText = label(U.profileNetworkFrame, '', 16, -40, 516, 'GameFontHighlight')
     U.profileNetworkText:SetFontObject('GameFontHighlightSmall')
-    U.profileNetworkText:SetHeight(214)
+    U.profileNetworkText:SetHeight(16)
+    -- Connection table: one row per kind of connection.
+    local columns = { { 'Connection', 16, 170 }, { 'Online', 190, 40 }, { 'Status', 234, 130 }, { 'Received', 368, 84 }, { 'Sent', 456, 80 } }
+    for _, column in ipairs(columns) do
+        local caption = label(U.profileNetworkFrame, K and K.Upper(tr(column[1])) or tr(column[1]), column[2], -62, column[3], 'GameFontHighlightSmall')
+        caption:SetHeight(12)
+        if T and T.Font then
+            T.Font(caption, 'overline', 'goldDim')
+        end
+    end
+    U.connectionRows = {}
+    for index = 1, 7 do
+        local y = -78 - (index - 1) * 26
+        local row = {}
+        row.name = label(U.profileNetworkFrame, '', 16, y, 170, 'GameFontHighlightSmall')
+        row.shared = label(U.profileNetworkFrame, '', 16, y - 12, 170, 'GameFontHighlightSmall')
+        row.online = label(U.profileNetworkFrame, '', 190, y, 40, 'GameFontHighlightSmall')
+        row.status = label(U.profileNetworkFrame, '', 234, y, 130, 'GameFontHighlightSmall')
+        row.rx = label(U.profileNetworkFrame, '', 368, y, 84, 'GameFontHighlightSmall')
+        row.tx = label(U.profileNetworkFrame, '', 456, y, 80, 'GameFontHighlightSmall')
+        for _, field in ipairs({ 'name', 'shared', 'online', 'status', 'rx', 'tx' }) do
+            row[field]:SetHeight(12)
+            row[field]:SetWordWrap(false)
+        end
+        if T and T.Font then
+            T.Font(row.shared, 'caption', 'dim')
+        end
+        U.connectionRows[index] = row
+    end
     U.preferences = {}
-    for index, spec in ipairs({ { 'visible', 'Visible profile' }, { 'shareProfessions', 'Share professions and recipes' }, { 'localNetwork', 'Local network (guild, group, contacts)' } }) do
+    for index, spec in ipairs({ { 'visible', 'Visible profile' }, { 'shareProfessions', 'Share professions and recipes' } }) do
         local name = spec[1]
         local control = checkbox(U.profileNetworkFrame, spec[2], 574, -36 - (index - 1) * 40, 262, function(self)
             Z.SetPreference(name, self:GetChecked())
@@ -154,7 +204,7 @@ function U.CreateSettings(helpers)
         control:SetChecked(Z.db[name])
         U.preferences[name] = control
     end
-    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 578, -152, 256, 'GameFontHighlightSmall')
+    U.settingsVisibleNote = label(U.profileNetworkFrame, tr('When enabled, your display name, class, level, guild, roles, note, group listing, quest request, trade offers, main and alts are shared with other players. Professions and recipes are shared only when the second setting is enabled. When disabled, those details are omitted. Character name, realm, faction, online presence and PvP receiving marker remain visible.'), 578, -124, 256, 'GameFontHighlightSmall')
     U.settingsVisibleNote:SetHeight(212)
     U.settingsVisibleNote:SetWordWrap(true)
     if T and T.Tint then
@@ -163,7 +213,7 @@ function U.CreateSettings(helpers)
     heading(U.profileNetworkFrame, 'Privacy', 578, -14, 256)
     heading(U.profileNetworkFrame, 'Diagnostics and backups', 16, -292, 380)
     button(U.profileNetworkFrame, tr('Aktualisieren'), 16, -314, 140, function()
-        U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
+        U.RefreshConnectionOverview()
     end)
     U.profileDiagnosticButton = button(U.profileNetworkFrame, 'Technical details', 166, -314, 175, U.ShowDiagnostics)
 
@@ -357,7 +407,7 @@ function U.SetSettingsView(v, skipRoute)
         U.Shared.selectNav(tab, U.settingsView == name)
     end
     if U.settingsView == 'privacy' and U.profileNetworkText then
-        U.profileNetworkText:SetText(Z.NetworkSetup.UserSummary())
+        U.RefreshConnectionOverview()
     end
     U.RefreshSettingsCompanionSummary()
     if U.RefreshCrossFactionSettings then
