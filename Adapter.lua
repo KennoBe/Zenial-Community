@@ -202,7 +202,8 @@ end
 function A.Receive(prefix,payload,channel,sender,target,zoneChannelID,localID,channelName)
     if not A.Safe(prefix,channel)or channel~="WHISPER"then return false end
     if Z.BattleNetTransport and prefix==Z.BattleNetTransport.PREFIX then return Z.BattleNetTransport.Receive(prefix,payload,channel,sender)end
-    if not A.Safe(prefix,payload,channel,sender) or(prefix~=L.PREFIX and prefix~=L.PREFIX3)or not Z.engine or not A.RuntimeAvailable() then return false end
+    local localPrefix=Z.LocalNetwork and Z.LocalNetwork.PREFIX
+    if not A.Safe(prefix,payload,channel,sender) or(prefix~=L.PREFIX and prefix~=L.PREFIX3 and prefix~=localPrefix)or not Z.engine or not A.RuntimeAvailable() then return false end
     if not Z.db.consent or type(payload)~="string" or type(sender)~="string" or A.Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)~=false then if Z.Diagnostics then Z.Diagnostics.Record("receive:not_ready",prefix,channel,sender)end;return false end
     A.network.received=A.network.received+1
     if Z.Diagnostics then Z.Diagnostics.Record("receive:raw",prefix,channel,sender,localID,channelName)end
@@ -211,7 +212,10 @@ function A.Receive(prefix,payload,channel,sender,target,zoneChannelID,localID,ch
         route.at=A.Clock()
         local peerKey=Z.ResolvePeerKey(sender);local peer=peerKey and Z.db.peers[peerKey]
         if peer then peer.lastContact=A.Now();peer.lastContactClock=A.Clock()end
+        -- Local network frames need the same verified route as every other addon whisper.
+        if prefix==localPrefix then return Z.LocalNetwork.Receive(sender,payload,route)end
     end
+    if prefix==localPrefix then return false end
     if prefix==L.PREFIX3 then return Z.Network3 and Z.Network3.Receive(sender,payload,channel)or false end
     return channel=="WHISPER" and Z.engine:Receive(sender,payload) or false
 end

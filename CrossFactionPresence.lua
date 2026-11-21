@@ -137,7 +137,10 @@ local function accept(guid,sender,proto,caps,channel)
     N.awaiting[guid]=nil
     local f=faction(channel)
     if proto==N.PROTO then
-        return XF.Confirm(guid,{name=sender,proto=proto,caps=caps,xfChat=caps%2==1,source='addon',faction=f})
+        local confirmed=XF.Confirm(guid,{name=sender,proto=proto,caps=caps,xfChat=caps%2==1,source='addon',faction=f})
+        -- A confirmed ZENIAL signal is a local-network candidate; the whisper handshake decides everything else.
+        if confirmed and Z.LocalNetwork and Z.LocalNetwork.OnPresenceSignal then pcall(Z.LocalNetwork.OnPresenceSignal,sender,channel)end
+        return confirmed
     end
     XF.MarkIncompatible(guid,{name=sender,proto=proto,source='addon',faction=f})
     return true

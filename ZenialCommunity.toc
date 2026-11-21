@@ -16,6 +16,7 @@ CommunityDirectory.lua
 BattleNetTransport.lua
 WhisperGuard.lua
 CommunityMesh.lua
+LocalNetwork.lua
 CrossFactionCodec.lua
 CrossFactionProtocol.lua
 CrossFactionRegistry.lua

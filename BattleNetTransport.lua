@@ -33,6 +33,7 @@ function B.Reset(reason)
     if Z.Network3 then Z.Network3.waitingTargets={}end
     if Z.engine then Z.engine.waitingTargets={}end
     if Z.CommunityMesh then Z.CommunityMesh.poolUntil=0 end
+    if Z.LocalNetwork and Z.LocalNetwork.Reset then Z.LocalNetwork.Reset(reason)end
     trace("reset",reason or"initialize")
 end
 function B.Initialize()
@@ -139,6 +140,7 @@ local function confirm(transport,target,f,identityProof)
     if first then local field=transport=="BNET"and"confirmedBNet"or"confirmedWhisper";B.stats[field]=B.stats[field]+1 end
     if Z.ScheduledGroups then Z.ScheduledGroups.OnConnected(B.routes[routeKey])end
     if Z.UpdateNotice then Z.UpdateNotice.OnConnected(B.routes[routeKey])end
+    if Z.LocalNetwork and B.routes[routeKey]then Z.LocalNetwork.OnConnected(B.routes[routeKey],first or oldRoute.session~=f[10])end
     B.stats.acknowledged=B.stats.acknowledged+1;B.stats.lastError="";trace("confirmed",transport,f[4]);return true
 end
 local function allowInbound(routeKey)
@@ -169,12 +171,30 @@ local function complete(job,result)
     if job.completed then return end;job.completed=true
     if job.onResult then pcall(job.onResult,result)end
 end
+-- Battle.net lifecycle only (disconnect, appear offline): verified addon-whisper routes,
+-- their pending probes and queued whisper jobs do not depend on Battle.net and stay intact.
+function B.ResetBattleNet(reason)
+    if not B.routes then return B.Reset(reason)end
+    for routeKey,row in pairs(B.routes)do if row.transport=="BNET"then B.routes[routeKey]=nil end end
+    for routeKey,row in pairs(B.pending)do if row.transport=="BNET"then B.pending[routeKey]=nil end end
+    for nonce in pairs(B.proofs)do B.proofs[nonce]=nil end
+    local removed={}
+    for i=#B.jobs,1,-1 do local job=B.jobs[i]
+        -- Identity proofs (V) for a Battle.net account travel as whispers but belong to the BNET handshake.
+        if job.transport=="BNET"or job.kind=="V"then table.remove(B.jobs,i);B.bytes=math.max(0,B.bytes-#job.wire);removed[#removed+1]=job end
+    end
+    for _,job in ipairs(removed)do complete(job,"error")end
+    B.test=nil
+    if Z.CommunityMesh then Z.CommunityMesh.poolUntil=0 end
+    trace("reset_bnet",reason or"disconnect")
+end
 function B.QueueData(route,protocol,payload,private,dedupe,priority,onResult,context)
     if not enabled()or not B.registered or not route or type(payload)~="string"then return false end
     if B.routes[key(route.transport,route.target)]~=route or blocked(route.name)then return false end
     local wire,prefix
     if route.transport=="BNET"then wire="D|"..protocol.."|"..payload
-    elseif protocol=="1"or protocol=="3"then wire=payload;prefix=protocol=="1"and L.PREFIX or L.PREFIX3 else return false end
+    elseif protocol=="1"or protocol=="3"then wire=payload;prefix=protocol=="1"and L.PREFIX or L.PREFIX3
+    elseif protocol=="L"and Z.LocalNetwork then wire=payload;prefix=Z.LocalNetwork.PREFIX else return false end
     if #wire>(route.transport=="BNET"and 3800 or 240)then return false end
     local job={transport=route.transport,target=route.target,wire=wire,prefix=prefix,kind=protocol,private=private==true,guid=route.guid,name=route.name,realm=route.realm,session=route.session,dedupe=dedupe,priority=private and 100 or priority or 20,onResult=onResult,reason=context and context.reason or protocol,queuedAt=A.Clock()}
     if dedupe then for i,old in ipairs(B.jobs)do if old.dedupe==dedupe then

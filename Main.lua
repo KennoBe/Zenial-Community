@@ -408,7 +408,7 @@ function Z.OnGroupReceived(key,group)
     if Z.db.groupFollows[activity]and Z.UI and Z.UI.NotifyGroupFollow then Z.UI.NotifyGroupFollow(key,group.id,activity)end
 end
 function Z.SetPreference(name,value)
-    local allowed={consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true}
+    local allowed={consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,localNetwork=true}
     if not allowed[name]or type(value)~="boolean"or not Z.db then return false end
     Z.db[name]=value
     if Z.AccountPreferences then Z.AccountPreferences.Save()end
@@ -554,6 +554,7 @@ local function initializeNetworkModules()
     Z.CommunityDirectory.Initialize(ZenialCommunityDB)
     Z.BattleNetTransport.Initialize()
     Z.CommunityMesh.Initialize()
+    if Z.LocalNetwork then Z.LocalNetwork.Initialize()end
     if Z.CommunityLayer then Z.CommunityLayer.Initialize()end
     Z.QuestMesh.Initialize()
     Z.QuestHelper.Initialize()
@@ -720,7 +721,7 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.CrossFactionPresence and A.Safe(prefix)and type(prefix)=="string"and prefix==Z.CrossFactionPresence.PREFIX then pcall(Z.CrossFactionPresence.OnBNet,prefix,payload,sender)
         else Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end end
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then
-        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.Reset("disconnect")end end
+        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.ResetBattleNet("disconnect")end end
     elseif event=="PLAYER_LEVEL_UP" then
         if Z.RefreshIdentity() then Z.Publish() end
         if Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
@@ -747,6 +748,7 @@ frame:SetScript("OnEvent",function(_,event,...)
             if Z.db.lfg[1].have~=have then Z.db.lfg[1].have=have; L.Touch(Z.db); Z.Publish() end end
         if Z.db then Z.ObserveFinderGroup()end
         if Z.db and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end
+        if Z.LocalNetwork then Z.LocalNetwork.RefreshGroup()end
         A.DiscoveryTick(true)
     elseif event=="PLAYER_GUILD_UPDATE" then A.DiscoveryTick(true)
     elseif event=="LFG_LIST_AVAILABILITY_UPDATE"then
@@ -783,6 +785,7 @@ local function tickQuarterSecond()
         Z.Network3.ExpireAssemblies()
     end
     Z.CommunityMesh.Tick()
+    if Z.LocalNetwork then Z.LocalNetwork.Tick()end
     if Z.CommunityLayer then Z.CommunityLayer.Tick()end
     Z.QuestHelper.Tick()
     Z.MaterialPlanner.Tick()
