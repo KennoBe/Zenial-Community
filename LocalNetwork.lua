@@ -117,7 +117,8 @@ end
 local function sendHello(id,p)
     local load=LN.serve and count(LN.serve.clients)or 0
     local size=LN.OfferSize and LN.OfferSize()or 0
-    if queueValues(id,"HI",{tostring(LN.PROTO),LN.Capabilities(),Z.session,LN.MeshActive()and 1 or 0,load,size},LN.PRIORITY_PRESENCE,"HI:"..id)then
+    -- Field 7 asks for an answer while we hold no hello of the peer (first contact or our own reset).
+    if queueValues(id,"HI",{tostring(LN.PROTO),LN.Capabilities(),Z.session,LN.MeshActive()and 1 or 0,load,size,p.hello and 0 or 1},LN.PRIORITY_PRESENCE,"HI:"..id)then
         p.helloSent=p.session;p.helloSentAt=A.Clock();p.helloCaps=LN.Capabilities();return true
     end
     return false
@@ -250,9 +251,11 @@ function H.HI(id,wire,r)
     local caps,mesh,load,size=tonumber(f[2]),tonumber(f[4]),tonumber(f[5]),tonumber(f[6])
     if not L.Int(caps,0,1023)or not L.Int(mesh,0,1)or not L.Int(load,0,99)or not L.Int(size,0,100000)then return reject("hello")end
     local p=peerFor(id,r);local first=not p.hello
+    -- A peer that asks for an answer has lost its local state (reset) and needs our hello and data again.
+    local restarted=f[7]=="1"and not first
     p.hello=A.Clock();p.caps=caps;p.mesh=mesh==1;p.load=load;p.size=size;p.rx=A.Clock()
-    if p.helloSent~=r.session then sendHello(id,p)end
-    if first then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil end
+    if p.helloSent~=r.session or restarted then sendHello(id,p)end
+    if first or restarted then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil end
     trace("hello",r.name,caps);return true
 end
 local function directPeer(id,r)
@@ -400,7 +403,7 @@ end
 -- A gateway passes valid public presence it already holds (Battle.net mesh, own direct peers, or as relay its
 -- first-hop gateway entries) to at most two players without mesh. Everything is pulled page by page or as a delta,
 -- so a gateway never queues more than one answer per client. Entries keep their original time; hop 2 is final.
-local GW={MAX_CLIENTS=2,MAX_ENTRIES=150,PAGE=8,POLL=75,POLL_JITTER=10,MORE=3,PAGE_TIMEOUT=20,DELTA_TIMEOUT=30,ATTEMPTS=3,
+local GW={MAX_CLIENTS=2,MAX_ENTRIES=150,PAGE=8,POLL=60,POLL_JITTER=10,MORE=3,PAGE_TIMEOUT=20,DELTA_TIMEOUT=30,ATTEMPTS=3,
     COOLDOWN=600,CLIENT_IDLE=240,MAX_HOP=2,DELTA_BYTES=1400,DELTA_ITEMS=76,MAX_NEED=32,EXCLUDE_GAP=30,MAX_EXCLUDE=64,
     SWITCH_GAP=300,MAX_IDS=2000,MAX_CLIENT_ENTRIES=300,OTHER_SYNC=4,OTHER_WINDOW=600}
 LN.GW=GW

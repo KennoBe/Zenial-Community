@@ -213,6 +213,9 @@ function A.Receive(prefix,payload,channel,sender,target,zoneChannelID,localID,ch
     if Z.Diagnostics then Z.Diagnostics.Record("receive:raw",prefix,channel,sender,localID,channelName)end
     if Z.BattleNetTransport then
         local route=Z.BattleNetTransport.Route(sender);if not route then return false end
+        -- A whisper proves the whisper route, never a Battle.net route of the same player.
+        local whisper=Z.BattleNetTransport.routes and Z.BattleNetTransport.routes["WHISPER:"..(L.Identity(sender)or"")]
+        if whisper then route=whisper end
         route.at=A.Clock()
         local peerKey=Z.ResolvePeerKey(sender);local peer=peerKey and Z.db.peers[peerKey]
         if peer then peer.lastContact=A.Now();peer.lastContactClock=A.Clock()end

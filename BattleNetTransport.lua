@@ -388,7 +388,9 @@ function B.Tick()
         B.nextExpiry=clock+1
         for routeKey,p in pairs(B.pending)do
             if clock>p.deadline then B.pending[routeKey]=nil;B.failed[routeKey]=clock+60;B.stats.timeouts=B.stats.timeouts+1;B.stats.lastError="No matching reply received.";trace("timeout",p.transport,p.target,p.reason)
-                if p.transport=="WHISPER"then B.FailTarget(p.target,"timeout")end
+                -- A background local-network probe without answer only proves that this whisper path failed:
+                -- states other sources report stay untouched (the local network retries after its own cooldown).
+                if p.transport=="WHISPER"and not(type(p.reason)=="string"and p.reason:sub(1,6)=="local_")then B.FailTarget(p.target,"timeout")end
             elseif p.transport=="BNET"and not p.proof and p.attempts<3 and clock-p.started>=p.attempts*8 then
                 if B.Queue(p.transport,p.target,p.transport=="BNET"and"H"or"W",p.nonce)then p.attempts=p.attempts+1 end
             end
