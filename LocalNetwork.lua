@@ -265,13 +265,14 @@ function H.PR(id,wire,r)
     local f=Z.Network3.Unpack(wire)
     if not f or f[1]~="P"or f[2]~="3"or f[3]~=r.session then return reject("presence_session",r.name)end
     local N=Z.Network3;N.meshContext=nil
+    local key=Z.ResolvePeerKey(r.name);local before=key and LN.sources[key]
     local ok,changed=N.ProcessComplete(r.name,"PUBLIC","P",wire)
     if not ok then return reject("presence",r.name)end
-    local key=Z.ResolvePeerKey(r.name)
+    key=key or Z.ResolvePeerKey(r.name)
     LN.direct[id]={wire=wire,session=r.session,at=A.Now(),name=r.name}
     if key then LN.sources[key]={via="direct",at=A.Now()}end
     stat("presenceReceived")
-    if changed~=false and Z.MarkDirty then Z.MarkDirty("P")end
+    if(changed~=false or not(before and before.via=="direct"))and Z.MarkDirty then Z.MarkDirty("P")end
     return true
 end
 function H.PT(id,wire,r)
@@ -387,6 +388,428 @@ function LN.Tick()
         if LN.GatewayTick then LN.GatewayTick(clock)end
     end
     pump(clock)
+end
+
+-- ===== Presence gateway (level C) and limited relay =====
+-- A gateway passes valid public presence it already holds (Battle.net mesh, own direct peers, or as relay its
+-- first-hop gateway entries) to at most two players without mesh. Everything is pulled page by page or as a delta,
+-- so a gateway never queues more than one answer per client. Entries keep their original time; hop 2 is final.
+local GW={MAX_CLIENTS=2,MAX_ENTRIES=150,PAGE=8,POLL=75,POLL_JITTER=10,MORE=3,PAGE_TIMEOUT=20,DELTA_TIMEOUT=30,ATTEMPTS=3,
+    COOLDOWN=600,CLIENT_IDLE=240,MAX_HOP=2,DELTA_BYTES=1400,DELTA_ITEMS=76,MAX_NEED=32,EXCLUDE_GAP=30,MAX_EXCLUDE=64,
+    SWITCH_GAP=300,MAX_IDS=2000,MAX_CLIENT_ENTRIES=300,OTHER_SYNC=4,OTHER_WINDOW=600}
+LN.GW=GW
+local SEP="~"
+local AVAILABILITY={AVAILABLE=true,AFK=true,BUSY=true,GROUP=true}
+local function clean(value)return type(value)=="string"and not value:find(SEP,1,true)end
+local function validSession(session)
+    if not L.Text(session,32)or not session:match("^%d+%.%d+%.%d+$")then return false end
+    local epoch=tonumber(session:match("^(%d+)%."));return L.Int(epoch,1,4102444800)and epoch<=A.Now()+120
+end
+-- The same field rules as a mesh presence record (CommunityMesh validate, kind P).
+local function validPresence(f)
+    local D=Z.CommunityDirectory
+    if not f or#f~=17 or f[1]~="P"or f[2]~="3"or f[5]~=Z.me.faction or not D or D.World(f[4])~=D.World(Z.me.realm)then return false end
+    if not L.Text(f[6],16,true)or not L.Text(f[8],16,true)or not AVAILABILITY[f[9]]or not L.Text(f[10],48,true)
+        or f[10]~=""and not f[10]:match("^[%d,]+$")or(f[16]~="all"and f[16]~="zone")then return false end
+    for _,i in ipairs({7,11,12,13,14,15,17})do
+        local max=i==7 and 100 or i==15 and 1 or(i==14 or i==17)and 1000000 or 2147483646
+        if not L.Int(tonumber(f[i]),0,max)then return false end
+    end
+    return true
+end
+local function newerVersion(a,b)
+    if not b then return true end
+    if a.session==b.session then return a.at>b.at end
+    local x,y=tonumber(a.session:match("^(%d+)%.")),tonumber(b.session:match("^(%d+)%."))
+    if x and y and x~=y then return x>y end
+    return a.at>b.at
+end
+local function fieldsOf(wire)
+    local f=Z.Network3.Unpack(wire);if not f or#f~=17 or f[1]~="P"or f[2]~="3"then return nil end
+    local values={};for i=6,17 do values[#values+1]=f[i]end;return f,values
+end
+-- Hidden profiles (visible=false) publish an empty class and level 0; a gateway never passes them on.
+local function hidden(values)return values[1]==""and tonumber(values[2])==0 end
+local function buildOffer(requester)
+    local offer={};local now=A.Now();local own=me()
+    local function add(origin,session,at,realm,hop,values)
+        local id=L.Identity(origin)
+        if not id or id==requester or id==own or hop>GW.MAX_HOP or not L.Int(at,1,4102444800)or now-at>LN.TTL or at>now+120 then return end
+        local key=L.ScopeKey(origin,Z.me.realm,Z.me.faction);if not key or Z.db.blocked[key]or hidden(values)then return end
+        if not clean(origin)or not clean(session)or not clean(realm)then return end
+        for i=1,12 do if not clean(values[i])then return end end
+        local old=offer[id];if old and(old.at>at or old.at==at and old.hop<=hop)then return end
+        offer[id]={id=id,origin=origin,session=session,at=at,realm=realm,hop=hop,values=values,sig=session..SEP..table.concat(values,SEP)}
+    end
+    local M=Z.CommunityMesh
+    if LN.MeshActive()and M and M.records then
+        for _,row in pairs(M.records)do if row.kind=="P"then
+            local f,values=fieldsOf(row.wire);if f and f[3]==row.session then add(row.origin,row.session,row.at,row.realm,1,values)end
+        end end
+    end
+    for id,d in pairs(LN.direct)do
+        local r=route(id);local f,values=fieldsOf(d.wire)
+        if f and r and r.session==d.session then add(d.name,d.session,d.at,f[4],1,values)end
+    end
+    local gw=LN.gw
+    if not LN.MeshActive()and gw and gw.synced then
+        for _,e in pairs(gw.entries)do if e.hop<GW.MAX_HOP then add(e.origin,e.session,e.at,e.realm,e.hop+1,e.values)end end
+    end
+    local list={};for _,rec in pairs(offer)do list[#list+1]=rec end
+    table.sort(list,function(a,b)if a.at~=b.at then return a.at>b.at end;return a.id<b.id end)
+    for i=#list,GW.MAX_ENTRIES+1,-1 do offer[list[i].id]=nil;list[i]=nil end
+    LN.offerSize=#list
+    return offer,list
+end
+LN.BuildOffer=buildOffer
+function LN.OfferSize()return LN.offerSize or 0 end
+function LN.CanServe()
+    if not LN.Enabled()then return false end
+    if LN.MeshActive()then return true end
+    local gw=LN.gw;return gw and gw.synced and next(gw.entries)~=nil or false
+end
+function LN.IsGatewayRelation(id)return LN.gw and LN.gw.primary==id or LN.serve and LN.serve.clients[id]~=nil or false end
+local function encodeEntry(n,rec)
+    local realm=rec.realm==Z.me.realm and"="or rec.realm
+    return table.concat({n,rec.origin,rec.session,rec.at,realm,rec.hop,table.concat(rec.values,SEP)},SEP)
+end
+local function split(text)
+    local out={};local start=1
+    while true do
+        local i=text:find(SEP,start,true)
+        if not i then out[#out+1]=text:sub(start);break end
+        out[#out+1]=text:sub(start,i-1);start=i+1
+        if#out>40 then return nil end
+    end
+    return out
+end
+-- Rebuilds and checks the original presence wire. The gateway's route is verified; the third player's claim is not.
+local function decodeEntry(text,r,offset)
+    local parts=type(text)=="string"and#text<=600 and split(text);offset=offset or 0
+    if not parts or#parts~=18+offset then return nil end
+    local n,origin,session,at,realm,hop=tonumber(parts[1+offset]),parts[2+offset],parts[3+offset],tonumber(parts[4+offset]),parts[5+offset],tonumber(parts[6+offset])
+    if realm=="="then realm=r.realm end
+    local id,full=L.Identity(origin)
+    if not L.Int(n,1,100000)or not id or type(full)~="string"or not full:find(" ",1,true)or not validSession(session)or not L.Int(at,1,4102444800)
+        or not L.Text(realm,64)or not L.Int(hop,1,GW.MAX_HOP)then return nil end
+    local values={};for i=7+offset,18+offset do values[#values+1]=parts[i]end
+    local wireValues={"P","3",session,realm,Z.me.faction};for _,v in ipairs(values)do wireValues[#wireValues+1]=v end
+    local wire=Z.Network3.Pack(wireValues)
+    if#wire>238 or not validPresence(Z.Network3.Unpack(wire))then return nil end
+    return{n=n,origin=full,id=id,session=session,at=at,realm=realm,hop=hop,values=values,wire=wire}
+end
+local function scopeKey(origin)return L.ScopeKey(origin,Z.me.realm,Z.me.faction)end
+local function applyRelayed(e,gw)
+    local key=scopeKey(e.origin)
+    if not key or key==Z.me.key or Z.db.blocked[key]then return reject("relay_identity",e.origin)end
+    local now=A.Now()
+    if now-e.at>LN.TTL or e.at>now+120 then stat("stale");return false end
+    -- A direct local connection outranks every relayed statement about the same player.
+    local d=LN.direct[e.id];if d and route(e.id)and now-d.at<LN.TTL then stat("directPreferred");return false end
+    local applied=LN.applied[e.id]
+    if applied and not newerVersion(e,applied)then stat("duplicates");return false end
+    local peer=Z.db.peers[key];local source=LN.sources[key];local N=Z.Network3
+    if peer and peer.reportedAt and peer.reportedAt>=e.at and not(source and source.via=="gateway")and N.IsOnline(key)then stat("stale");return false end
+    local wasOnline=Z.IsOnline and Z.IsOnline(key)
+    N.meshContext={at=e.at,origin=e.origin,session=e.session,seq=0}
+    local ok,changed=N.ProcessComplete(e.origin,"PUBLIC","P",e.wire)
+    N.meshContext=nil
+    if not ok then return reject("relay_presence",e.origin)end
+    LN.applied[e.id]={session=e.session,at=e.at}
+    LN.sources[key]={via="gateway",gateway=gw.primary,gatewayName=gw.name,hop=e.hop,at=e.at}
+    stat("relayed")
+    if(changed~=false or not wasOnline)and Z.MarkDirty then Z.MarkDirty("P")end
+    return true
+end
+LN.ApplyRelayed=applyRelayed
+local function dropEntry(gw,n)
+    local e=gw.entries[n];if not e then return end
+    gw.entries[n]=nil;if gw.byOrigin[e.id]==n then gw.byOrigin[e.id]=nil end
+    local key=scopeKey(e.origin);local s=key and LN.sources[key]
+    -- Only the gateway that reported a state can withdraw it.
+    if s and s.via=="gateway"and s.gateway==gw.primary then
+        local peer=Z.db.peers[key];if peer then peer.reportedAt,peer.reportedClock=nil,nil end
+        LN.sources[key]=nil;LN.applied[e.id]=nil
+        if Z.MarkDirty then Z.MarkDirty("offline")end
+    end
+end
+-- Self-sync: try to reach relevant reported players directly; never the whole list.
+local function selfSync(e)
+    if LN.direct[e.id]or route(e.id)or LN.failed[e.id]then return end
+    local key=scopeKey(e.origin);local peer=key and Z.db.peers[key]
+    local source
+    if LN.group[e.id]then source="gateway_group"
+    elseif key and Z.Social and Z.Social.IsGuildMember and Z.Social.IsGuildMember(key)then source="gateway_guild"
+    elseif peer and peer.lastContact then source="gateway_contact"
+    else
+        if(LN.otherSync or 0)<=0 then return end
+        LN.otherSync=LN.otherSync-1;source="gateway"
+    end
+    LN.Candidate(e.origin,source)
+end
+local function storeEntry(gw,e)
+    local old=gw.entries[e.n]
+    if old and old.id~=e.id then return reject("entry_conflict",e.origin)end
+    local previous=gw.byOrigin[e.id];if previous and previous~=e.n then dropEntry(gw,previous)end
+    if not old and count(gw.entries)>=GW.MAX_CLIENT_ENTRIES then return reject("entry_limit")end
+    gw.entries[e.n]=e;gw.byOrigin[e.id]=e.n
+    applyRelayed(e,gw)
+    if not old then selfSync(e)end
+    return true
+end
+local function poll()return GW.POLL+math.random(-GW.POLL_JITTER,GW.POLL_JITTER)end
+local function gwCooldown(id,clock)local untilAt=LN.gwCooldown[id];return untilAt and clock<untilAt end
+local function gatewayCandidates(clock)
+    local list={}
+    for id,p in pairs(LN.peers)do
+        if p.hello and has(p.caps,LN.CAP_GATEWAY)and route(id)and not gwCooldown(id,clock)and not LN.serve.clients[id]then
+            local key=scopeKey(p.name)
+            local value=(has(p.caps,LN.CAP_MESH)and 1000 or 0)+(LN.group[id]and 50 or 0)
+                +(key and Z.Social and Z.Social.IsGuildMember and Z.Social.IsGuildMember(key)and 30 or 0)
+                -math.min(2,p.load or 0)*20+math.min(60,math.floor((clock-(p.since or clock))/60))
+            list[#list+1]={id=id,p=p,score=value}
+        end
+    end
+    table.sort(list,function(a,b)if a.score~=b.score then return a.score>b.score end;return a.id<b.id end)
+    return list
+end
+local function needGateway(clock)
+    if not LN.Enabled()or LN.MeshActive()or not LN.noMeshSince then return false end
+    -- Members of a lounge first get the chance to build their mesh routes.
+    local D=Z.CommunityDirectory;local joined=D and D.Status and D.Status().joined or 0
+    return clock-LN.noMeshSince>=((joined or 0)>0 and LN.MESH_GRACE or 5)
+end
+local function startGateway(clock,choice)
+    LN.gw={primary=choice.id,name=choice.p.name,mesh=has(choice.p.caps,LN.CAP_MESH),epoch="",page=1,pages=1,state="snapshot",requestAt=clock,attempts=1,
+        ackSeq=0,entries={},byOrigin={},need={},startedAt=clock,restarts=0}
+    queueValues(choice.id,"GQ",{"",1},LN.PRIORITY_GATEWAY,"GQ:"..choice.id)
+    stat("gatewayStarts");trace("gateway_start",choice.p.name,LN.gw.mesh and"mesh"or"relay")
+end
+-- Reported states stay until their own time runs out; a failed gateway is only avoided for a while.
+local function failGateway(reason,cooldown)
+    local gw=LN.gw;if not gw then return end
+    if cooldown then LN.gwCooldown[gw.primary]=A.Clock()+GW.COOLDOWN end
+    LN.gw=nil;LN.lastGateway={name=gw.name,reason=reason,at=A.Clock()}
+    stat("gatewayFailures");trace("gateway_failed",gw.name,reason)
+end
+local function releaseGateway(reason)
+    local gw=LN.gw;if not gw then return end
+    queueValues(gw.primary,"GE",{gw.epoch},LN.PRIORITY_GATEWAY,"GE:"..gw.primary)
+    LN.gw=nil;trace("gateway_release",gw.name,reason)
+end
+local function sendPoll(gw)
+    local need={};for n in pairs(gw.need)do if#need<GW.MAX_NEED then need[#need+1]=n end end;table.sort(need);gw.need={}
+    return queueValues(gw.primary,"GL",{gw.epoch,gw.ackSeq,table.concat(need,",")},LN.PRIORITY_GATEWAY,"GL:"..gw.primary)
+end
+function LN.OnPeerLost(id)
+    if LN.gw and LN.gw.primary==id then failGateway("route",false)end
+    if LN.serve then LN.serve.clients[id]=nil end
+end
+function LN.ResetGateway()
+    LN.gw=nil;LN.serve={clients={}};LN.gwCooldown={};LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=A.Clock();LN.backupName=""
+end
+function LN.GatewayTick(clock)
+    local now=A.Now()
+    for id,c in pairs(LN.serve.clients)do
+        if not route(id)or clock-c.lastSeen>GW.CLIENT_IDLE or not LN.CanServe()then LN.serve.clients[id]=nil;trace("serve_end",c.name)end
+    end
+    for id,untilAt in pairs(LN.gwCooldown)do if clock>=untilAt then LN.gwCooldown[id]=nil end end
+    for id,a in pairs(LN.applied)do if now-a.at>2*LN.TTL then LN.applied[id]=nil end end
+    if clock-(LN.otherSyncAt or 0)>=GW.OTHER_WINDOW then LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=clock end
+    if not needGateway(clock)then
+        if LN.gw then releaseGateway(LN.MeshActive()and"mesh"or"disabled")end
+        LN.backupName="";return
+    end
+    local gw=LN.gw
+    if gw and not route(gw.primary)then failGateway("route",false);gw=nil end
+    local list=gatewayCandidates(clock)
+    if not gw then
+        LN.backupName=list[2]and list[2].p.name or""
+        if list[1]then startGateway(clock,list[1])end
+        return
+    end
+    LN.backupName="";for _,row in ipairs(list)do if row.id~=gw.primary then LN.backupName=row.p.name;break end end
+    -- A relay gateway gives way to a mesh gateway, at most once per SWITCH_GAP.
+    local best=list[1]
+    if not gw.mesh and best and best.id~=gw.primary and has(best.p.caps,LN.CAP_MESH)and clock-gw.startedAt>=GW.SWITCH_GAP then
+        releaseGateway("better_gateway");startGateway(clock,best);return
+    end
+    if gw.state=="snapshot"then
+        if clock-gw.requestAt>GW.PAGE_TIMEOUT then
+            if gw.attempts>=GW.ATTEMPTS then failGateway("snapshot_timeout",true)
+            else gw.attempts=gw.attempts+1;gw.requestAt=clock;queueValues(gw.primary,"GQ",{gw.epoch,gw.page},LN.PRIORITY_GATEWAY,"GQ:"..gw.primary)end
+        end
+    elseif gw.state=="polling"then
+        if clock-gw.requestAt>GW.DELTA_TIMEOUT then
+            if gw.attempts>=GW.ATTEMPTS then failGateway("delta_timeout",true)
+            else gw.attempts=gw.attempts+1;gw.requestAt=clock;sendPoll(gw)end
+        end
+    elseif gw.state=="synced"and clock>=gw.pollAt then
+        gw.state="polling";gw.requestAt=clock;gw.attempts=1;sendPoll(gw)
+    end
+    -- Players reached directly need no gateway updates any more.
+    if gw.synced then
+        local ids={}
+        for n,e in pairs(gw.entries)do local d=LN.direct[e.id];if d and route(e.id)and#ids<GW.MAX_EXCLUDE then ids[#ids+1]=n end end
+        table.sort(ids);local signature=table.concat(ids,",")
+        if signature~=(gw.excludeSig or"")and clock-(gw.excludeAt or -1000)>=GW.EXCLUDE_GAP then
+            if queueValues(gw.primary,"GX",{gw.epoch,signature},LN.PRIORITY_GATEWAY,"GX:"..gw.primary)then gw.excludeSig=signature;gw.excludeAt=clock end
+        end
+    end
+end
+-- Server side
+local function refuse(id,reason)stat("gatewayRefused");return queueValues(id,"GB",{reason},LN.PRIORITY_GATEWAY,"GB:"..id)end
+local function newEpoch()LN.order=LN.order+1;return tostring(A.Now()).."."..tostring(LN.order%100000)end
+local function sendPage(id,c,page)
+    local values={c.epoch,page,c.pages};local first=(page-1)*GW.PAGE+1
+    for i=first,math.min(#c.list,first+GW.PAGE-1)do
+        local rec=c.list[i];values[#values+1]=encodeEntry(c.ids[rec.id],rec)
+        c.acked[rec.id]={session=rec.session,at=rec.at,sig=rec.sig}
+    end
+    stat("pagesServed")
+    return queueValues(id,"GP",values,LN.PRIORITY_GATEWAY,"GP:"..id)
+end
+function H.GQ(id,wire,r)
+    local f=Z.Network3.Unpack(wire);if not f or#f<2 then return reject("gateway_request",r.name)end
+    local epoch,page=f[1],tonumber(f[2])
+    if not L.Text(epoch,32,true)or not L.Int(page,1,100)then return reject("gateway_request",r.name)end
+    if not LN.CanServe()then return refuse(id,"unavailable")end
+    -- Our own gateway cannot become our client: no gateway loops.
+    if LN.gw and LN.gw.primary==id then return refuse(id,"loop")end
+    local c=LN.serve.clients[id]
+    if epoch==""or not c or c.epoch~=epoch or c.session~=r.session then
+        if page~=1 then return refuse(id,"epoch")end
+        if not c and count(LN.serve.clients)>=GW.MAX_CLIENTS then return refuse(id,"busy")end
+        local _,list=buildOffer(id)
+        c={name=r.name,session=r.session,epoch=newEpoch(),list=list,pages=math.max(1,math.ceil(#list/GW.PAGE)),ids={},byId={},nextId=0,acked={},dseq=0,exclude={},lastSeen=A.Clock()}
+        for _,rec in ipairs(list)do c.nextId=c.nextId+1;c.ids[rec.id]=c.nextId;c.byId[c.nextId]=rec.id end
+        LN.serve.clients[id]=c;stat("snapshotsServed");trace("serve_snapshot",r.name,#list)
+    end
+    if page>c.pages then return refuse(id,"epoch")end
+    c.lastSeen=A.Clock()
+    return sendPage(id,c,page)
+end
+function H.GL(id,wire,r)
+    local f=Z.Network3.Unpack(wire);if not f or#f<3 then return reject("gateway_poll",r.name)end
+    local c=LN.serve.clients[id]
+    if not c or c.epoch~=f[1]or c.session~=r.session then return refuse(id,"epoch")end
+    if not LN.CanServe()then LN.serve.clients[id]=nil;return refuse(id,"unavailable")end
+    local ack=tonumber(f[2]);if not L.Int(ack,0,2147483646)or not L.Text(f[3],400,true)then return reject("gateway_poll",r.name)end
+    c.lastSeen=A.Clock()
+    -- The previous delta counts as delivered only once the client confirms it; otherwise it is recomputed.
+    if c.pending and ack==c.dseq then for origin,v in pairs(c.pending)do c.acked[origin]=v or nil end end
+    c.pending=nil
+    local need={};for n in f[3]:gmatch("%d+")do n=tonumber(n);if c.byId[n]then need[n]=true end end
+    local offer=buildOffer(id)
+    local items,size,pending,more={},0,{},false
+    local function push(item,origin,version)
+        if size+#item+1>GW.DELTA_BYTES or#items>=GW.DELTA_ITEMS then more=true;return false end
+        items[#items+1]=item;size=size+#item+1;pending[origin]=version;return true
+    end
+    for origin in pairs(c.acked)do if not offer[origin]and c.ids[origin]then if not push("X"..SEP..c.ids[origin],origin,false)then break end end end
+    if not more then
+        local list={};for _,rec in pairs(offer)do list[#list+1]=rec end
+        table.sort(list,function(a,b)if a.at~=b.at then return a.at>b.at end;return a.id<b.id end)
+        for _,rec in ipairs(list)do
+            local n=c.ids[rec.id]
+            if not n then
+                if c.nextId>=GW.MAX_IDS then LN.serve.clients[id]=nil;return refuse(id,"epoch")end
+                c.nextId=c.nextId+1;n=c.nextId;c.ids[rec.id]=n;c.byId[n]=rec.id
+            end
+            if not c.exclude[n]or need[n]then
+                local old=c.acked[rec.id];local version={session=rec.session,at=rec.at,sig=rec.sig}
+                local ok=true
+                if need[n]or not old or old.sig~=rec.sig then ok=push("U"..SEP..encodeEntry(n,rec),rec.id,version)
+                elseif rec.at>old.at then ok=push("T"..SEP..n..SEP..rec.at,rec.id,version)end
+                if not ok then break end
+            end
+        end
+    end
+    c.dseq=c.dseq+1;c.pending=pending
+    local values={c.epoch,c.dseq,more and 1 or 0};for _,item in ipairs(items)do values[#values+1]=item end
+    stat("deltasServed")
+    return queueValues(id,"GD",values,LN.PRIORITY_GATEWAY,"GD:"..id)
+end
+function H.GX(id,wire,r)
+    local f=Z.Network3.Unpack(wire);local c=LN.serve.clients[id]
+    if not f or#f<2 or not c or c.epoch~=f[1]or not L.Text(f[2],600,true)then return reject("gateway_exclude",r.name)end
+    local exclude,n={},0
+    for value in f[2]:gmatch("%d+")do value=tonumber(value);if c.byId[value]and n<GW.MAX_EXCLUDE then exclude[value]=true;n=n+1 end end
+    c.exclude=exclude;c.lastSeen=A.Clock();return true
+end
+function H.GE(id,wire)
+    local f=Z.Network3.Unpack(wire);local c=LN.serve.clients[id]
+    if f and c and c.epoch==f[1]then LN.serve.clients[id]=nil;trace("serve_end",c.name,"released")end
+    return true
+end
+-- Client side
+local function fromGateway(id,r)
+    local gw=LN.gw;if not gw or gw.primary~=id or not route(id)or route(id).session~=r.session then return nil end
+    return gw
+end
+function H.GP(id,wire,r)
+    local gw=fromGateway(id,r);if not gw or gw.state~="snapshot"then return reject("not_gateway",r.name)end
+    local f=Z.Network3.Unpack(wire);if not f or#f<3 then return reject("gateway_page",r.name)end
+    local epoch,page,pages=f[1],tonumber(f[2]),tonumber(f[3])
+    if not L.Text(epoch,32)or not L.Int(pages,1,100)or page~=gw.page or#f-3>GW.PAGE then return reject("gateway_page",r.name)end
+    if gw.epoch==""then gw.epoch=epoch elseif gw.epoch~=epoch then return reject("gateway_epoch",r.name)end
+    gw.pages=pages
+    for i=4,#f do local e=decodeEntry(f[i],r);if e then storeEntry(gw,e)else reject("gateway_entry",r.name)end end
+    stat("pages")
+    local clock=A.Clock()
+    if page<pages then
+        gw.page=page+1;gw.requestAt=clock;gw.attempts=1
+        queueValues(id,"GQ",{gw.epoch,gw.page},LN.PRIORITY_GATEWAY,"GQ:"..id)
+    else
+        gw.state="synced";gw.synced=true;gw.lastSync=A.Now();gw.pollAt=clock+poll();gw.attempts=0
+        stat("snapshots");trace("gateway_snapshot",gw.name,count(gw.entries))
+    end
+    return true
+end
+function H.GD(id,wire,r)
+    local gw=fromGateway(id,r);if not gw or not gw.synced then return reject("not_gateway",r.name)end
+    local f=Z.Network3.Unpack(wire);if not f or#f<3 then return reject("gateway_delta",r.name)end
+    local dseq,more=tonumber(f[2]),tonumber(f[3])
+    if f[1]~=gw.epoch or not L.Int(dseq,1,2147483646)or not L.Int(more,0,1)or#f-3>GW.DELTA_ITEMS then return reject("gateway_delta",r.name)end
+    if dseq<=gw.ackSeq then stat("duplicates");return true end
+    for i=4,#f do
+        local item=f[i];local kind=item:sub(1,2)
+        if kind=="U"..SEP then
+            local e=decodeEntry(item,r,1)
+            if e then storeEntry(gw,e)else reject("gateway_entry",r.name)end
+        elseif kind=="T"..SEP then
+            local n,at=item:match("^T~(%d+)~(%d+)$");n,at=tonumber(n),tonumber(at)
+            local e=n and gw.entries[n]
+            if not e then if n and count(gw.need)<GW.MAX_NEED then gw.need[n]=true end
+            elseif L.Int(at,1,4102444800)and at>e.at then
+                local touched={n=e.n,origin=e.origin,id=e.id,session=e.session,at=at,realm=e.realm,hop=e.hop,values=e.values,wire=e.wire}
+                gw.entries[n]=touched;applyRelayed(touched,gw)
+            end
+        elseif kind=="X"..SEP then
+            local n=tonumber(item:match("^X~(%d+)$"));if n then dropEntry(gw,n)end
+        else reject("gateway_item",r.name)end
+    end
+    gw.ackSeq=dseq;gw.lastSync=A.Now();gw.attempts=0;gw.state="synced"
+    gw.pollAt=A.Clock()+(more==1 and GW.MORE or poll())
+    stat("deltas")
+    return true
+end
+function H.GB(id,wire,r)
+    local gw=fromGateway(id,r);if not gw then return reject("not_gateway",r.name)end
+    local f=Z.Network3.Unpack(wire);local reason=f and f[1]or""
+    if reason=="epoch"and gw.restarts<2 then
+        local restarts=gw.restarts+1
+        startGateway(A.Clock(),{id=id,p=LN.peers[id]or{name=gw.name,caps=gw.mesh and LN.CAP_MESH or 0}});LN.gw.restarts=restarts
+    else failGateway(L.Text(reason,16)and reason or"refused",true)end
+    return true
+end
+function LN.GatewayStatus()
+    local gw=LN.gw;local s=LN.stats or{}
+    return{gateway=gw and gw.name or"",gatewayState=gw and gw.state or"idle",backup=LN.backupName or"",gatewayEntries=gw and count(gw.entries)or 0,
+        lastSyncAge=gw and gw.lastSync and math.max(0,A.Now()-gw.lastSync)or -1,serving=LN.serve and count(LN.serve.clients)or 0,offer=LN.offerSize or 0,
+        snapshots=s.snapshots or 0,deltas=s.deltas or 0,relayed=s.relayed or 0,directPreferred=s.directPreferred or 0,stale=s.stale or 0,
+        gatewayStarts=s.gatewayStarts or 0,gatewayFailures=s.gatewayFailures or 0,snapshotsServed=s.snapshotsServed or 0,deltasServed=s.deltasServed or 0,
+        lastGatewayIssue=LN.lastGateway and(LN.lastGateway.name..": "..LN.lastGateway.reason)or""}
 end
 
 -- ===== Status =====
