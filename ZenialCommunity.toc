@@ -73,6 +73,8 @@ CompanionMapCatalog.lua
 Companion.lua
 CompanionProgress.lua
 CompanionPixel.lua
+EventCatalog.lua
+Events.lua
 CompanionVitals.lua
 CompanionQuestAreas.lua
 DeckBindings.lua

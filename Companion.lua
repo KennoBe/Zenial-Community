@@ -30,6 +30,7 @@ function C.Status()
 end
 function C.Stop(reason)
     if C.QuestAreas then C.QuestAreas.Reset()end
+    if Z.Events then Z.Events.Reset()end
     if C.Pixel and not C.debugPixel then C.Pixel.Stop()end
     local probe=C.flushProbe
     -- Late server echoes can arrive after an automatic timeout. Keep only the
@@ -74,6 +75,8 @@ function C.Initialize()
     for _,topic in ipairs(C.TOPICS)do if type(s.categories[topic])~='boolean'then s.categories[topic]=defaultCategories[topic]==true end end
     if s.enabled==true then for _,topic in ipairs(C.TOPICS)do s.categories[topic]=true end end
     s.questAreasEnabled=s.questAreasEnabled==true;s.categories.questareas=s.questAreasEnabled
+    -- Events are a separate opt-in like the quest contours: enabling the export never switches them on.
+    s.eventsEnabled=s.eventsEnabled==true;s.categories.events=s.eventsEnabled;C.eventKey=key
     s.categories.map=s.categories.position -- Map texture references share the position opt-in.
     s.categories.mapcatalog=s.categories.position
     s.categories.itemdetails=s.categories.inventory or s.categories.character
@@ -88,6 +91,7 @@ function C.BeginSession()
     C.session=string.format('%.0f.%d.%.0f',A.Now(),C.settings.sessionSequence,math.floor(A.Clock()*1000))
     C.sequence=0;C.jobs={};C.latest={};C.inventoryParts=nil;C.finished={};C.signatures={};C.due={};C.waiting={};C.seenEcho={};C.stats={sent=0,echoed=0,automatic=0}
     C.itemDetailSent={}
+    if Z.Events then Z.Events.Reset()end
     C.questScanDue=0;if C.QuestAreas then C.QuestAreas.Reset()end
     C.mapCatalogIDs=nil;C.mapCatalogCursor=nil;C.mapCatalogDue=nil;C.mapCatalogEssential=nil;C.mapCatalogEssentialMap=nil;C.mapCatalogEssentialDue=0
     C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.clubChatBlocked=false
@@ -111,6 +115,7 @@ function C.SetExportEnabled(enabled)
     if enabled then
         for _,topic in ipairs(C.TOPICS)do C.settings.categories[topic]=true end
         C.settings.categories.questareas=C.settings.questAreasEnabled==true
+        C.settings.categories.events=C.settings.eventsEnabled==true
         C.settings.transport='pixel'
     end
     return C.Enable(enabled)
@@ -118,6 +123,7 @@ end
 function C.SetCategory(topic,enabled)
     if not C.settings or C.settings.categories[topic]==nil then return false end
     if topic=='questareas'then C.settings.questAreasEnabled=enabled==true;if C.QuestAreas then C.QuestAreas.Reset()end end
+    if topic=='events'then C.settings.eventsEnabled=enabled==true;if Z.Events then Z.Events.Clear()end end
     C.settings.categories[topic]=enabled==true;C.jobs[topic]=nil;C.latest[topic]=nil;C.signatures[topic]=nil;C.due[topic]=0;C.due.policy=0
     if topic=='inventory'then C.inventoryParts=nil;C.finished.inventory=nil end
     if topic=='position'then
@@ -131,6 +137,43 @@ function C.SetCategory(topic,enabled)
     C.jobs.policy=nil;C.latest.policy=nil;C.finished.policy=nil
     if topic=='chat'then C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.finished.chat=nil;C.ConfigureChat()end
     changed();return true
+end
+-- Event types are chosen per character: a missing entry means on, only deselected types are stored (false).
+function C.EventTypeEnabled(eventType)
+    local root=ZenialCommunityDB;local all=root and root.companion and root.companion.eventTypes
+    local mine=type(all)=='table'and C.eventKey and all[C.eventKey]
+    return type(mine)~='table'or mine[eventType]~=false
+end
+function C.SetEventType(eventType,enabled)
+    local catalog=Z.EventCatalog
+    if not C.settings or not C.eventKey or not ZenialCommunityDB or not catalog or type(eventType)~='string'or not catalog.types[eventType]then return false end
+    local companion=ZenialCommunityDB.companion
+    companion.eventTypes=type(companion.eventTypes)=='table'and companion.eventTypes or{}
+    local mine=type(companion.eventTypes[C.eventKey])=='table'and companion.eventTypes[C.eventKey]or{}
+    companion.eventTypes[C.eventKey]=mine
+    if enabled==true then mine[eventType]=nil else mine[eventType]=false;if Z.Events then Z.Events.Purge(eventType)end end
+    changed();return true
+end
+-- Event lane: before everything else except identity and policy, one line per packet, two while a
+-- high event waits. Every repeat sends the same line, so the receiver sees one inner sequence.
+-- Returns the number of lines used, or nil when sending stopped the export.
+function C.SendEvents(slots)
+    local events=Z.Events
+    if not events or not C.finished.identity or not C.finished.policy then return 0 end
+    local used=0
+    for _,ev in ipairs(events.Pick())do
+        if used>=slots then break end
+        if not ev.line then
+            local ok,body=pcall(function()return events.Body(ev,P.Json)end)
+            local lines=ok and P.Frames(C.source,C.session,C.sequence+1,'events',ev.observedAt,body)
+            if lines and#lines==1 then C.sequence=C.sequence+1;ev.line=lines[1]else events.Drop(ev)end
+        end
+        if ev.line then
+            if not C.SendLine(ev.line,'timer')then return nil end
+            used=used+1;events.Sent(ev)
+        end
+    end
+    return used
 end
 -- Seconds between full inventories. The pixel stream is one-way and slow, so between two full
 -- comparisons only changes are sent; the full one repairs a lost change or a late receiver.
@@ -433,7 +476,9 @@ function C.Tick()
     end
     if clock<C.nextSend then return end;C.nextSend=clock+(C.IsPixel()and .15 or .5)
     if C.IsPixel()then C.Pixel.BeginBatch()end
-    for _=1,C.IsPixel()and 3 or 1 do
+    local slots=C.IsPixel()and 3 or 1
+    if C.IsPixel()then local used=C.SendEvents(slots);if not used then return end;slots=slots-used end
+    for _=1,slots do
         local topic=choose();local job=C.Job(topic);if not job then break end
         local line=job.lines[job.next]
         if not C.SendLine(line,'timer')then return end
