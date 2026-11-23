@@ -293,8 +293,16 @@ local function snapshot(p,kind,tag)
     return{kind=kind,name=p.name,classFile=p.classFile,kills=p.kills,deaths=p.deaths,assists=p.assists,
         duelWins=p.duelWins,duelLosses=p.duelLosses,fights=p.kills+p.deaths,tag=tag}
 end
+-- Companion events: kill, death and duel (win or loss). Assists and involvement are not announced.
+local EVENT_TYPE={K="community.rivalry.kill",D="community.rivalry.death",W="community.rivalry.duel",L="community.rivalry.duel"}
+local function announce(kind,p,key)
+    local name=EVENT_TYPE[kind];if not name or not Z.Events then return end
+    local mark=nemesisOf(R.char)==key and"nemesis"or p.kills+p.deaths>=R.RIVAL_FIGHTS and"rival"or"none"
+    Z.Events.Emit("community",name,{mark=mark,class=classToken(p.classFile),enemyGuid=p.guid or key})
+end
 local function notify(kind,p,key,tag)
     R.last={kind=kind,key=key,tag=tag}
+    pcall(announce,kind,p,key)
     local B=Z.RivalryBanner
     if B and B.Push then pcall(B.Push,snapshot(p,kind,tag))end
     if Z.UI and Z.UI.RefreshRivalry then pcall(Z.UI.RefreshRivalry)end

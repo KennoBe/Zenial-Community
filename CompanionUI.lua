@@ -13,6 +13,7 @@ end
 function C.RefreshUI()
     if Z.UI and Z.UI.RefreshSettingsCompanionSummary then Z.UI.RefreshSettingsCompanionSummary()end
     local join=Z.NetworkSetup and Z.NetworkSetup.joinFrame;if join and join.companionEnable then join.companionEnable:SetChecked(C.settings and C.settings.enabled==true)end
+    C.RefreshEvents()
     local f=C.ui;if not f or not f:IsShown()then return end
     local s=C.Status();local state=states[s.state]or{s.state,s.state}
     f.statusSummary:SetText(tr(state[1],state[2]))
@@ -51,6 +52,7 @@ function C.Show(introduction)
             f.detailsToggle:SetText(tr(f.detailsExpanded and 'Technische Details ausblenden' or 'Technische Details',f.detailsExpanded and 'Hide technical details' or 'Technical details'))
         end)
         f.detailsExpanded=false
+        f.eventsButton=button(f,tr('Ereignisse auswählen','Choose events'),230,-250,190,function()C.ShowEvents()end)
         f.status=label(f,'',24,-284,700,96);f.status:Hide()
         label(f,tr('Nur lesend: Browser und externe Geräte führen nichts im Spiel aus. Pixel müssen sichtbar gerendert werden. Bei Minimierung oder fehlendem Empfang zeigt der Companion die Daten als veraltet.','Read only: the browser and external devices execute nothing in the game. Pixels must be visibly rendered. The companion marks data as stale when minimized or reception stops.'),24,-390,700,50)
         label(f,tr('Companion herunterladen:','Download companion:'),24,-450,700,22)
@@ -63,6 +65,93 @@ function C.Show(introduction)
     C.ui.subtitle:SetText(introduction and tr('Neu in 5.x: Dein WoW im Browser und auf externen Geräten. Der Companion ist optional.','New in 5.x: your WoW in a browser and on external devices. The companion is optional.')or tr('Einmal einrichten. Deine Daten erscheinen im Browser oder auf einem externen Gerät.','Set up once. Your data appears in your browser or on an external device.'))
     C.ui:SetFrameStrata('FULLSCREEN_DIALOG');C.ui:SetFrameLevel(300);C.ui:Show();if C.ui.Raise then C.ui:Raise()end
     C.MarkIntroductionSeen();C.RefreshUI()
+end
+
+-- Event selection: a main switch and one check per event type, grouped by source. The types come from the
+-- generated catalog; a group is shown only while its addon is loaded. Texts are the fixed names the companion
+-- dashboard uses too.
+local EVENT_LABELS={
+    {'community.player.died','Tod','Death'},{'community.player.level_up','Stufenaufstieg','Level up'},
+    {'community.pvp.help_received','PvP-Hilferuf','PvP call for help'},{'community.rivalry.kill','Gegner besiegt','Enemy defeated'},
+    {'community.rivalry.death','Von Gegner besiegt','Defeated by enemy'},{'community.rivalry.duel','Duell','Duel'},
+    {'watch.enemy_targets_me','Gegner hat dich im Ziel','Enemy is targeting you'},{'watch.stealth_detected','Getarnter Gegner entdeckt','Stealthed enemy spotted'},
+    {'watch.rival_detected','Rivale in der Nähe','Rival nearby'},{'crit.kill','Kill','Kill'},{'crit.streak','Kill-Serie','Killing streak'},
+    {'crit.crit','Kritischer Treffer','Critical hit'},{'crit.proc','Proc','Proc'}}
+local EVENT_GROUPS={{source='community',title='ZENIAL Community'},{source='watch',title='ZENIAL Watch',addon='ZenialWatch'},{source='crit',title='ZENIAL Crit',addon='ZenialCrit'}}
+local eventOrder,eventLabel={},{}
+for index,row in ipairs(EVENT_LABELS)do eventOrder[row[1]]=index;eventLabel[row[1]]=row end
+function C.EventLabel(eventType)local row=eventLabel[eventType];return row and tr(row[2],row[3])or eventType end
+local function addonLoaded(name)
+    if not name then return true end
+    local state=Z.UI and Z.UI.GetAddonState and Z.UI.GetAddonState({addon=name})
+    return state~=nil and(state.kind=='ready'or state.kind=='legacy'or state.kind=='window')
+end
+-- Visible groups with their event types in display order.
+function C.EventGroups()
+    local out={};local catalog=Z.EventCatalog;if not catalog then return out end
+    for _,group in ipairs(EVENT_GROUPS)do
+        if addonLoaded(group.addon)then
+            local types={};for name,entry in pairs(catalog.types)do if entry.source==group.source then types[#types+1]=name end end
+            table.sort(types,function(a,b)local x,y=eventOrder[a]or 1000,eventOrder[b]or 1000;if x~=y then return x<y end;return a<b end)
+            if#types>0 then out[#out+1]={source=group.source,title=group.title,types=types}end
+        end
+    end
+    return out
+end
+function C.RefreshEvents()
+    local f=C.eventUI;if not f or not f:IsShown()or not C.settings then return end
+    local on=C.settings.eventsEnabled==true
+    f.main:SetChecked(on)
+    local visible={};for _,group in ipairs(C.EventGroups())do visible[group.source]=group end
+    local column,rows=0,0
+    for _,group in ipairs(EVENT_GROUPS)do
+        local block=f.groups[group.source];local data=visible[group.source]
+        block.title:SetShown(data~=nil)
+        for _,check in pairs(block.checks)do check:Hide();check.label:Hide()end
+        if data then
+            local x=24+column*236;column=column+1;rows=math.max(rows,#data.types)
+            block.title:ClearAllPoints();block.title:SetPoint('TOPLEFT',x,-150)
+            for index,name in ipairs(data.types)do
+                local check=block.checks[name]
+                check:ClearAllPoints();check:SetPoint('TOPLEFT',x,-174-(index-1)*28);check:Show()
+                check:SetChecked(C.EventTypeEnabled(name));check:SetEnabled(on)
+                check.label:ClearAllPoints();check.label:SetPoint('TOPLEFT',x+34,-178-(index-1)*28);check.label:SetAlpha(on and 1 or .5);check.label:Show()
+            end
+        end
+    end
+    rows=math.max(rows,1)
+    f.close:ClearAllPoints();f.close:SetPoint('TOPLEFT',590,-(184+rows*28))
+    f:SetHeight(240+rows*28)
+end
+function C.ShowEvents()
+    if not C.settings then if Z.Initialize then Z.Initialize()end;if not C.settings then return end end
+    if not C.eventUI then
+        local f=CreateFrame('Frame','ZenialCompanionEvents',UIParent,BackdropTemplateMixin and'BackdropTemplate'or nil);C.eventUI=f
+        f:SetSize(750,420);f:SetPoint('CENTER');f:SetFrameStrata('FULLSCREEN_DIALOG');f:SetFrameLevel(310);f:SetToplevel(true);f:EnableMouse(true);f:SetMovable(true);f:SetClampedToScreen(true);f:RegisterForDrag('LeftButton')
+        f:SetScript('OnDragStart',function(self)self:StartMoving()end);f:SetScript('OnDragStop',function(self)self:StopMovingOrSizing()end)
+        if Z.Theme then Z.Theme.Shell(f)end
+        label(f,tr('Ereignisse','Events'),24,-22,630,28)
+        f.note=label(f,tr('Ereignisse gehen an den Companion und können dort Aktionen auslösen.','Events go to the companion, where they can trigger actions.'),24,-60,700,24)
+        local main=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');f.main=main;main:SetPoint('TOPLEFT',24,-96);main:SetSize(26,26)
+        label(f,tr('Ereignisse übertragen','Send events'),58,-100,400,24)
+        main:SetScript('OnClick',function(self)C.SetCategory('events',self:GetChecked()==true);C.RefreshUI()end)
+        if Z.Theme then Z.Theme.StyleCheckbox(main)end
+        f.groups={}
+        for _,group in ipairs(EVENT_GROUPS)do
+            local block={checks={},title=label(f,group.title,24,-150,220,22)};f.groups[group.source]=block
+            for name,entry in pairs(Z.EventCatalog and Z.EventCatalog.types or{})do
+                if entry.source==group.source then
+                    local check=CreateFrame('CheckButton',nil,f,'UICheckButtonTemplate');check:SetSize(26,26);block.checks[name]=check
+                    check.label=label(f,C.EventLabel(name),58,-178,196,24)
+                    check:SetScript('OnClick',function(self)C.SetEventType(name,self:GetChecked()==true)end)
+                    if Z.Theme then Z.Theme.StyleCheckbox(check)end
+                end
+            end
+        end
+        f.close=button(f,tr('Schließen','Close'),590,-300,125,function()f:Hide()end)
+        f:SetScript('OnShow',C.RefreshEvents);UISpecialFrames=UISpecialFrames or{};UISpecialFrames[#UISpecialFrames+1]='ZenialCompanionEvents'
+    end
+    C.eventUI:SetFrameStrata('FULLSCREEN_DIALOG');C.eventUI:SetFrameLevel(310);C.eventUI:Show();C.RefreshEvents()
 end
 
 -- Per-character introduction: new installations and existing 4.x characters have

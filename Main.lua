@@ -724,6 +724,8 @@ frame:SetScript("OnEvent",function(_,event,...)
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then
         if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.ResetBattleNet("disconnect")end end
     elseif event=="PLAYER_LEVEL_UP" then
+        local level=...
+        if Z.Events and A.Safe(level)and type(level)=="number"then pcall(Z.Events.Emit,"community","community.player.level_up",{level=level})end
         if Z.RefreshIdentity() then Z.Publish() end
         if Z.UI and Z.UI.frame and Z.UI.frame:IsShown() then Z.UI.Refresh() end
     elseif event=="ADDON_LOADED" then Z.CommunityMap.TryAttach();if Z.UI and Z.UI.frame and Z.UI.frame:IsShown() and Z.UI.OnAddonLoaded then Z.UI.OnAddonLoaded(...)end

@@ -166,6 +166,13 @@ local function readEvents()
     return events
 end
 
+-- Companion event for every death of the own character, whatever its cause; the zone is the UiMapID (0 when unknown).
+local EVENT_CAUSE={player="player",mob="mob",environment="env",self="self"}
+function D.Announce(snapshot,cause)
+    if not Z.Events then return end
+    local mapID=snapshot and snapshot.mapID
+    pcall(Z.Events.Emit,"community","community.player.died",{cause=EVENT_CAUSE[cause]or"unknown",zone=L.Int(mapID,0,99999)and mapID or 0})
+end
 function D.Tick()
     local p=D.pending;if not p or A.Clock()<p.due then return end
     D.pending=nil -- cleared first: an error below must never repeat on every tick
@@ -175,13 +182,14 @@ function D.Tick()
         -- A recap identical to the one of the previous death is stale: it belongs to an earlier life.
         local fresh=sig~=nil and(not store or sig~=store.recapSig)
         if not fresh then
-            if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;D.pending=p else D.last={cause="unknown"}end
+            if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;D.pending=p else D.last={cause="unknown"};D.Announce(p.snapshot,"unknown")end
             return
         end
         if store then store.recapSig=sig end
         local myGUID=public(A.Call(UnitGUID,"player"))
         -- The private rivalry history also keeps deaths in battlegrounds; its errors never reach the help rules.
         if Z.Rivalry then pcall(Z.Rivalry.OnRecapDeath,events,p.snapshot,myGUID)end
+        D.Announce(p.snapshot,D.Classify(events[1],myGUID).cause)
         if p.ignore then D.last={cause="ignored"};return end
         local death,cause=D.Evaluate(events,p.snapshot,myGUID)
         D.last={cause=cause,death=death}

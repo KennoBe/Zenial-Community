@@ -76,7 +76,8 @@ function C.Initialize()
     if s.enabled==true then for _,topic in ipairs(C.TOPICS)do s.categories[topic]=true end end
     s.questAreasEnabled=s.questAreasEnabled==true;s.categories.questareas=s.questAreasEnabled
     -- Events are a separate opt-in like the quest contours: enabling the export never switches them on.
-    s.eventsEnabled=s.eventsEnabled==true;s.categories.events=s.eventsEnabled;C.eventKey=key
+    s.eventsEnabled=s.eventsEnabled==true;s.categories.events=s.eventsEnabled
+    s.eventTypes=type(s.eventTypes)=='table'and s.eventTypes or{}
     s.categories.map=s.categories.position -- Map texture references share the position opt-in.
     s.categories.mapcatalog=s.categories.position
     s.categories.itemdetails=s.categories.inventory or s.categories.character
@@ -138,20 +139,16 @@ function C.SetCategory(topic,enabled)
     if topic=='chat'then C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.finished.chat=nil;C.ConfigureChat()end
     changed();return true
 end
--- Event types are chosen per character: a missing entry means on, only deselected types are stored (false).
+-- Event types are chosen account-wide with the other export options (C.settings.eventTypes): a missing entry means on, only deselected types are stored (false).
 function C.EventTypeEnabled(eventType)
-    local root=ZenialCommunityDB;local all=root and root.companion and root.companion.eventTypes
-    local mine=type(all)=='table'and C.eventKey and all[C.eventKey]
-    return type(mine)~='table'or mine[eventType]~=false
+    local chosen=C.settings and C.settings.eventTypes
+    return type(chosen)~='table'or chosen[eventType]~=false
 end
 function C.SetEventType(eventType,enabled)
     local catalog=Z.EventCatalog
-    if not C.settings or not C.eventKey or not ZenialCommunityDB or not catalog or type(eventType)~='string'or not catalog.types[eventType]then return false end
-    local companion=ZenialCommunityDB.companion
-    companion.eventTypes=type(companion.eventTypes)=='table'and companion.eventTypes or{}
-    local mine=type(companion.eventTypes[C.eventKey])=='table'and companion.eventTypes[C.eventKey]or{}
-    companion.eventTypes[C.eventKey]=mine
-    if enabled==true then mine[eventType]=nil else mine[eventType]=false;if Z.Events then Z.Events.Purge(eventType)end end
+    if not C.settings or not catalog or type(eventType)~='string'or not catalog.types[eventType]then return false end
+    C.settings.eventTypes=type(C.settings.eventTypes)=='table'and C.settings.eventTypes or{}
+    if enabled==true then C.settings.eventTypes[eventType]=nil else C.settings.eventTypes[eventType]=false;if Z.Events then Z.Events.Purge(eventType)end end
     changed();return true
 end
 -- Event lane: before everything else except identity and policy, one line per packet, two while a

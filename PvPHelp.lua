@@ -286,6 +286,15 @@ function P.DeathMarks()
     end
     return out
 end
+-- Companion event for a new foreign call. far: other or unknown map; near: same map, both positions known and within
+-- 20 % of the map width (both on the 0..10000 scale); medium: same map otherwise. The call id is the dedupe context.
+local function announceCall(r)
+    if not Z.Events then return end
+    local own=A.PvpLocation(false);local band="medium"
+    if not(r.mapID>0 and own.mapID>0 and r.mapID==own.mapID)then band="far"
+    elseif r.hasPos and own.hasPos and math.sqrt((r.x-own.x)^2+(r.y-own.y)^2)<=2000 then band="near"end
+    Z.Events.Emit("community","community.pvp.help_received",{zone=r.mapID>0 and r.mapID or 0,distanceBand=band,callId=r.key..":"..r.id})
+end
 local function acceptCall(key,s,noAck)
     if peerFaction(key)~=Z.me.faction or Z.db.blocked[key]then return end
     if not P.store.cancelled[key..":"..s.id]then remember(key,s)end
@@ -303,6 +312,7 @@ local function acceptCall(key,s,noAck)
     local r=cleanLocation(s);r.locationRev=s.rev;r.detailRev=0;r.key,r.id,r.rev,r.at,r.expires,r.unread,r.note,r.detail,r.response=key,s.id,s.rev,s.at,s.expires,true,"",false,"";P.store.received[token]=r;P.store.seen[token]=s.expires+CALL_COOLDOWN;P.store.senderLast[key]=now
     rememberDeathPlace(token,s);local known=P.store.history[token]
     if known then r.response=known.response or"";if known.detail then r.note,r.enemy,r.detail=known.note,cleanEnemy(known.enemy),true;r.killLog,r.killRev=known.killLog,known.killRev end end
+    pcall(announceCall,r)
     if not listen then refresh();return end -- listed silently; details are requested when the call is opened
     if not noAck then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end
     -- Enrolled helpers fetch the details right away for the banner; once per call, and it stays unread.
