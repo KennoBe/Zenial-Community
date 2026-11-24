@@ -439,6 +439,7 @@ function Z.Block(key)
     if Z.ScheduledGroups then Z.ScheduledGroups.Block(key)end
     if target and Z.ScheduledMesh then Z.ScheduledMesh.CancelPeer(target)end
     if Z.PvPHelp and Z.PvPHelp.store then Z.PvPHelp.Block(key)end
+    if Z.LocalNetwork and Z.LocalNetwork.ForgetSaved then Z.LocalNetwork.ForgetSaved(key,target)end
     if Z.Notifications then Z.Notifications.RemovePeer(key)end
     return L.Block(Z.db,key)
 end

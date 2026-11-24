@@ -1,5 +1,8 @@
 -- Local network (hybrid network levels B and C): verified addon-whisper routes without the Battle.net lounge.
 -- Discovery only collects candidates from observable contacts (guild/group greetings, target pings, gateway lists).
+-- One narrow exception to the 4.0.2 rule "saved contacts start no background whispers" (lifted by the owner on 2026-11-24):
+-- players with a confirmed local whisper route are saved account-wide (per world and faction) and tried again after
+-- the login with the lowest priority, at most twice per player and session, never periodically.
 -- The W/R whisper handshake of BattleNetTransport stays the only trust anchor: a frame is read only from the native
 -- sender of an existing route, and every session in it must be that route's session. Anything a gateway reports
 -- about third players is indirect: it keeps its original time and session and never enters the Battle.net mesh.
@@ -10,7 +13,8 @@ local LN={PREFIX="ZENIALLN1",PROTO=1,CHUNK=190,MAX_PARTS=24,TTL=300,
     MAX_CANDIDATES=64,CANDIDATE_TTL=600,MAX_OUT_FRAMES=96,MAX_OUT_BYTES=24576,MAX_IN_FLIGHT=3,TRANSPORT_BUSY=24,
     MAX_ASSEMBLIES=32,MAX_ASSEMBLY_BYTES=65536,ASSEMBLY_TTL=30,INBOUND_PER_MINUTE=120,
     CAP_PRESENCE=1,CAP_GATEWAY=2,CAP_MESH=4,CAP_BUNDLE=8,CAP_RELAY=16,
-    PRIORITY_PRESENCE=4,PRIORITY_GATEWAY=3,PRIORITY_BACKGROUND=2}
+    PRIORITY_PRESENCE=4,PRIORITY_GATEWAY=3,PRIORITY_BACKGROUND=2,
+    MAX_SAVED_DIRECT=8,SAVED_PER_SEED=16,SAVED_MAX=64,SAVED_TTL=2592000,SAVED_TRIES=2,SAVED_SEED_GAP=5}
 Z.LocalNetwork=LN
 local H={} -- message handlers by kind
 LN.handlers=H
@@ -149,6 +153,47 @@ local function remember(id,name,source)
         LN.known[oldest]=nil
     end
 end
+-- ===== Saved players (account-wide, per world and faction) =====
+-- ZenialCommunityDB.account.localPeers[<faction>@<world>][<identity>]={name=,at=,guid=}. The world comes from the
+-- directory (game mode token or realm), never from the stored realm, which can be empty on Forever.
+local function savedScope()
+    local D=Z.CommunityDirectory;local world=D and D.OwnWorld and D.OwnWorld()
+    if type(world)~="string"or world==""or not Z.me or type(Z.me.faction)~="string"then return nil end
+    return string.lower(Z.me.faction).."@"..world
+end
+local function savedBucket(create)
+    local a=Z.account;if type(a)~="table"or Z.offlineOnly then return nil end
+    local scope=savedScope();if not scope then return nil end
+    if type(a.localPeers)~="table"then if not create then return nil end;a.localPeers={}end
+    local bucket=a.localPeers[scope]
+    if type(bucket)~="table"then if not create then return nil end;bucket={};a.localPeers[scope]=bucket end
+    return bucket
+end
+local function saveLocalPeer(id,r)
+    local _,target=L.Identity(r.name);if not target or not target:find(" ",1,true)then return end
+    local now=A.Now();if now<=0 then return end
+    local bucket=savedBucket(true);if not bucket then return end
+    local guid=type(r.guid)=="string"and r.guid~=""and#r.guid<=64 and r.guid or nil
+    bucket[id]={name=target,at=now,guid=guid}
+    local n=0
+    for k,row in pairs(bucket)do
+        if type(row)~="table"or type(row.at)~="number"or now-row.at>LN.SAVED_TTL then bucket[k]=nil else n=n+1 end
+    end
+    while n>LN.SAVED_MAX do
+        local oldest;for k,row in pairs(bucket)do if k~=id and(not oldest or row.at<bucket[oldest].at)then oldest=k end end
+        if not oldest then break end
+        bucket[oldest]=nil;n=n-1
+    end
+end
+-- Blocking a player removes the saved entry in every world and faction.
+function LN.ForgetSaved(key,target)
+    local id=L.Identity(target)
+    if not id and type(key)=="string"then id=key:match("^[^@]*@[^@]+@(.+)$")or key end
+    if not id then return end
+    LN.candidates[id]=nil
+    local a=Z.account;local all=type(a)=="table"and a.localPeers
+    if type(all)=="table"then for _,bucket in pairs(all)do if type(bucket)=="table"then bucket[id]=nil end end end
+end
 -- Called by BattleNetTransport for every confirmed route; only addon-whisper routes join the local network.
 function LN.OnConnected(r,fresh)
     if not LN.stats or type(r)~="table"or r.transport~="WHISPER"then return end
@@ -158,12 +203,13 @@ function LN.OnConnected(r,fresh)
     if probe then p.source=probe.source elseif old and old.source and p.source=="inbound"then p.source=old.source end
     LN.probes[id]=nil;LN.candidates[id]=nil;LN.failed[id]=nil
     remember(id,r.name,p.source)
+    saveLocalPeer(id,r);LN.savedTries[id]=LN.SAVED_TRIES
     trace("connected",r.name,p.source,fresh and"fresh"or"refresh")
     if LN.Enabled()and p.helloSent~=r.session then sendHello(id,p)end
 end
 
 -- ===== Discovery candidates =====
-local SOURCE_PRIORITY={group=90,gateway_group=85,known=75,guild=70,gateway_guild=65,whisper=60,target=60,gateway_contact=50,gateway=20}
+local SOURCE_PRIORITY={group=90,gateway_group=85,known=75,guild=70,gateway_guild=65,whisper=60,target=60,gateway_contact=50,gateway=20,saved=15}
 LN.SOURCE_PRIORITY=SOURCE_PRIORITY
 local function reportedByMesh(key)
     local peer=key and Z.db.peers[key];local source=LN.sources[key]
@@ -188,7 +234,7 @@ function LN.Candidate(name,source)
         LN.candidates[lowest]=nil
     end
     -- A guild greeting reaches everybody at once; spread the answers.
-    local delay=(source=="guild"or source=="known")and math.random(2,15)or 1
+    local delay=(source=="guild"or source=="known"or source=="saved")and math.random(2,15)or 1
     LN.candidates[id]={name=target,source=source,priority=priority,due=clock+delay,at=clock}
     trace("candidate",target,source);return true
 end
@@ -199,6 +245,53 @@ function LN.OnPresenceSignal(name,channel)
 end
 function LN.DirectCount()
     local n=0;for id,p in pairs(LN.peers)do if p.hello and route(id)then n=n+1 end end;return n
+end
+-- Saved players come last: after the login, at most SAVED_PER_SEED per run, newest first, while there is room.
+local function savedBlocked(id,target)
+    for key,c in pairs(Z.account.characters or{})do
+        if type(c)=="table"and(c.faction==nil or c.faction==Z.me.faction)then
+            local store=key==Z.accountCharacterKey and Z.db
+                or ZenialCommunityDB.characters and ZenialCommunityDB.characters[L.ScopeKey(c.target,c.realm,c.faction)or key]
+            local blocked=type(store)=="table"and store.blocked
+            if type(blocked)=="table"then
+                local scoped=L.ScopeKey(target,c.realm,c.faction)
+                if blocked[id]==true or scoped and blocked[scoped]==true then return true end
+            end
+        end
+    end
+    return false
+end
+function LN.SeedSaved(clock)
+    if not LN.Enabled()or type(Z.account)~="table"or clock<LN.nextSeed then return end
+    local XF=Z.CrossFaction
+    if type(XF)~="table"or XF.Settings().discovery~=true then return end
+    -- The mesh state is settled once the lounge members had their chance to build routes.
+    local D=Z.CommunityDirectory;local joined=D and D.Status and D.Status().joined or 0
+    if clock-(LN.startedAt or clock)<((joined or 0)>0 and LN.MESH_GRACE or 5)then return end
+    if LN.DirectCount()>=LN.MAX_SAVED_DIRECT or LN.MAX_CANDIDATES-count(LN.candidates)<LN.SAVED_PER_SEED then return end
+    LN.nextSeed=clock+LN.SAVED_SEED_GAP
+    local bucket=savedBucket(false);if not bucket then return end
+    local now=A.Now();local list={}
+    for id,row in pairs(bucket)do
+        if type(row)=="table"and type(row.at)=="number"and now-row.at<=LN.SAVED_TTL and L.Text(row.name,113)and(LN.savedTries[id]or 0)<LN.SAVED_TRIES
+            and not LN.failed[id]and not LN.probes[id]and not LN.candidates[id]and not route(id)then list[#list+1]={id=id,row=row}end
+    end
+    if#list==0 then return end
+    table.sort(list,function(x,y)if x.row.at~=y.row.at then return x.row.at>y.row.at end;return x.id<y.id end)
+    local own,lounge={},{}
+    for _,c in pairs(Z.account.characters or{})do local i=type(c)=="table"and L.Identity(c.target);if i then own[i]=true end end
+    for _,candidate in pairs(D and D.candidates or{})do
+        local info=type(candidate)=="table"and candidate.info;local i=type(info)=="table"and L.Identity(info.characterName);if i then lounge[i]=true end
+    end
+    local added=0
+    for _,e in ipairs(list)do
+        if added>=LN.SAVED_PER_SEED then break end
+        local id=e.id;local tid,target=L.Identity(e.row.name)
+        if tid==id and target and target:find(" ",1,true)and not own[id]and not lounge[id]then
+            local key=L.ScopeKey(target,Z.me.realm,Z.me.faction)
+            if not reportedByMesh(key)and not savedBlocked(id,target)and LN.Candidate(target,"saved")then added=added+1 end
+        end
+    end
 end
 local function probeTick(clock)
     local b=transport()
@@ -223,6 +316,11 @@ local function probeTick(clock)
     LN.candidates[bestID]=nil
     local blockedKey=L.ScopeKey(best.name,Z.me.realm,Z.me.faction)
     if blockedKey and Z.db.blocked[blockedKey]then trace("probe_blocked",best.name);return end
+    if best.source=="saved"then
+        -- Re-check right before the whisper: the mesh or other routes may have covered the player meanwhile.
+        if reportedByMesh(blockedKey)or LN.DirectCount()>=LN.MAX_SAVED_DIRECT then stat("savedSkipped");return end
+        LN.savedTries[bestID]=(LN.savedTries[bestID]or 0)+1
+    end
     LN.nextProbe=clock+LN.HANDSHAKE_GAP
     local ok,why=b.Probe("WHISPER",best.name,"local_"..best.source)
     if ok then window[#window+1]=clock;LN.probes[bestID]={at=clock,name=best.name,source=best.source};stat("probes");trace("probe",best.name,best.source)
@@ -392,7 +490,9 @@ function LN.Reset(reason)
     if not LN.stats then return end
     LN.peers,LN.direct,LN.out,LN.assemblies,LN.inbound,LN.probes,LN.candidates={},{},{},{},{},{},{}
     LN.outBytes,LN.outFrames,LN.assemblyBytes,LN.inFlight=0,0,0,0
-    LN.tokens=4;LN.lastClock=A.Clock();LN.nextProbe=0;LN.probeWindow={};LN.presenceAt=nil
+    LN.tokens=4;LN.lastClock=A.Clock();LN.nextProbe=0;LN.probeWindow={};LN.presenceAt=nil;LN.nextSeed=0
+    -- Tries of saved players belong to the session: only a new login (initialize) starts them afresh.
+    if reason=="initialize"or not LN.savedTries then LN.savedTries={}end
     if LN.ResetGateway then LN.ResetGateway(reason)end
     -- A privacy change rebuilds the transport; peers confirmed in this session are tried again within the budget.
     if reason=="privacy"then
@@ -406,7 +506,7 @@ function LN.Reset(reason)
 end
 function LN.Initialize()
     LN.stats={rejected=0,lastReject=""};LN.rejects={};LN.sources={};LN.applied={};LN.known={};LN.failed={}
-    LN.serial=0;LN.order=0;LN.meshCount=0;LN.noMeshSince=A.Clock();LN.group={};LN.nextSecond=0
+    LN.serial=0;LN.order=0;LN.meshCount=0;LN.noMeshSince=A.Clock();LN.startedAt=A.Clock();LN.group={};LN.nextSecond=0
     LN.registered=false
     if C_ChatInfo and type(C_ChatInfo.RegisterAddonMessagePrefix)=="function"then
         local result=A.Call(C_ChatInfo.RegisterAddonMessagePrefix,LN.PREFIX);local e=Enum and Enum.RegisterAddonMessagePrefixResult
@@ -427,7 +527,7 @@ function LN.Tick()
         LN.meshCount=meshRoutes()
         if LN.meshCount>0 then LN.noMeshSince=nil else LN.noMeshSince=LN.noMeshSince or clock end
         -- A fault in the optional local network must never stop the modules ticking after it.
-        local ok,err=pcall(function()probeTick(clock);maintain(clock);if LN.GatewayTick then LN.GatewayTick(clock)end end)
+        local ok,err=pcall(function()LN.SeedSaved(clock);probeTick(clock);maintain(clock);if LN.GatewayTick then LN.GatewayTick(clock)end end)
         if not ok then stat("tickErrors");trace("tick_error",err)end
     end
     local ok,err=pcall(pump,clock)
