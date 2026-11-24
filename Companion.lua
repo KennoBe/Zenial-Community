@@ -10,7 +10,7 @@ intervals.itemdetails=1
 intervals.mapcatalog=.5;intervals.questareas=5
 intervals.progress=5
 intervals.bindings=10;intervals.pvp=2;intervals.deckslots=10
-local incomingEvents={'CHAT_MSG_SAY','CHAT_MSG_YELL','CHAT_MSG_PARTY','CHAT_MSG_PARTY_LEADER','CHAT_MSG_RAID','CHAT_MSG_RAID_LEADER','CHAT_MSG_RAID_WARNING','CHAT_MSG_INSTANCE_CHAT','CHAT_MSG_INSTANCE_CHAT_LEADER','CHAT_MSG_GUILD','CHAT_MSG_OFFICER','CHAT_MSG_WHISPER','CHAT_MSG_BN_WHISPER','CHAT_MSG_WHISPER_INFORM','CHAT_MSG_BN_WHISPER_INFORM','CHAT_MSG_CHANNEL','CHAT_MSG_EMOTE','CHAT_MSG_TEXT_EMOTE','CHAT_MSG_LOOT','CHAT_MSG_MONEY','CHAT_MSG_SYSTEM'}
+local incomingEvents={'CHAT_MSG_PARTY','CHAT_MSG_PARTY_LEADER','CHAT_MSG_RAID','CHAT_MSG_RAID_LEADER','CHAT_MSG_RAID_WARNING','CHAT_MSG_INSTANCE_CHAT','CHAT_MSG_INSTANCE_CHAT_LEADER','CHAT_MSG_GUILD','CHAT_MSG_OFFICER','CHAT_MSG_WHISPER','CHAT_MSG_BN_WHISPER','CHAT_MSG_WHISPER_INFORM','CHAT_MSG_BN_WHISPER_INFORM'}
 local incomingSet={};for _,event in ipairs(incomingEvents)do incomingSet[event]=true end
 local defaultCategories={position=true,inventory=true,quests=true,character=true,community=true,activities=true}
 local function logging()
@@ -43,7 +43,7 @@ function C.Stop(reason)
     C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.inventoryParts=nil;C.waiting={};C.due={};C.signatures={};C.finished={};C.seenEcho={};C.pendingCount=0
     if C.SetActive then C.SetActive(C.debugPixel==true,C.retiredUntil~=nil)end
     if C.flushFrame then C.flushFrame:UnregisterAllEvents();C.flushFrame:SetScript('OnEvent',nil);C.flushFrame:SetScript('OnUpdate',nil)end
-    C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.clubChatBlocked=false;C.positionRenewAt=0
+    C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.positionRenewAt=0
     -- Restore only logging enabled by this module. Pre-existing user logging stays on.
     if C.flushProbe and C.flushProbe.state=='running'then C.flushProbe.state='stopped'end
     -- An explicit stop between the two timer phases must preserve logging
@@ -95,7 +95,7 @@ function C.BeginSession()
     if Z.Events then Z.Events.Reset()end
     C.questScanDue=0;if C.QuestAreas then C.QuestAreas.Reset()end
     C.mapCatalogIDs=nil;C.mapCatalogCursor=nil;C.mapCatalogDue=nil;C.mapCatalogEssential=nil;C.mapCatalogEssentialMap=nil;C.mapCatalogEssentialDue=0
-    C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.clubChatBlocked=false
+    C.chatRows={};C.chatCounter=0;C.chatDropped=0
     C.questPoints={}
     C.filterStats={calls=0,hidden=0,unmatched=0,foreign=0,unreadable=0};C.flushProbe=nil
     C.retiredLines=nil;C.retiredUntil=nil
@@ -282,7 +282,7 @@ function C.Job(topic)
             else more=true end
         end end
         if more then C.latest.chat={data=row.data,signature=row.signature,observedAt=row.observedAt}end
-        data={replace=previous==nil or replay==true,entries=entries,lastCounter=last,missed=missed,dropped=row.data.dropped,clubChatBlocked=row.data.clubChatBlocked,scope='incoming-selected-chat-events',historyBeforeEnable=false}
+        data={replace=previous==nil or replay==true,entries=entries,lastCounter=last,missed=missed,dropped=row.data.dropped,guild=row.data.guild,scope='incoming-selected-chat-events',historyBeforeEnable=false}
         row.fullAt=data.replace and A.Clock()or prior.fullAt
         -- Envelope time certifies this export, not the age of its oldest chat
         -- message. Per-entry timestamps preserve history without making a fresh
@@ -329,7 +329,6 @@ local function choose()
 end
 function C.OnBlocked(event,addon,fn)
     if C.QuestAreas and C.QuestAreas.inCall and A.Safe(addon)and addon=='ZenialCommunity'then C.QuestAreas.Fail('native-call-blocked');return end
-    if C.readingChat and A.Safe(addon)and addon=='ZenialCommunity'then C.clubChatBlocked=true;return end
     if C.inCall and A.Safe(addon,fn)and addon=='ZenialCommunity'then C.blockedCall=tostring(fn or event);C.Stop('WoW blocked '..C.blockedCall..'. Automatic export stopped.')end
 end
 function C.SendLine(line,origin)
@@ -557,7 +556,6 @@ function C.OnEvent(event,...)
         end
         return
     end
-    if event=='CLUB_MESSAGE_ADDED'then C.CaptureClub(...);return end
     if incomingSet[event]then C.CaptureChat(event,...)end
     if event=='CHAT_MSG_WHISPER'or event=='CHAT_MSG_WHISPER_INFORM'then C.OnEcho(...)
     elseif event=='ADDON_ACTION_BLOCKED'or event=='ADDON_ACTION_FORBIDDEN'then C.OnBlocked(event,...)
@@ -582,36 +580,56 @@ local function chatLinks(message)
         end
     end
 end
-function C.CaptureChat(event,message,sender,language,channel,channelName)
-    if not C.running or not C.settings.categories.chat or not A.Safe(message,sender,language,channel)or type(message)~='string'or message==''or#message>4096 then return end
+-- One guild, one key: the club id when the game gives a safe one, else realm:name. The proven link between both
+-- is kept account-wide so a session without club id yields the same key.
+function C.Guild()
+    local name,_,_,guildRealm=A.Call(GetGuildInfo,'player')
+    if not A.Safe(name)or not L.Text(name,64)then return nil end
+    local realm=A.Safe(guildRealm)and L.Text(guildRealm,64)and guildRealm or Z.me and L.Text(Z.me.realm,64)and Z.me.realm or'?'
+    local fallback=realm..':'..name
+    local club=A.Call(C_Club and C_Club.GetGuildClubId)
+    local settings=C.settings;local known=settings and type(settings.guildScopes)=='table'and settings.guildScopes
+    local key
+    if A.Safe(club)and(type(club)=='number'and club>0 or type(club)=='string'and club~='')then
+        key='club:'..tostring(club)
+        if settings then if not known then known={};settings.guildScopes=known end;known[fallback]=key end
+    else key=known and type(known[fallback])=='string'and known[fallback]or fallback end
+    return key,name
+end
+local function battleTag(id)
+    if not A.Safe(id)or type(id)~='number'or id<=0 then return nil end
+    local info=A.Call(C_BattleNet and C_BattleNet.GetAccountInfoByID,id)
+    if not A.PublicTable(info)then return nil end
+    local tag=info.battleTag
+    if A.Safe(tag)and type(tag)=='string'and tag~=''and#tag<=64 and not tag:find('|',1,true)then return tag end
+end
+function C.CaptureChat(event,message,sender,language,...)
+    if not C.running or not C.settings.categories.chat or not incomingSet[event]or not A.Safe(message,sender,language)or type(message)~='string'or message==''or#message>4096 then return end
     -- Ignore only protocol traffic; own ordinary chat is part of the history.
     if message:find('ZC5~',1,true)then return end
-    local outgoing=event=='CHAT_MSG_WHISPER_INFORM'or event=='CHAT_MSG_BN_WHISPER_INFORM'or type(sender)=='string'and L.Identity(sender)==L.Identity(Z.me.target)
+    local bn=event=='CHAT_MSG_BN_WHISPER'or event=='CHAT_MSG_BN_WHISPER_INFORM'
+    local partner;if bn then partner=battleTag((select(10,...)));if not partner then return end end
+    local outgoing=event=='CHAT_MSG_WHISPER_INFORM'or event=='CHAT_MSG_BN_WHISPER_INFORM'or not bn and type(sender)=='string'and L.Identity(sender)==L.Identity(Z.me.target)
     local links=chatLinks(message)
     local text=message:gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|cn[^:|]*:',''):gsub('|r',''):gsub('|H.-|h(.-)|h','%1'):gsub('|T.-|t','')
     local clipped=#text>768;if clipped then text=text:sub(1,768):gsub('[\194-\244][\128-\191]*$','')end
     C.chatCounter=(C.chatCounter or 0)+1
-    local recipient=(event=='CHAT_MSG_WHISPER_INFORM'or event=='CHAT_MSG_BN_WHISPER_INFORM')and type(sender)=='string'and#sender<=128 and sender or nil
-    C.chatRows[#C.chatRows+1]={id=C.session..':'..C.chatCounter,counter=C.chatCounter,at=A.Now(),channel=event:sub(10):gsub('_INFORM$',''),direction=outgoing and'outgoing'or'incoming',recipient=recipient,conversation=type(channel)=='string'and#channel<=128 and channel or'',conversationName=channelName,sender=outgoing and Z.me.target or type(sender)=='string'and#sender<=128 and sender or'',text=text,truncated=clipped,links=links}
+    local recipient,from
+    if bn then
+        if outgoing then recipient=partner;from=Z.me.target else from=partner end
+    else
+        recipient=event=='CHAT_MSG_WHISPER_INFORM'and type(sender)=='string'and#sender<=128 and sender or nil
+        from=outgoing and Z.me.target or type(sender)=='string'and#sender<=128 and sender or''
+    end
+    local channel=event:sub(10):gsub('_INFORM$','')
+    local guild,guildName;if channel=='GUILD'or channel=='OFFICER'then guild,guildName=C.Guild()end
+    C.chatRows[#C.chatRows+1]={id=C.session..':'..C.chatCounter,counter=C.chatCounter,at=A.Now(),channel=channel,direction=outgoing and'outgoing'or'incoming',recipient=recipient,sender=from,guild=guild,guildName=guildName,text=text,truncated=clipped,links=links}
     while#C.chatRows>30 do table.remove(C.chatRows,1);C.chatDropped=(C.chatDropped or 0)+1 end
     C.due.chat=0
-end
-function C.CaptureClub(clubID,streamID,messageID)
-    if not C.running or not C.settings.categories.chat or C.clubChatBlocked or not A.Safe(clubID,streamID,messageID)then return end
-    local directory=Z.CommunityDirectory;local selected=false
-    for _,id in ipairs(directory and directory.config and directory.config.assignment or{})do if tostring(id)==tostring(clubID)then selected=true;break end end
-    if not selected or type(C_Club and C_Club.GetMessageInfo)~='function'or A.Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)==true then return end
-    C.readingChat=true;local info=A.Call(C_Club.GetMessageInfo,clubID,streamID,messageID);local stream=A.Call(C_Club.GetStreamInfo,clubID,streamID);C.readingChat=false
-    if C.clubChatBlocked or not A.PublicTable(info)then return end
-    local author=info.author
-    if not A.PublicTable(author)or not A.Safe(author.isSelf,author.name,info.content,info.destroyed)or info.destroyed==true then return end
-    local streamName=A.PublicTable(stream)and A.Safe(stream.name)and type(stream.name)=='string'and#stream.name<=64 and stream.name or nil
-    C.CaptureChat('CHAT_MSG_COMMUNITY',info.content,author.isSelf and Z.me.target or author.name,nil,tostring(clubID)..':'..tostring(streamID),streamName)
 end
 local frame=CreateFrame('Frame');C.frame=frame
 local flushFrame=CreateFrame('Frame');C.flushFrame=flushFrame
 function C.ConfigureChat()
-    if C.running and C.settings.categories.chat then pcall(frame.RegisterEvent,frame,'CLUB_MESSAGE_ADDED')else pcall(frame.UnregisterEvent,frame,'CLUB_MESSAGE_ADDED')end
     for _,event in ipairs(incomingEvents)do
         if C.running and C.settings.categories.chat then pcall(frame.RegisterEvent,frame,event)
         elseif(event~='CHAT_MSG_WHISPER'and event~='CHAT_MSG_WHISPER_INFORM')or C.IsPixel()then pcall(frame.UnregisterEvent,frame,event)end

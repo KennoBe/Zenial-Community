@@ -126,5 +126,6 @@ function T.player()
 end
 function T.chat()
     local C=Z.Companion;local rows=P.Array();for _,r in ipairs(C.chatRows or{})do rows[#rows+1]=r end
-    return{entries=rows,dropped=C.chatDropped or 0,lastCounter=C.chatCounter or 0,clubChatBlocked=C.clubChatBlocked==true,scope='read-only-chat-events',historyBeforeEnable=false}
+    local key,name=C.Guild()
+    return{entries=rows,dropped=C.chatDropped or 0,lastCounter=C.chatCounter or 0,guild=key and{key=key,name=name}or nil,scope='read-only-chat-events',historyBeforeEnable=false}
 end
