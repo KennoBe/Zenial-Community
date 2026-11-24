@@ -191,6 +191,8 @@ local function pruneProfileCache(protect)
 end
 function Z.OnProfileReceived(key)
     local peer=Z.db.peers[key];if not peer or not peer.data then return end;peer.profileAt=A.Now();peer.data.publicOnly=nil
+    -- The direct profile is the newest statement about the guild; a later public guild record replaces it again.
+    peer.publicGuild=peer.data.guild
     local session=peer.verifiedSession or peer.data.generation or peer.session
     local revision=peer.data.recipeRev
     if L.Int(revision,0,2147483646)then
@@ -423,7 +425,7 @@ function Z.SetPreference(name,value)
         Z.Network3.CancelPublic()
         if name=="consent"and not value then Z.Network3.jobs={};Z.Network3.jobBytes=0 end
         if name=="visible"or name=="shareProfessions"then for i=#Z.Network3.jobs,1,-1 do local job=Z.Network3.jobs[i];if job.kind=="RR"then Z.Network3.jobBytes=math.max(0,Z.Network3.jobBytes-#job.wire);table.remove(Z.Network3.jobs,i)end end end
-        Z.Network3.nextPresence=0
+        Z.Network3.nextPresence=0;Z.Network3.nextGuild=0
     end
     L.Touch(Z.db);Z.Publish();Z.MarkDirty("settings");return true
 end

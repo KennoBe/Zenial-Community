@@ -8,8 +8,8 @@ if scheduled then Z.ScheduledMesh=M elseif optional then Z.QuestMesh=M else Z.Co
 local function queueData(route,_,payload,private,dedupe,priority,...)
     return B.QueueData(route,protocol,payload,private,dedupe,optional and 5 or priority,...)
 end
-local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true}
-local TRANSIENT={MP=true,LY=true,L2=true,PD=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
+local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true,GN=true}
+local TRANSIENT={MP=true,LY=true,L2=true,PD=true,GN=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
 local function enabled()return B.Enabled()and Z.db.autoDiscovery end
 local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record((scheduled and "scheduledmesh:"or optional and "questmesh:"or"mesh:")..event,...)end end
 local function hash(value)
@@ -84,6 +84,10 @@ local function validate(row,now)
     if row.kind=="PD"then
         local death=Z.Network3.DecodePvPDeath(row.wire)
         return death and death.session==row.session and death.at==row.at or false
+    end
+    if row.kind=="GN"then
+        local guild=Z.Network3.DecodeGuild(row.wire)
+        return guild and guild.session==row.session and guild.at==row.at or false
     end
     if row.kind=="B"then
         local s=L.Decode(row.wire,A.Now());return s and s.kind=="S3"and s.generation==row.session and s.faction==Z.me.faction
@@ -164,7 +168,9 @@ local function pools()
 end
 local function enqueue(id,source)
     local row=M.records[id];if not row then return false end
-    local priority=optional and 5 or TRANSIENT[row.kind]and 5 or row.kind=="P"and 70 or row.kind=="B"and row.seq<=2 and 10 or 80
+    -- The guild name is never urgent: it ranks below the other optional kinds, so that it only travels when no
+    -- position, layer or death marker waits for the same neighbour (one optional kind per frame, see flush).
+    local priority=optional and 5 or row.kind=="GN"and 3 or TRANSIENT[row.kind]and 5 or row.kind=="P"and 70 or row.kind=="B"and row.seq<=2 and 10 or 80
     local old=M.pending[id]
     if old then M.pendingBytes=M.pendingBytes-#old.row.wire;M.pending[id]=nil;M.pendingCount=M.pendingCount-1 end
     while M.pendingCount>=M.MAX_PENDING or M.pendingBytes+#row.wire>M.MAX_PENDING_BYTES do
@@ -259,6 +265,10 @@ function M.Publish(kind,wire)
     if kind=="PD"then
         local death=Z.Network3.DecodePvPDeath(wire);if not death then return nil end
         row.at=death.at -- The marker expires 600 s after the death itself.
+    end
+    if kind=="GN"then
+        local guild=Z.Network3.DecodeGuild(wire);if not guild then return nil end
+        row.at=guild.at
     end
     if M.Accept(row,nil,true)then M.stats.published=M.stats.published+1;return"mesh."..row.seq end
 end
@@ -421,6 +431,9 @@ local function flush(group,list)
             if row.origin==Z.me.target and Z.PvPHelp then Z.PvPHelp.BroadcastResult(row.kind,row.wire,status=="ok"and"sent"or"error")end
         end
     end
+    -- A frame of guild names also waits behind the other mesh frames in the transport queue (2 messages per
+    -- second). 5 is the lowest mesh priority; the local network stays below it (test_community_hybrid_h_load).
+    if optionalBatch=="GN"then priority=5 end
     if#frames==0 or not queueData(route,protocol,batch(frames),false,nil,priority,result)then return end
     M.stats.forwarded=M.stats.forwarded+#frames
     for _,entry in ipairs(selected)do local p=entry.p;p.parts[route.target]=entry.part;if entry.part>=math.ceil(#p.row.wire/M.CHUNK)then p.sent[route.target]=true end end
@@ -430,7 +443,7 @@ function M.Tick()
     if M.region~=region then
         if M.region and region then B.Reset("region_metadata_changed")end
         M.Initialize()
-        Z.Network3.nextPresence=0;Z.Network3.pendingPublish=true;Z.Network3.publishDue=A.Clock()+2
+        Z.Network3.nextPresence=0;Z.Network3.pendingPublish=true;Z.Network3.publishDue=A.Clock()+2;Z.Network3.nextGuild=0
     end
     if not M.records or not enabled()then return end
     local clock=A.Clock()

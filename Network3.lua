@@ -3,7 +3,7 @@ local N={PREFIX=L.PREFIX3,FRAME_BYTES=180,MAX_JOBS=256,MAX_QUEUE_BYTES=65536}
 Z.Network3=N
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
-local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true}
+local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true,GN=true}
 local DIRECT={RQ=true,RR=true,RB=true,OC=true,OO=true,OS=true,OQ=true,OA=true,AV=true,SH=true,SA=true,SQ=true,SS=true,SK=true,SP=true,SX=true}
 local function allowedKind(channel,kind)return channel=="PUBLIC"and PUBLIC[kind]or channel=="WHISPER"and DIRECT[kind]or false end
 local function trace(reason,...)
@@ -83,6 +83,17 @@ function N.PackPvPDeath(session,d)
     for _,a in ipairs(list)do values[#values+1]=a.name;values[#values+1]=a.classFile or"";values[#values+1]=a.race or"";values[#values+1]=a.level or 0 end
     return N.Pack(values)
 end
+-- GN (public guild name) wire: session, at, guild name ("" = no guild or not shared). A separate optional record
+-- like MP: presence and bundle keep their established form, older clients reject a bundle that carries a guild name.
+N.GUILD_REFRESH=600
+function N.DecodeGuild(wire)
+    local f=fields(wire);if not f or#f~=3 or not L.Text(f[1],32)or not f[1]:match("^%d+%.%d+%.%d+$")then return nil end
+    local at=digits(f[2])
+    if not L.Int(at,1,4102444800)or at>A.Now()+120 or A.Now()-at>300 or not L.Text(f[3],64,true)then return nil end
+    return{session=f[1],at=at,guild=f[3]}
+end
+-- Same gate as the guild name of the direct profile (L.Snapshot).
+local function publicGuild()return Z.db.visible and Z.db.shareGuild and Z.me.guild or""end
 local function professionIDs()
     local ids={}
     if not Z.db.visible or not Z.db.shareProfessions then return""end
@@ -112,6 +123,9 @@ function N.Initialize()
     N.tokens,N.byteTokens,N.lastClock=8,1600,A.Clock()
     N.nextSend=0;N.backoff=0;N.throttledUntil=0;N.nextPresence=A.Clock()+math.random(0,30)
     N.pendingPublish=true;N.publishDue=A.Clock()+2;N.lastPublish=-100
+    -- The first guild record waits until the login synchronisation is over: the name is not urgent, the others
+    -- usually still have it stored, and every record adds to the inventory pages of the mesh while it lives.
+    N.guildSent=nil;N.nextGuild=0;N.guildHold=A.Clock()+60
     N.session=L.NextID(Z.db,A.Now()).."."..tostring(math.random(100000,999999));Z.session=N.session;Z.db.generation=N.session
 end
 function N.Queue(channel,target,kind,wire,priority,dedupe)
@@ -182,6 +196,17 @@ function N.Tick()
     if Z.db.autoDiscovery then
         if clock>=N.nextPresence then local wire=presenceWire();if wire then N.QueuePublic("P",wire,70,"PRESENCE")end;N.nextPresence=clock+105+math.random(0,30)end
         if N.pendingPublish and clock>=(N.publishDue or 0)then local wire=bundleWire();if wire then local id=N.QueuePublic("B",wire,35,"PUBLIC");if id then N.pendingPublish=false;N.lastPublish=clock end end end
+        -- Guild name: at once after a change, otherwise refreshed for members who logged in later (never inventoried).
+        if clock>=(N.guildHold or 0)then
+            local guild=publicGuild()
+            -- In a guild whose name the client has not delivered yet: wait instead of announcing "no guild".
+            local unknown=guild==""and Z.db.visible and Z.db.shareGuild and type(IsInGuild)=="function"and A.Call(IsInGuild)==true
+            if unknown then N.guildHold=clock+10
+            elseif guild~=N.guildSent or clock>=(N.nextGuild or 0)then
+                N.guildHold=clock+10
+                if N.QueuePublic("GN",N.Pack({Z.session,A.Now(),guild}),5,"GUILD")then N.guildSent=guild;N.nextGuild=clock+N.GUILD_REFRESH+math.random(0,60)end
+            end
+        end
     end
     if clock<N.nextSend or N.tokens<1 then return end
     for target,at in pairs(N.waitingTargets)do if clock>=at then N.waitingTargets[target]=nil end end
@@ -307,6 +332,17 @@ local function receivePresence(sender,wire)
     if Z.UpdatePeerProfessions then Z.UpdatePeerProfessions(key,previous,sessionChanged)end
     peer.cap3=true;N.stats.presence=N.stats.presence+1;if not N.meshContext and Z.CraftOrders and Z.CraftOrders.OnPeerOnline then Z.CraftOrders.OnPeerOnline(key,session)end;return true,changed
 end
+-- Public guild name of a member, accepted only as a statement of the validated mesh origin about its current
+-- session. It is kept beside the profile (peer.publicGuild) and only read for display (Social.PeerGuild): the
+-- profile itself, the guild rank and the same-guild fallback keep relying on the direct profile alone.
+local function receiveGuild(sender,wire)
+    local row=N.DecodeGuild(wire);local context=N.meshContext
+    if not row or not context or context.session~=row.session or context.at~=row.at or L.Identity(context.origin)~=L.Identity(sender)then return false end
+    local key=Z.ResolvePeerKey and Z.ResolvePeerKey(sender);local peer=key and Z.db.peers[key]
+    if not peer or not peer.cap30 or peer.session~=row.session then return false end
+    local changed=peer.publicGuild~=row.guild;peer.publicGuild=row.guild
+    return true,changed
+end
 local function assemblyBucket(channel)return channel=="PUBLIC"and N.assemblies or N.directAssemblies end
 function N.ProcessComplete(sender,channel,kind,wire)
     if not Z.db or not Z.db.consent or channel=="PUBLIC"and not Z.db.autoDiscovery or not allowedKind(channel,kind)then return false end
@@ -314,6 +350,7 @@ function N.ProcessComplete(sender,channel,kind,wire)
     if kind=="P"then return receivePresence(sender,wire)end
     if kind=="MP"then return Z.CommunityMap and Z.CommunityMap.Receive(sender,wire,N.meshContext)or false end
     if kind=="PD"then return Z.CommunityMap and Z.CommunityMap.ReceiveDeath(sender,wire,N.meshContext)or false end
+    if kind=="GN"then return receiveGuild(sender,wire)end
     if kind=="LY"then
         if Z.CommunityLayer then return Z.CommunityLayer.Receive(sender,wire,N.meshContext)end
         return false

@@ -175,6 +175,13 @@ function S.IsGuildMember(key)
     local peer=Z.db and Z.db.peers[key];local data=peer and peer.data
     return data~=nil and type(data.guild)=="string"and data.guild~=""and data.guild==own
 end
+-- Guild name of a member for display only: the public guild record (or the last direct profile), else the
+-- guild field of the given profile. Never used to decide who belongs to the own guild.
+function S.PeerGuild(key,data)
+    local peer=Z.db and Z.db.peers[key];local name=peer and peer.publicGuild
+    if type(name)~="string"then name=data and data.guild end
+    return type(name)=="string"and name or""
+end
 -- Guild rank for display only (never shared, never used for filtering). The
 -- roster rank is preferred for the own guild; other guilds use the direct-profile rank.
 function S.OwnGuildRank()return not guild.left and guild.ownRank or""end

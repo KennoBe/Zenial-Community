@@ -123,6 +123,8 @@ local function memberEntries(ownOnly)
             m.sourceReceived = peer and peer.received
             m.sourceMain = s and s.linkMain
             m.sourceLinkVersion = s and s.linkVersion
+            -- The public guild name arrives on its own and changes neither the profile table nor its revision.
+            m.sourceGuild = Z.Social.PeerGuild(m.key, s)
             m.layerID = Z.CommunityLayer and (m.own and Z.CommunityLayer.Own() or not m.own and Z.CommunityLayer.Member(m.key)) or nil
             -- Heuristic hints only: "probable" never claims a certain shared layer.
             m.layerRelation = not m.own and m.layerID and Z.CommunityLayer.Relation and Z.CommunityLayer.Relation(m.key) or nil
@@ -138,6 +140,7 @@ local function memberEntries(ownOnly)
                 and old.sourceReceived == m.sourceReceived
                 and old.sourceMain == m.sourceMain
                 and old.sourceLinkVersion == m.sourceLinkVersion
+                and old.sourceGuild == m.sourceGuild
                 and old.target == m.target
                 and old.where == m.where
                 and (not old.main or not m.sourceReceived or now <= m.sourceReceived + 604800)
@@ -157,7 +160,7 @@ local function memberEntries(ownOnly)
                         .. ' '
                         .. m.where
                         .. ' '
-                        .. (s and s.guild or '')
+                        .. m.sourceGuild
                         .. ' '
                         .. (s and s.community or '')
                         .. ' '
@@ -551,9 +554,11 @@ local function refreshMemberDetail()
     if s.roles and s.roles ~= '' then
         lines[#lines + 1] = fact(tr('Preferred role') .. ':', roleName(s.roles))
     end
-    if s.guild and s.guild ~= '' then
-        local rank = Z.Social.GuildRank(m.key)
-        lines[#lines + 1] = fact(tr('Guild') .. ':', rank and (s.guild .. ' (' .. rank .. ')') or s.guild)
+    local guild = Z.Social.PeerGuild(m.key, s)
+    if guild ~= '' then
+        -- A rank belongs to the own roster or to the guild named in the direct profile, never to a newer guild name.
+        local rank = (guild == s.guild or Z.Social.IsGuildMember(m.key)) and Z.Social.GuildRank(m.key)
+        lines[#lines + 1] = fact(tr('Guild') .. ':', rank and (guild .. ' (' .. rank .. ')') or guild)
     end
     local prof = profText(s)
     if prof ~= '' then
@@ -673,6 +678,11 @@ local function layerChip(m)
     local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
     return layerText and ('|cff' .. paletteHex('accentBlue') .. layerText .. '|r · ') or '', layerText
 end
+-- Guild line of a hover text: the own guild from the roster, every other guild from the member's shared name.
+local function guildLine(m)
+    local name = Z.Social.IsGuildMember(m.key) and Z.Social.GuildName() or Z.Social.PeerGuild(m.key, m.data)
+    return name ~= '' and (tr('Guild') .. ': ' .. name) or nil
+end
 -- One character row: the unchanged per-character item of the list.
 local function characterItem(m, ctx)
     local s = m.data
@@ -710,8 +720,9 @@ local function characterItem(m, ctx)
     if Z.Social.IsFavorite(m.key) then
         tooltip = tooltip .. '\n' .. tr('Favorite')
     end
-    if Z.Social.IsGuildMember(m.key) then
-        tooltip = tooltip .. '\n' .. tr('Guild') .. ': ' .. Z.Social.GuildName()
+    local guildText = guildLine(m)
+    if guildText then
+        tooltip = tooltip .. '\n' .. guildText
     end
     -- How current the online state is, whatever way it arrived.
     local peer = m.online and not m.own and Z.db.peers[m.key]
@@ -853,8 +864,9 @@ local function groupItem(g, hits, ctx)
         sameGuild = sameGuild or Z.Social.IsGuildMember(m.key)
     end
     local hoverMember = active or main
-    if hoverMember and Z.Social.IsGuildMember(hoverMember.key) then
-        lines[#lines + 1] = tr('Guild') .. ': ' .. Z.Social.GuildName()
+    local guildText = hoverMember and guildLine(hoverMember)
+    if guildText then
+        lines[#lines + 1] = guildText
     end
     -- The concrete character a selection uses: the active one, else the main, else the first known.
     local pick = active or main or g.members[1]
@@ -925,7 +937,7 @@ local function groupMemberItem(g, m, hit, ctx)
         display = display,
         subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
         subtitleDisplay = paint('textSoft', classLevel(m)) .. ' · ' .. chip .. locationLine(m),
-        tooltip = Z.Social.IsGuildMember(m.key) and tr('Guild') .. ': ' .. Z.Social.GuildName() or nil,
+        tooltip = guildLine(m),
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
         click = function()

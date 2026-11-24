@@ -1,7 +1,7 @@
 ZenialCommunity = ZenialCommunity or {}
 -- The TOC is the source of truth. The fallback is only used when the client
 -- cannot report metadata and must equal the TOC (test_addon_version.lua).
-local FALLBACK_VERSION = "6.9.0-beta.3"
+local FALLBACK_VERSION = "6.9.0-beta.4"
 local function tocVersion()
     local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     if type(get) ~= "function" then return nil end
@@ -166,6 +166,8 @@ local function loadMemberPeer(p)
         local wire=L.Encode(s);s=wire and L.Decode(wire,0,true)
         if s then s.publicOnly=true;peer.data,peer.wire,peer.received,peer.cap3=s,wire,seen,true end
     end
+    -- Public guild name (GN record or last direct profile): display only, kept beside the profile.
+    if L.Text(p.publicGuild,64,true)then peer.publicGuild=p.publicGuild end
     if L.ValidLocation(p.location,0,true)then peer.location={at=p.location.at,mapID=p.location.mapID or 0,area=p.location.area or"",subzone=p.location.subzone or""}end
     return peer
 end
