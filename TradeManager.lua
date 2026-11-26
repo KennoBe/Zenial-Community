@@ -1,5 +1,5 @@
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local M={alerts={}}
+local M={}
 Z.TradeManager=M
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
@@ -32,7 +32,7 @@ function M.Initialize()
     n=0;for id,rule in pairs(type(raw.rules)=="table"and raw.rules or{})do if n<20 and validRule(rule)and id==rule.id then rule.name=rule.name or"";rule.query=rule.query or"";rule.category=rule.category or"ALL_ITEM_CATEGORIES";t.rules[id]=rule;t.alertsSeen[id]=type(raw.alertsSeen)=="table"and type(raw.alertsSeen[id])=="table"and raw.alertsSeen[id]or{};n=n+1 end end
     for id,localID in pairs(type(raw.activeMeta)=="table"and raw.activeMeta or{})do if L.Text(id,32)and L.Text(localID,64)then t.activeMeta[id]=localID end end
     for _,seen in pairs(t.alertsSeen)do pruneSeen(seen)end
-    Z.db.tradeStore=t;M.store=t;M.alerts={};M.sessionStarted=A.Now();M.baselined={}
+    Z.db.tradeStore=t;M.store=t;M.sessionStarted=A.Now();M.baselined={}
 end
 function M.SaveRule(rule)
     if type(rule)~="table"then return nil,"Suchregel ist ungültig."end;rule=copy(rule);rule.name=rule.name or"";rule.query=rule.query or"";rule.id=rule.id or L.NextID(Z.db,A.Now());rule.kind=rule.kind or"ALL";rule.category=rule.category or"ALL_ITEM_CATEGORIES";rule.createdAt=rule.createdAt or A.Now()
@@ -56,7 +56,6 @@ local function fingerprint(offer)
     return tostring(first)..":"..tostring(second)
 end
 local function alert(row,revision)
-    M.alerts[#M.alerts+1]=row;if#M.alerts>100 then table.remove(M.alerts,1)end
     if Z.Notifications then Z.Notifications.Trade(row,revision or 0)end
 end
 function M.OnRetract(key,id,revision)
@@ -131,5 +130,4 @@ function M.SaveTemplate(name,offer)
     if not M.store.templates[name]and count(M.store.templates)>=20 then return nil,"Maximal 20 Vorlagen."end
     local row=copy(offer);row.id=nil;row.expires=nil;M.store.templates[name]=row;return true
 end
-function M.PopAlert()return table.remove(M.alerts,1)end
 return M

@@ -310,11 +310,28 @@ local function recipeIDs()
     ids=A.Call(C_TradeSkillUI.GetFilteredRecipeIDs)
     return A.PublicTable(ids)and ids or nil,false
 end
+-- Profession of a profession info table: by its (parent) profession ID, the name of the client language only as fallback.
+local function professionOf(info)
+    if not A.PublicTable(info)then return nil end
+    for _,field in ipairs({"parentProfessionID","professionID"})do
+        local id=info[field];if A.Safe(id)and L.Int(id,1,100000)and L.PROFESSION_NAMES[id]then return L.PROFESSION_NAMES[id]end
+    end
+    return L.ProfessionName(info.parentProfessionName or info.professionName)
+end
+-- Localized skill line names of this client -> canonical profession names (see L.NormalizeProfessionNames).
+function A.ProfessionLocalNames()
+    local out={};if not C_SkillInfo or type(C_SkillInfo.GetSkillLineInfoByID)~="function"then return out end
+    for id,canonical in pairs(L.PROFESSION_NAMES)do
+        local ok,p=pcall(C_SkillInfo.GetSkillLineInfoByID,id)
+        if ok and A.Safe(p)and A.PublicTable(p)and A.Safe(p.name)and type(p.name)=="string"and p.name~=""then out[p.name]=canonical end
+    end
+    return out
+end
 function A.ScanRecipes()
     local ids,complete=recipeIDs(); if not ids then return nil,"SCAN NICHT AUSGEFÜHRT: Öffne das gewünschte WoW-Berufsfenster, sodass seine Rezeptliste sichtbar ist." end
     local linked=A.Call(C_TradeSkillUI.IsTradeSkillLinked)
     if linked~=false then return nil,linked==true and"Verlinkte Berufe werden nicht als eigene Rezepte gespeichert."or"Own profession data is not ready yet." end
-    local base=A.Call(C_TradeSkillUI.GetBaseProfessionInfo);local profession=A.PublicTable(base)and L.ProfessionName(base.parentProfessionName or base.professionName)or nil
+    local base=A.Call(C_TradeSkillUI.GetBaseProfessionInfo);local profession=professionOf(base)
     local out,seen={},{}
     for _,id in pairs(ids) do
         if #out>=L.MAX_RECIPES_PER_PROFESSION then complete=false;break end
@@ -344,7 +361,7 @@ function A.ScanRecipes()
                     end
                 end
                 local recipeProfession=A.Call(C_TradeSkillUI.GetProfessionInfoByRecipeID,id)
-                local recipeName=A.PublicTable(recipeProfession)and L.ProfessionName(recipeProfession.parentProfessionName or recipeProfession.professionName)or profession
+                local recipeName=professionOf(recipeProfession)or profession
                 local row={id=id,itemID=L.Int(itemID,0,10000000) and itemID or 0,name=info.name,itemName=itemName,profession=recipeName or"",materials=table.concat(materials,",")}
                 if L.ValidRecipe(row) then out[#out+1]=row else complete=false end
             end

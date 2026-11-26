@@ -15,6 +15,12 @@ function S.Initialize()
     S.open=false;S.generation=0;S.state="closed";S.due=nil;S.retries=0;S.lastMessage=""
     S.professionDue=A.Clock()+.5;S.professionRetries=0;S.emptyProfessions=false;S.emptyRecipes=nil;S.professionsKnown=false
 end
+-- Once per character: recipes saved under the profession name of the client language get the canonical name (by skill line ID).
+function S.NormalizeStored()
+    if not Z.db or Z.db.recipeProfessionsNormalized then return false end
+    local changed,pending=L.NormalizeProfessionNames(Z.db,A.ProfessionLocalNames());if not pending then Z.db.recipeProfessionsNormalized=true end
+    return changed
+end
 function S.ApplyProfessions(professions)
     if type(professions)~="table"then return false end
     local names,ids={},{};for _,p in ipairs(professions)do
@@ -25,6 +31,7 @@ function S.ApplyProfessions(professions)
         local values={};for _,p in ipairs(rows or{})do values[#values+1]=table.concat({p.id,p.name,p.rank,p.max},":")end;table.sort(values);return table.concat(values,";")
     end
     local changed=signature(Z.db.professions)~=signature(professions)
+    if S.NormalizeStored()then changed=true end
     local recipes={};for _,r in ipairs(Z.db.recipes or{})do if names[L.ProfessionName(r.profession)]then recipes[#recipes+1]=r else changed=true end end
     for _,states in ipairs({Z.db.recipeStates,Z.db.recipeScans})do for name in pairs(states)do if not names[L.ProfessionName(name)]then states[name]=nil;changed=true end end end
     Z.db.professions=professions;Z.db.recipes=recipes;S.professionsKnown=true

@@ -55,7 +55,10 @@ function O.Initialize()
         -- outgoing archives once the owner is reachable instead of freezing
         -- potentially accepted work forever.
         row.localExpired=row.direction=="outgoing"and row.state=="EXPIRED"and row.expiryConfirmed~=true or nil
-        if row.localExpired then row.nextQuery=A.Clock()+2 end
+        -- An order the requester gave up locally (O.Abandon) stays provisional until the crafter answers.
+        row.localAbandoned=row.direction=="outgoing"and row.state=="CANCELLED"and row.localAbandoned==true and(row.abandonedFrom=="ACCEPTED"or row.abandonedFrom=="READY")or nil
+        if not row.localAbandoned then row.abandonedFrom,row.abandonedAt=nil,nil end
+        if row.localExpired or row.localAbandoned then row.nextQuery=A.Clock()+2 end
         redirects[oldKey]=row.key;return row
     end
     for key,row in pairs(type(Z.db.craftOrderHistory)=="table"and Z.db.craftOrderHistory or{})do row=normalize(key,row);if row and TERMINAL[row.state]then history[row.key]=row end end
@@ -112,6 +115,23 @@ function O.Transition(id,action)
     end
     if Z.MarkDirty then Z.MarkDirty("order")end;return true
 end
+-- Local giving up of an own order (requester) that the crafter cannot close any more: the contact is blocked or gone,
+-- or the cancel never arrived. Whether the UI offers it: O.CanAbandon(order).
+function O.CanAbandon(order)
+    if type(order)~="table"or order.direction~="outgoing"or order.state~="ACCEPTED"and order.state~="READY"then return false end
+    return Z.db.contacts[order.peer]==nil or Z.db.blocked[order.peer]==true or order.delivery=="failed"or order.delivery=="blocked"
+end
+-- Returns true, or nil and the reason. The order becomes CANCELLED locally, leaves the limits and releases a
+-- shopping list; a later answer of the crafter is reconciled in receiveStatus like a local expiry.
+function O.Abandon(id)
+    local order=O.orders[id]
+    if not order then for _,row in pairs(O.orders)do if row.id==id then if order then return nil,"Auftrag ist mehrdeutig."end;order=row end end end
+    if not order then return nil,"Auftrag nicht gefunden."end
+    if not O.CanAbandon(order)then return nil,"Dieser Auftrag kann nicht lokal aufgegeben werden."end
+    local now=A.Now();order.abandonedFrom=order.state;order.state="CANCELLED";order.localAbandoned=true;order.abandonedAt=now;order.delivery="abandoned";order.nextQuery=A.Clock()+300
+    O.ops[order.key]=nil;rememberTerminal(order);O.orders[order.key]=nil
+    if Z.MarkDirty then Z.MarkDirty("order")end;return true
+end
 local function receiveCreate(sender,wire)
     local f=Z.Network3.Unpack(wire);if not f or#f~=12 then return false end;local key=Z.ResolvePeerKey(sender);if not key or not Z.db.contacts[key]then return false end
     local id=f[1];local existing=O.Get(id,key,"incoming");if existing then if existing.peer==key then sendStatus(existing,tonumber(f[12])or 0,"DUPLICATE");return true end;return false end
@@ -132,20 +152,21 @@ local function receiveStatus(sender,wire)
     local f=Z.Network3.Unpack(wire);if not f or#f~=6 then return false end;local key=Z.ResolvePeerKey(sender);local order=key and O.Get(f[1],key,"outgoing");if not order or order.direction~="outgoing"or order.peer~=key then return false end
     local opSeq,revision,updated=tonumber(f[2]),tonumber(f[5]),tonumber(f[6]);if not L.Int(opSeq,0,2147483646)or not L.Int(revision,0,2147483646)or not L.Int(updated,1,4102444800)then return false end
     if not STATES[f[4]]or(f[3]~="OK"and f[3]~="DUPLICATE"and f[3]~="STALE"and f[3]~="INVALID")or updated>A.Now()+300 then return false end
-    local previous=order.state;local knownState=order.localExpired and"REQUESTED"or order.state
+    local previous=order.state;local provisional=order.localExpired or order.localAbandoned
+    local knownState=order.localExpired and"REQUESTED"or order.localAbandoned and order.abandonedFrom or order.state
     local equivalent=revision==order.revision and(f[4]==knownState or order.localExpired and f[4]=="EXPIRED")and updated==order.updatedAt
     -- Only the crafter owns revisions. Local request expiry is provisional;
     -- never ACK a revision that was discarded, or the owner stops retrying it.
     if not equivalent then
-        if revision<=order.revision or(TERMINAL[order.state]and not order.localExpired)then return false end
+        if revision<=order.revision or(TERMINAL[order.state]and not provisional)then return false end
         if not TERMINAL[f[4]]and not O.orders[order.key]and L.Count(O.orders)>=MAX_RETAINED_ACTIVE then return false end
-        order.state=f[4];order.revision=revision;order.updatedAt=updated;order.localExpired=nil;order.localExpiredAt=nil
+        order.state=f[4];order.revision=revision;order.updatedAt=updated;order.localExpired=nil;order.localExpiredAt=nil;order.localAbandoned,order.abandonedFrom,order.abandonedAt=nil,nil,nil
         if order.state=="REQUESTED"and A.Now()>=order.expires then order.state="EXPIRED";order.localExpired=true end
         if not TERMINAL[order.state]then O.orders[order.key]=order;Z.db.craftOrderHistory[order.key]=nil end
     end
     if f[4]=="EXPIRED"then order.localExpired=nil;order.localExpiredAt=nil;order.expiryConfirmed=true end
     if order.state~=previous and Z.Notifications then Z.Notifications.Craft(order)end
-    local pending=O.ops[order.key];if pending and pending.opSeq==opSeq then O.ops[order.key]=nil end;order.delivery=(f[3]=="OK"or f[3]=="DUPLICATE")and"confirmed"or string.lower(f[3]);order.nextQuery=A.Clock()+(order.localExpired and 300 or 60);rememberTerminal(order)
+    local pending=O.ops[order.key];if pending and pending.opSeq==opSeq then O.ops[order.key]=nil end;order.delivery=(f[3]=="OK"or f[3]=="DUPLICATE")and"confirmed"or string.lower(f[3]);order.nextQuery=A.Clock()+((order.localExpired or order.localAbandoned)and 300 or 60);rememberTerminal(order)
     local target=contactTarget(order.peer);if target then Z.Network3.QueueDirect(target,"OA",Z.Network3.Pack({order.id,revision}),100,"ORDERACK:"..order.key)end;if Z.MarkDirty then Z.MarkDirty("order")end;return true
 end
 local function receiveQuery(sender,wire)
@@ -158,9 +179,9 @@ function O.OnPeerOnline(key,session)
     local target=contactTarget(key);if not target then return end
     local sent=0
     for _,source in ipairs({O.orders,Z.db.craftOrderHistory})do for id,order in pairs(source)do
-        if order.peer==key and order.direction=="outgoing"and(not TERMINAL[order.state]or order.localExpired)then
+        if order.peer==key and order.direction=="outgoing"and(not TERMINAL[order.state]or order.localExpired or order.localAbandoned)then
             order.nextQuery=A.Clock()
-            if sent<5 then local queued=Z.Network3.QueueDirect(target,"OQ",Z.Network3.Pack({order.id}),90,"ORDERQUERY:"..id);if queued then sent=sent+1;order.nextQuery=A.Clock()+(order.localExpired and 300 or 60)else O.syncedSessions[key]=nil end end
+            if sent<5 then local queued=Z.Network3.QueueDirect(target,"OQ",Z.Network3.Pack({order.id}),90,"ORDERQUERY:"..id);if queued then sent=sent+1;order.nextQuery=A.Clock()+((order.localExpired or order.localAbandoned)and 300 or 60)else O.syncedSessions[key]=nil end end
         end
     end end
 end
@@ -209,7 +230,7 @@ function O.Tick()
     if clock>=O.nextHistoryQuery then
         O.nextHistoryQuery=clock+1;local due
         for _,order in pairs(Z.db.craftOrderHistory)do
-            if order.localExpired and clock>=(order.nextQuery or 0)and(not due or(order.nextQuery or 0)<(due.nextQuery or 0))and not O.orders[order.key]and not Z.db.blocked[order.peer]and Z.IsOnline(order.peer)and contactTarget(order.peer)then due=order end
+            if(order.localExpired or order.localAbandoned)and clock>=(order.nextQuery or 0)and(not due or(order.nextQuery or 0)<(due.nextQuery or 0))and not O.orders[order.key]and not Z.db.blocked[order.peer]and Z.IsOnline(order.peer)and contactTarget(order.peer)then due=order end
         end
         if due then local queued=Z.Network3.QueueDirect(contactTarget(due.peer),"OQ",Z.Network3.Pack({due.id}),90,"ORDERQUERY:"..due.key);due.nextQuery=clock+(queued and 300 or 2)end
     end

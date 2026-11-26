@@ -50,11 +50,11 @@ function D.State()
     return{label=label,online=online,reachable=reachable,reported=reported,legacy=legacy,queue=n.queue or 0,queueBytes=n.bytes or 0,inbound=n.inbound or 0,assemblies=n.assemblies or 0,lastReceive=n.lastReceive or 0,lastError=n.lastError or"",search=Z.RecipeSearch and Z.RecipeSearch.Progress()or nil}
 end
 -- SavedVariables backups (P4-5): listed with an approximate size, deleted only on explicit request.
-D.BACKUPS={"foreverLiveBackup","migrationBackup","characterBackup"};D.SIZE_NODE_LIMIT=20000
+D.BACKUPS={"foreverLiveBackup","migrationBackup","characterBackup","realmCorrectionBackup"};D.SIZE_NODE_LIMIT=20000
 local function backupOwner(name)
     local root=ZenialCommunityDB;if type(root)~="table"then return nil end
     if name=="characterBackup"then return type(root.account)=="table"and root.account or nil end
-    if name=="foreverLiveBackup"or name=="migrationBackup"then return root end
+    if name=="foreverLiveBackup"or name=="migrationBackup"or name=="realmCorrectionBackup"then return root end
 end
 local function estimate(value)
     local bytes,nodes,seen,truncated=0,0,{},false

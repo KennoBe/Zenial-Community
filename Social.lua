@@ -19,11 +19,18 @@ function S.Initialize()
     local existing=type(store)=="table"
     -- SavedVariables serialize aliases as separate copies. Never reimport a
     -- character's old copy over an existing shared store, even an empty one.
+    -- The migration only keeps a marker per character, never a copy of the data.
     ZenialCommunityDB.socialMigration=type(ZenialCommunityDB.socialMigration)=="table"and ZenialCommunityDB.socialMigration or{}
     local migration=ZenialCommunityDB.socialMigration;migration.version=1;migration.characters=type(migration.characters)=="table"and migration.characters or{}
     local character=Z.storageKey or Z.me.key
     local migrated=type(migration.characters[character])=="table"
-    if not migrated then migration.characters[character]={version=1,favorites=snapshot(Z.db.favorites),notes=snapshot(Z.db.privateNotes)}end
+    if not migrated then migration.characters[character]={version=1}end
+    -- Copies kept by older versions are redundant once the character is migrated: the shared store is authoritative.
+    for name,entry in pairs(migration.characters)do
+        if type(entry)=="table"then entry.favorites,entry.notes=nil,nil end
+        local profile=name~=character and ZenialCommunityDB.characters and ZenialCommunityDB.characters[name]
+        if type(profile)=="table"and type(entry)=="table"then profile.favorites,profile.privateNotes=nil,nil end
+    end
     if not existing then
         store={favorites={},notes={}};ZenialCommunityDB.social[key]=store
         if not migrated then store.favorites=snapshot(Z.db.favorites);store.notes=snapshot(Z.db.privateNotes)end

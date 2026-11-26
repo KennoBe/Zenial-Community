@@ -72,6 +72,33 @@ function L.ProfessionName(value)
     return PROFESSION_ALIASES[value]or value
 end
 function L.ProfessionNameByID(id)return L.PROFESSION_NAMES[tonumber(id)]end
+-- Recipes saved by older versions carry the profession name of the client language. names maps such a localized
+-- name to the canonical one (built from the skill line IDs by the Adapter). Returns whether anything changed and
+-- whether a name could not be resolved yet (nothing is dropped in that case).
+function L.NormalizeProfessionNames(d,names)
+    local canonical={};for _,name in pairs(L.PROFESSION_NAMES)do canonical[name]=true end
+    names=type(names)=="table"and names or{}
+    local function convert(name)
+        if type(name)~="string"or name==""then return nil,false end
+        local known=L.ProfessionName(name);if canonical[known]then return known,false end
+        local resolved=names[name]or names[known];return resolved,resolved==nil
+    end
+    local changed,pending=false,false
+    for _,row in ipairs(type(d.recipes)=="table"and d.recipes or{})do
+        if type(row)=="table"then local name,open=convert(row.profession);if open then pending=true elseif name and name~=row.profession then row.profession=name;changed=true end end
+    end
+    for _,field in ipairs({"recipeStates","recipeScans"})do
+        local source=type(d[field])=="table"and d[field]or nil
+        if source then
+            local moves={};for key in pairs(source)do local name,open=convert(key);if open then pending=true elseif name and name~=key then moves[#moves+1]={key,name}end end
+            for _,move in ipairs(moves)do
+                local key,name=move[1],move[2];local value=source[key];source[key]=nil;changed=true
+                local old=source[name];if old==nil or type(value)=="number"and type(old)=="number"and value>old then source[name]=value end
+            end
+        end
+    end
+    return changed,pending
+end
 function L.Identity(name,realm)
     if not L.Text(name,113) then return nil end
     name=(name:match("^%s*(.-)%s*$")or""):gsub("%s+"," ")
@@ -125,6 +152,7 @@ end
 function L.Touch(d) d.rev=math.min((d.rev or 1)+1,2147483646) end
 function L.NextID(d,now) d.seq=math.min((d.seq or 0)+1,2147483646);return tostring(now).."."..tostring(d.seq) end
 
+local addContact -- defined with L.Contact below; L.Load uses it
 local function loadMemberPeer(p)
     if type(p)~="table"then return nil end
     local peer={state="saved",cap4=p.cap4==true or nil}
@@ -183,17 +211,18 @@ function L.Load(raw)
     if d.rev<1 then d.rev=1 end;if d.recipeRev<1 then d.recipeRev=1 end;if type(raw.recipeComplete)=="boolean" then d.recipeComplete=raw.recipeComplete end
     -- Startup acknowledgements are local character preferences, never public data.
     d.networkSetupSeen=raw.networkSetupSeen==true
+    d.recipeProfessionsNormalized=raw.recipeProfessionsNormalized==true
     d.betaUnsupportedNoticeSeen=raw.betaUnsupportedNoticeSeen==true
     if raw.companionIntroductionMajor==5 then d.companionIntroductionMajor=5 end
     if type(raw.scale)=="number" and raw.scale>=.65 and raw.scale<=1.4 then d.scale=raw.scale end
     if type(raw.minimapAngle)=="number" and raw.minimapAngle>=-360 and raw.minimapAngle<=360 then d.minimapAngle=raw.minimapAngle end
     if type(raw.position)=="table" and L.Int(raw.position.x,-10000,10000) and L.Int(raw.position.y,-10000,10000) then d.position={x=raw.position.x,y=raw.position.y} end
     if type(raw.blocked)=="table" then for k,v in pairs(raw.blocked) do if v==true and L.ValidIdentityKey(k) then d.blocked[k]=true end end end
-    if type(raw.contacts)=="table" then for _,c in pairs(raw.contacts) do if count(d.contacts)>=L.MAX_CONTACTS then break end;if type(c)=="table" then local key=L.Contact(d,c.target,c.origin,c.confirmed);if key then d.contacts[key].automatic=c.automatic==true;if ZenialCommunity.me and key==ZenialCommunity.me.key then d.contacts[key]=nil end end end end end
+    if type(raw.contacts)=="table" then local contactCount=0;for _,c in pairs(raw.contacts) do if contactCount>=L.MAX_CONTACTS then break end;if type(c)=="table" then local key,_,added=addContact(d,c.target,c.origin,c.confirmed,nil,nil,contactCount);if key then if added then contactCount=contactCount+1 end;d.contacts[key].automatic=c.automatic==true;if ZenialCommunity.me and key==ZenialCommunity.me.key then d.contacts[key]=nil;contactCount=contactCount-1 end end end end end
     if type(raw.groupFollows)=="table" then for activity,enabled in pairs(raw.groupFollows) do if count(d.groupFollows)>=64 then break end;if enabled==true and L.Text(activity,64) then d.groupFollows[L.ActivityID(activity)]=true end end end
     -- Role filter of "Players looking for a group" (UXFinder.lua): only the three role flags.
     if type(raw.finderSeekerRoles)=="table" then local roles={};for _,role in ipairs({"TANK","HEALER","DAMAGER"})do roles[role]=raw.finderSeekerRoles[role]~=false end;d.finderSeekerRoles=roles end
-    if type(raw.groupFollowSeen)=="table" then for key,id in pairs(raw.groupFollowSeen) do if count(d.groupFollowSeen)>=L.MAX_CONTACTS then break end;if d.contacts[key] and L.Text(id,32) and id:match("^[%d%.]+$") then d.groupFollowSeen[key]=id end end end
+    if type(raw.groupFollowSeen)=="table" then local followCount=0;for key,id in pairs(raw.groupFollowSeen) do if followCount>=L.MAX_CONTACTS then break end;if d.contacts[key] and L.Text(id,32) and id:match("^[%d%.]+$") then d.groupFollowSeen[key]=id;followCount=followCount+1 end end end
     if type(raw.professions)=="table" then local seenIDs,byName={},{};for _,p in ipairs(raw.professions) do local name=type(p)=="table"and L.ProfessionName(p.name);local normalized=type(p)=="table"and{id=p.id,name=name,rank=p.rank,max=p.max};if #d.professions<6 and L.ValidProfession(normalized) then local key=string.lower(normalized.name);local old=byName[key];if not seenIDs[normalized.id]and not old then d.professions[#d.professions+1]=normalized;seenIDs[normalized.id]=true;byName[key]=normalized elseif old and(normalized.rank>old.rank or normalized.rank==old.rank and normalized.max>old.max)then old.id,old.rank,old.max=normalized.id,normalized.rank,normalized.max;seenIDs[normalized.id]=true end end end end
     if L.Int(raw.professionsAt,1,4102444800)then d.professionsAt=raw.professionsAt end
     if type(raw.recipes)=="table" then local professionCounts={};for _,r in ipairs(raw.recipes) do if #d.recipes<L.MAX_RECIPES and type(r)=="table"then local row={id=r.id,itemID=r.itemID or 0,name=r.name,itemName=r.itemName or"",profession=L.ProfessionName(r.profession or""),materials=r.materials or""};local n=professionCounts[row.profession]or 0;if n<L.MAX_RECIPES_PER_PROFESSION and L.ValidRecipe(row)then d.recipes[#d.recipes+1]=row;professionCounts[row.profession]=n+1 end end end end
@@ -250,11 +279,15 @@ function L.MergeRecipes(existing,scanned,profession,additive,allowEmpty)
     table.sort(out,function(a,b)if a.profession==b.profession then return a.name<b.name end;return a.profession<b.profession end)
     return out
 end
-function L.Contact(d,target,origin,confirmed,realm,faction)
+-- total: number of saved contacts when the caller keeps count itself (loading 5,000 contacts must not count them once per contact).
+function addContact(d,target,origin,confirmed,realm,faction,total)
     local own=ZenialCommunity and ZenialCommunity.me;realm=realm or(own and own.realm);faction=faction or(own and own.faction)
     local legacy,full=L.Identity(target,realm);local key=faction and L.ScopeKey(full,realm,faction)or legacy;if not key or not L.Text(origin,80) then return nil,"Vollständiger Charaktername und Herkunft erforderlich." end
-    if d.blocked[key] then return nil,"Spieler ist blockiert." end;if not d.contacts[key] and count(d.contacts)>=L.MAX_CONTACTS then return nil,"Maximal 5.000 Kontakte." end
-    d.contacts[key]={target=full,origin=origin,confirmed=confirmed==true};return key
+    if d.blocked[key] then return nil,"Spieler ist blockiert." end;local added=not d.contacts[key];if added and(total or count(d.contacts))>=L.MAX_CONTACTS then return nil,"Maximal 5.000 Kontakte." end
+    d.contacts[key]={target=full,origin=origin,confirmed=confirmed==true};return key,nil,added
+end
+function L.Contact(d,target,origin,confirmed,realm,faction)
+    local key,err=addContact(d,target,origin,confirmed,realm,faction);return key,err
 end
 function L.Discover(d,target,realm,source,now,faction)
     local own=ZenialCommunity and ZenialCommunity.me;realm=realm or(own and own.realm);faction=faction or(own and own.faction)
@@ -424,7 +457,7 @@ function L.Decode(wire,now,historical)
         s.professions={};local seenIDs,byName={},{};for i=1,n do local p={id=num(1,100000),name=str(64),rank=num(0,10000),max=num(1,10000)};if not L.ValidProfession(p) then return nil end;local key=string.lower(p.name);local old=byName[key];if not seenIDs[p.id]and not old then s.professions[#s.professions+1]=p;seenIDs[p.id]=true;byName[key]=p elseif old and(p.rank>old.rank or p.rank==old.rank and p.max>old.max)then old.id,old.rank,old.max=p.id,p.rank,p.max;seenIDs[p.id]=true end end
         local present=num(0,1);if not present then return nil end;if present==1 then local g={id=str(32),mode=str(3),activity=L.ActivityID(str(64)),min=num(1,100),max=num(1,100),have=str(64,true),start=num(0,4102444800),expires=num(1,4102444800),note=str(96,true),size=num(2,40),tank=num(0,10),healer=num(0,15),dd=num(0,40)};if not L.ValidGroup(g,now,true) or (not historical and g.expires>now+86400) then return nil end;s.group=g end
         present=num(0,1);if not present then return nil end;if present==1 then local q={id=str(32),questID=num(0,10000000),title=str(96),zone=str(64,true),min=num(1,100),max=num(1,100),note=str(96,true),expires=num(1,4102444800)};if not L.ValidQuest(q,now,true) or (not historical and q.expires>now+7200) then return nil end;s.quest=q end
-        n=num(0,3);if not n then return nil end;s.market={};seen={};for i=1,n do local o={id=str(32),kind=str(8),itemID=num(0,10000000),name=str(96),quantity=num(1,100000),price=num(0,2147483646),note=str(96,true),expires=num(1,4102444800)};if not L.ValidOffer(o,now,true) or seen[o.id] or (not historical and o.expires>now+86400) then return nil end;seen[o.id]=true;s.market[i]=o end
+        n=num(0,3);if not n then return nil end;s.market={};local seen={};for i=1,n do local o={id=str(32),kind=str(8),itemID=num(0,10000000),name=str(96),quantity=num(1,100000),price=num(0,2147483646),note=str(96,true),expires=num(1,4102444800)};if not L.ValidOffer(o,now,true) or seen[o.id] or (not historical and o.expires>now+86400) then return nil end;seen[o.id]=true;s.market[i]=o end
         s.linkMain=str(113,true);if s.linkMain~="" and not L.Identity(s.linkMain) then return nil end;s.linkVersion=num(0,2147483646);n=num(0,10);if not (s.linkVersion and n) then return nil end;s.linkAlts={};seen={}
         for i=1,n do local v=str(113);if not v or not L.Identity(v) or seen[string.lower(v)] then return nil end;seen[string.lower(v)]=true;s.linkAlts[i]=v end
         s.recipeRev,s.recipeCount,s.recipeScan=num(0,2147483646),num(0,L.MAX_RECIPES),num(0,4102444800);if not (s.recipeRev and s.recipeCount and s.recipeScan) then return nil end
@@ -519,7 +552,6 @@ function L.Engine(d,me,io)
         if dedupe then for _,item in ipairs(self.out) do if item.dedupe==dedupe and item.part==1 then item.wire=wire;item.total=math.ceil(#wire/180);item.priority=priority or 10;return item.id end end end
         if #self.out>=64 then return nil,"Warteschlange voll." end;local id=L.NextID(d,io.now());self.serial=self.serial+1;self.out[#self.out+1]={id=id,key=key,wire=wire,total=math.ceil(#wire/180),part=1,tries=0,reliable=reliable~=false,priority=priority or 10,dedupe=dedupe,serial=self.serial,context=context or{reason=s.kind}};return id
     end
-    function e:Request(key) local now=io.now();if self.lastRequest[key] and now-self.lastRequest[key]<10 then return nil,"Bereits angefragt." end;self.lastRequest[key]=now;self:Queue(key,{kind="Q3",rev=d.peers[key] and d.peers[key].data and d.peers[key].data.rev or 0},true,40,"Q3:"..key);return self:Queue(key,{kind="Q",rev=0},true,20,"Q:"..key) end
     local function reachable(key)return io.reachable and io.reachable(key)or not io.reachable and L.PeerOnline(d,key,io.now())end
     function e:Publish() for key,p in pairs(d.peers) do if p.received and d.contacts[key] and not d.blocked[key]and reachable(key)and(not p.cap4 or p.profileRequested)then self.dirty[key]=true end end end
     function e:QueueSnapshot(key,legacy,background)
@@ -624,13 +656,15 @@ function L.Engine(d,me,io)
         elseif s.kind=="RS" then d.recipeResults[s.id]=d.recipeResults[s.id] or {};d.recipeResults[s.id][key]={results=s.results,at=now}
         elseif s.kind=="CQ"then
             local results,total={},0;if io.recipeCatalog then results,total=io.recipeCatalog(s.profession,s.offset)end
-            local response={kind="CS",id=s.id,profession=s.profession,offset=s.offset,total=total or 0,results=results or{}}
+            -- A page request behind the end (the list shrank) is answered as an empty page at the end, never ignored.
+            local response={kind="CS",id=s.id,profession=s.profession,offset=math.min(s.offset,total or 0),total=total or 0,results=results or{}}
             -- Ingredient-aware pages stay inside the original frame/message limits.
             while #response.results>0 and not L.Encode(response)do table.remove(response.results)end
             self:Queue(key,response,true,25)
         elseif s.kind=="CS" then
             local byProfession=d.recipeCatalogs and d.recipeCatalogs[key];local catalog=byProfession and byProfession[s.profession]
-            if catalog and catalog.id==s.id and catalog.nextOffset==s.offset then
+            local atEnd=#s.results==0 and s.offset==s.total and catalog and catalog.nextOffset>s.total
+            if catalog and catalog.id==s.id and(catalog.nextOffset==s.offset or atEnd)then
                 local current=io.catalogRevision and io.catalogRevision(key)
                 if current and catalog.recipeRev and current~=catalog.recipeRev then catalog.stale=true;catalog.results={};catalog.complete=false;if io.catalogRestart then io.catalogRestart(key,s.profession)end
                 else

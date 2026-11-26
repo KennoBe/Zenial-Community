@@ -3,11 +3,10 @@
 local Z,A=ZenialCommunity,ZenialCommunity.Adapter
 local E={API_VERSION=1};Z.Events=E
 local CATALOG=Z.EventCatalog
-local QUEUE_LIMIT,BURST,RATE,LISTENERS_MAX,CONTEXT_TEXT_MAX,TEXT_MAX=16,6,1,8,96,48
+local QUEUE_LIMIT,BURST,RATE,CONTEXT_TEXT_MAX,TEXT_MAX=16,6,1,96,48
 local REASONS={'consent','transport','unknown-type','payload','secret','duplicate','rate'}
 local stats={accepted=0,sent=0,dropped=0,evicted=0,rejected={}}
 for _,reason in ipairs(REASONS)do stats.rejected[reason]=0 end
-local listeners={}
 -- Lookup tables per type, built once from the generated catalog.
 local byName,contextSet={},{}
 for name,entry in pairs(CATALOG.types)do
@@ -44,12 +43,6 @@ local function validValue(field,v)
     if field.pattern and not v:find(field.pattern)then return false end
     return true
 end
-local function copy(value,depth)
-    if type(value)~='table'then return value end
-    if(depth or 0)>4 then return nil end
-    local out={};for k,v in pairs(value)do out[k]=copy(v,(depth or 0)+1)end
-    return out
-end
 -- Returns the wire payload (short keys), the clean long-name payload and the dedupe key, or nil and a reason.
 local function check(name,entry,payload)
     if type(payload)~='table'then return nil,'payload'end
@@ -84,7 +77,7 @@ local function emit(source,eventType,payload)
     local C=Z.Companion;local s=C and C.settings
     local name=type(eventType)=='string'and A.Safe(eventType)and eventType or nil
     if not s or s.enabled~=true or s.categories.events~=true or name and not C.EventTypeEnabled(name)then return refuse('consent')end
-    if not C.IsPixel()or not C.running or C.debugPixel or not C.session then return refuse('transport')end
+    if not C.running or C.debugPixel or not C.session then return refuse('transport')end
     local entry=name and type(source)=='string'and A.Safe(source)and CATALOG.types[name]or nil
     if not entry or entry.source~=source then return refuse('unknown-type')end
     local wire,clean,key=check(name,entry,payload)
@@ -109,9 +102,6 @@ local function emit(source,eventType,payload)
     order=order+1;E.counter=E.counter>=999999 and 1 or E.counter+1
     local ev={id=E.counter,type=name,source=source,rank=entry.rank,repeats=entry.repeats,sent=0,order=order,observedAt=observedAt,payload=wire}
     E.queue[#E.queue+1]=ev;stats.accepted=stats.accepted+1
-    if next(listeners)then
-        for _,fn in pairs(listeners)do pcall(fn,{id=ev.id,type=name,source=source,observedAt=observedAt,payload=copy(clean)})end
-    end
     return true
 end
 function E.Emit(source,eventType,payload)
@@ -126,12 +116,6 @@ end
 function E.Status()
     local rejected={};for reason,count in pairs(stats.rejected)do rejected[reason]=count end
     return{accepted=stats.accepted,sent=stats.sent,dropped=stats.dropped,evicted=stats.evicted,queued=#E.queue,rejected=rejected}
-end
-function E.RegisterListener(owner,fn)
-    if owner==nil or type(fn)~='function'then return false end
-    local count=0;for _ in pairs(listeners)do count=count+1 end
-    if listeners[owner]==nil and count>=LISTENERS_MAX then return false end
-    listeners[owner]=fn;return true
 end
 -- Transport side: the next events to put on the pixel strip. A waiting high event
 -- allows two lines, otherwise one; order is priority, then age.

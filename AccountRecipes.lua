@@ -110,8 +110,21 @@ local function plansOf(key)
     end
     return c.store
 end
+-- Saved order of another character (its profile keeps the orders in craftOrders and craftOrderHistory).
+local function savedOrder(key)
+    return function(id,peer,direction)
+        local p=profile(key);if not p then return nil end
+        local k=Z.CraftOrders.Key(direction,peer,id)
+        for _,field in ipairs({"craftOrders","craftOrderHistory"})do
+            local rows=type(p[field])=="table"and p[field]or nil
+            if rows and type(rows[k])=="table"then return rows[k]end
+        end
+        for _,field in ipairs({"craftOrders","craftOrderHistory"})do
+            for _,row in pairs(type(p[field])=="table"and p[field]or{})do if type(row)=="table"and row.id==id and row.peer==peer and row.direction==direction then return row end end
+        end
+    end
+end
 local function recordedAt(s,place)return s and type(s[place])=="table"and s[place.."At"]or nil end
-local function always()return true end
 function R.Materials(entry,crafterKey,crafts)
     crafts=L.Int(crafts,1,100000)and crafts or 1
     local ingredients=type(entry)=="table"and P.ParseIngredients(entry.materials)
@@ -129,7 +142,7 @@ function R.Materials(entry,crafterKey,crafts)
     for _,key in ipairs(keys)do
         local plans=plansOf(key);local counts={}
         for _,ing in ipairs(ingredients)do counts[ing.itemID]=amount(ing.itemID,key,"bags")end
-        reserved[key]=plans and P.Reservations(plans,counts,key==Z.storageKey and P.Active or always)or{}
+        reserved[key]=plans and P.Reservations(plans,counts,key==Z.storageKey and P.Active or P.ActiveIn(savedOrder(key)))or{}
     end
     local immediate,accountWide,anyStand=nil,nil,false
     for _,key in ipairs(keys)do local s=row(key);if s and(type(s.bags)=="table"or type(s.bank)=="table")then anyStand=true end end

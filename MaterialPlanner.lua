@@ -98,6 +98,14 @@ function P.State(plan)
     local order=P.Order(plan);return order and order.state or"UNAVAILABLE"
 end
 function P.Active(plan)local state=P.State(plan);return state~="UNAVAILABLE"and not TERMINAL[state]end
+-- Activity test for lists of another character: getOrder(id,peer,direction) reads that character's saved orders.
+function P.ActiveIn(getOrder)
+    return function(plan)
+        local ref=plan.order;if not ref then return true end
+        local order=getOrder(ref.id,ref.peer,ref.direction)
+        return sameOrder(ref,order)and not TERMINAL[order.state]
+    end
+end
 function P.ForOrder(order)
     for _,plan in ipairs(P.List())do if sameOrder(plan.order,order)then return plan end end
 end

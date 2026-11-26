@@ -127,6 +127,7 @@ function Z.RemoveCharacter(key)
         a.characters[alias]=nil;a.characterBackup[alias]=nil;a.characterAliases[alias]=nil
         ZenialCommunityDB.characters[alias]=nil
         if ZenialCommunityDB.migrationBackup then ZenialCommunityDB.migrationBackup[alias]=nil end
+        if type(ZenialCommunityDB.socialMigration)=="table"and type(ZenialCommunityDB.socialMigration.characters)=="table"then ZenialCommunityDB.socialMigration.characters[alias]=nil end
         if ZenialCommunityDB.ui and ZenialCommunityDB.ui.characters then ZenialCommunityDB.ui.characters[alias]=nil end
         if ZenialCommunityDB.pvpHelp then ZenialCommunityDB.pvpHelp[alias]=nil end
         Z.db.contacts[alias]=nil;Z.db.peers[alias]=nil;Z.db.recipeCatalogs[alias]=nil
@@ -238,6 +239,15 @@ function Z.RequestProfile(key)
     local now=A.Now();if Z.engine.lastRequest[key]and now-Z.engine.lastRequest[key]<10 then return nil,Z.T("Profile is already loading.")end;Z.engine.lastRequest[key]=now
     return Z.engine:Queue(key,{kind="Q3",rev=peer.data and peer.data.rev or 0},true,45,"PROFILE:"..key)
 end
+-- A delivery that finally failed must not leave the local application standing as "applied": a new try would be
+-- refused as "already applied". The history entry ("Application failed") stays.
+local function dropFailedApplication(key,dedupe)
+    local sourceID=type(dedupe)=="string"and dedupe:match("^ZH:(.+)$");local e=sourceID and H and H.byID and H.byID[sourceID]
+    if not e or e.peerKey~=key or e.event~="application_queued"or not Z.db then return end
+    local sent=e.kind=="group"and Z.db.sentApplications or e.kind=="quest"and Z.db.sentQuestApplications or nil
+    local people=sent and sent[e.contentID];local row=people and people[key]
+    if row and row.state=="applied"then people[key]=nil;if not next(people)then sent[e.contentID]=nil end;Z.MarkDirty("finder")end
+end
 local function attach(db)
     Z.db=db
     Z.engine=L.Engine(db,Z.me,{now=A.Now,clock=A.Clock,send=A.Send,allowed=A.Allowed,refresh=Z.RefreshIdentity,
@@ -256,7 +266,7 @@ local function attach(db)
         group=function(key,group) if Z.OnGroupReceived then Z.OnGroupReceived(key,group) end end,
         pvp=function(key,message) if Z.PvPHelp then Z.PvPHelp.Receive(key,message) end end,
         finder=function(kind,event,key,id,content)if Z.RecordFinderEvent then Z.RecordFinderEvent(kind,event,key,id,content)end end,
-        delivery=function(key,dedupe,ok)if Z.PvPHelp then Z.PvPHelp.Delivery(key,dedupe,ok)end;if H then H.Delivery(key,dedupe,ok)end end,
+        delivery=function(key,dedupe,ok)if not ok then dropFailedApplication(key,dedupe)end;if Z.PvPHelp then Z.PvPHelp.Delivery(key,dedupe,ok)end;if H then H.Delivery(key,dedupe,ok)end end,
         changed=function()Z.MarkDirty()end})
     Z.engine.blocked=not Z.registered
 end
@@ -410,20 +420,20 @@ function Z.OnGroupReceived(key,group)
     if Z.db.groupFollows[activity]and Z.UI and Z.UI.NotifyGroupFollow then Z.UI.NotifyGroupFollow(key,group.id,activity)end
 end
 function Z.SetPreference(name,value)
-    local allowed={consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true}
+    -- Only the two switches of the settings page. Exchange, discovery, guild and quest sharing are always on (L.Load).
+    local allowed={visible=true,shareProfessions=true}
     if not allowed[name]or type(value)~="boolean"or not Z.db then return false end
     Z.db[name]=value
     if Z.AccountPreferences then Z.AccountPreferences.Save()end
     if Z.QuestHelper then Z.QuestHelper.PrivacyChanged()end
     if Z.ScheduledGroups then Z.ScheduledGroups.PrivacyChanged()end
     if Z.BattleNetTransport then Z.BattleNetTransport.Reset("privacy")end
-    if Z.CommunityMesh then Z.CommunityMesh.PrivacyChanged()end
     if Z.CommunityDirectory then Z.CommunityDirectory.RequestScan()end
     -- Retract queued data assembled under an older privacy setting.
     if Z.engine then Z.engine:Stop("")end
     if Z.Network3 then
+        -- CancelPublic also lets the mesh drop the own records assembled under the old setting.
         Z.Network3.CancelPublic()
-        if name=="consent"and not value then Z.Network3.jobs={};Z.Network3.jobBytes=0 end
         if name=="visible"or name=="shareProfessions"then for i=#Z.Network3.jobs,1,-1 do local job=Z.Network3.jobs[i];if job.kind=="RR"then Z.Network3.jobBytes=math.max(0,Z.Network3.jobBytes-#job.wire);table.remove(Z.Network3.jobs,i)end end end
         Z.Network3.nextPresence=0;Z.Network3.nextGuild=0
     end
@@ -444,13 +454,6 @@ function Z.Block(key)
     if Z.LocalNetwork and Z.LocalNetwork.ForgetSaved then Z.LocalNetwork.ForgetSaved(key,target)end
     if Z.Notifications then Z.Notifications.RemovePeer(key)end
     return L.Block(Z.db,key)
-end
-function Z.Reset()
-    if Z.offlineOnly then return false end
-    local rev,seq=Z.db.rev,Z.db.seq; Z.engine:Stop(""); local d=L.New(); d.rev=math.min(rev+1,2147483646); d.seq=seq; d.generation=tostring(A.Now()).."."..tostring(seq)
-    for _,name in ipairs({"consent","autoDiscovery","visible","shareProfessions","shareGuild","shareQuests"})do d[name]=Z.db[name]end
-    if Z.UI and Z.UI.CloseDialogs then Z.UI.CloseDialogs()end
-    ZenialCommunityDB.characters[Z.storageKey]=d;Z.db=nil;Z.Initialize();Z.MarkDirty("reset")
 end
 -- Z.Initialize runs these steps strictly in the order listed in the function body below.
 -- Splitting the former single-line statements into named steps changes no call, condition or order.
@@ -534,7 +537,7 @@ local function initializeGameplayModules(d)
     if Z.SocialDiary then Z.SocialDiary.Initialize()end
     if Z.AccountOverview then Z.AccountOverview.Initialize()end
     if Z.CraftOrders then Z.CraftOrders.Initialize()end
-    if Z.ProfessionScan then Z.ProfessionScan.Initialize()end
+    if Z.ProfessionScan then Z.ProfessionScan.Initialize();Z.ProfessionScan.NormalizeStored()end
     if Z.RecipeSearch then Z.RecipeSearch.Initialize()end
     if Z.Items then Z.Items.Seed()end
     Z.RefreshLocation(false,true)
@@ -590,9 +593,11 @@ function Z.Initialize()
     prepareAccount(me)
     adoptLegacyStorageKeys()
     local d=loadCharacterData()
-    initializeGameplayModules(d)
-    initializeNetworkModules()
-    initializeCompanionAndViews()
+    -- The stage is only "done" when every step ran; the update loop reports an abandoned start once (Nr. 104).
+    Z.startStage="data";initializeGameplayModules(d)
+    Z.startStage="gameplay";initializeNetworkModules()
+    Z.startStage="network";initializeCompanionAndViews()
+    Z.startStage="done"
     if Z.offlineOnly then Z.transientRoot=ZenialCommunityDB;ZenialCommunityDB=Z.offlineRoot or{} end
 end
 SLASH_ZENIALCOMMUNITY1="/zenial"
@@ -801,9 +806,10 @@ local function tickQuarterSecond()
     if Z.Items then Z.Items.Tick()end
     if Z.PublicLFG then publicCall(Z.PublicLFG.Tick)end
     A.DiscoveryTick(false)
-    if uiDirty and Z.UI and Z.UI.frame and Z.UI.frame:IsShown()then
+    if uiDirty then
+        -- A closed window builds its page when it opens; keeping the flag would build it a second time right after.
         uiDirty=false
-        Z.UI.Refresh(nil,true)
+        if Z.UI and Z.UI.frame and Z.UI.frame:IsShown()then Z.UI.Refresh(nil,true)end
     end
     if Z.UI and Z.UI.TickNotices then Z.UI.TickNotices(A.Clock())end
 end
@@ -823,6 +829,7 @@ local function tickFiveSeconds()
     if Z.PvPHelp then Z.PvPHelp.Expire()end
 end
 
+local startupReported=false
 frame:SetScript("OnUpdate",function(_,dt)
     if type(dt)~="number"then return end
     if not Z.engine then
@@ -833,6 +840,10 @@ frame:SetScript("OnUpdate",function(_,dt)
             Z.Initialize()
         end
         return
+    end
+    -- Data loaded but the start was abandoned before the network or the views were up: say so once in the diagnosis.
+    if not startupReported and Z.startStage and Z.startStage~="done"then
+        startupReported=true;if Z.Diagnostics then Z.Diagnostics.Record("startup:incomplete",Z.startStage)end
     end
     elapsed=elapsed+dt
     refresh=refresh+dt
