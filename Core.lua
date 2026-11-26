@@ -1,7 +1,7 @@
 ZenialCommunity = ZenialCommunity or {}
 -- The TOC is the source of truth. The fallback is only used when the client
 -- cannot report metadata and must equal the TOC (test_addon_version.lua).
-local FALLBACK_VERSION = "6.9.0"
+local FALLBACK_VERSION = "6.10.0-beta.1"
 local function tocVersion()
     local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     if type(get) ~= "function" then return nil end
@@ -123,7 +123,7 @@ function L.ClassName(value,token)
     return token or value or"Unknown"
 end
 function L.New()
-    return {consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,community="",roles="",note="",professionNote="",availability="AUTO",rev=1,publicRev=1,seq=0,generation="",contacts={},peers={},blocked={},professions={},recipes={},recipeRev=1,recipeScan=0,recipeScans={},recipeStates={},recipeComplete=false,recipeResults={},recipeCatalogs={},lfg={},interests={},sentApplications={},quest=nil,questInterests={},sentQuestApplications={},applicationAlerts={group={},quest={}},groupFollows={},groupFollowSeen={},market={},tradeStore={drafts={},paused={},templates={},rules={},alertsSeen={}},groupTemplates={},favorites={},privateNotes={},craftOrders={},craftOrderOps={},craftOrderHistory={},scale=1,minimapAngle=225}
+    return {consent=true,autoDiscovery=true,visible=true,shareProfessions=true,shareGuild=true,shareQuests=true,community="",roles="",note="",professionNote="",availability="AUTO",rev=1,publicRev=1,seq=0,generation="",contacts={},peers={},blocked={},professions={},recipes={},recipeRev=1,recipeScan=0,recipeScans={},recipeStates={},recipeComplete=false,recipeResults={},recipeCatalogs={},lfg={},interests={},sentApplications={},quest=nil,questInterests={},sentQuestApplications={},applicationAlerts={group={},quest={}},groupFollows={},groupFollowSeen={},market={},tradeStore={drafts={},paused={},templates={},rules={},alertsSeen={}},groupTemplates={},favorites={},privateNotes={},craftOrders={},craftOrderOps={},craftOrderHistory={},minimapAngle=225}
 end
 function L.ValidProfession(p) return type(p)=="table" and L.Int(p.id,1,100000) and L.Text(p.name,64) and L.Int(p.rank,0,10000) and L.Int(p.max,1,10000) and p.rank<=p.max end
 function L.ValidRecipe(r) return type(r)=="table" and L.Int(r.id,1,10000000) and L.Int(r.itemID or 0,0,10000000) and L.Text(r.name,96) and L.Text(r.itemName or "",96,true) and L.Text(r.profession or "",64,true) and L.Text(r.materials or "",320,true) end
@@ -214,7 +214,6 @@ function L.Load(raw)
     d.recipeProfessionsNormalized=raw.recipeProfessionsNormalized==true
     d.betaUnsupportedNoticeSeen=raw.betaUnsupportedNoticeSeen==true
     if raw.companionIntroductionMajor==5 then d.companionIntroductionMajor=5 end
-    if type(raw.scale)=="number" and raw.scale>=.65 and raw.scale<=1.4 then d.scale=raw.scale end
     if type(raw.minimapAngle)=="number" and raw.minimapAngle>=-360 and raw.minimapAngle<=360 then d.minimapAngle=raw.minimapAngle end
     if type(raw.position)=="table" and L.Int(raw.position.x,-10000,10000) and L.Int(raw.position.y,-10000,10000) then d.position={x=raw.position.x,y=raw.position.y} end
     if type(raw.blocked)=="table" then for k,v in pairs(raw.blocked) do if v==true and L.ValidIdentityKey(k) then d.blocked[k]=true end end end
