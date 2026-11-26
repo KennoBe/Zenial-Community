@@ -43,6 +43,12 @@ local function hint(kind,source,amount)
     R.hints[#R.hints+1]={kind=kind,source=source,amount=amount,at=A.Clock()}
     while#R.hints>32 do table.remove(R.hints,1)end
 end
+-- Books an amount under its source: transfers have their own counters, everything else a per-kind source.
+local function book(row,kind,source,amount)
+    if source=='transferIn'then row.transfersIn=row.transfersIn+amount
+    elseif source=='transferOut'then row.transfersOut=row.transfersOut+amount
+    else row[kind][source]=(row[kind][source]or 0)+amount end
+end
 function R.Flush(force)
     if not R.record then return end
     local now=A.Clock();local remaining={}
@@ -56,10 +62,17 @@ function R.Flush(force)
             for _,credit in ipairs(R.hints)do
                 if credit.kind==entry.kind and math.abs(credit.at-entry.at)<=2 and credit.amount>0 then
                     local amount=math.min(left,credit.amount);left=left-amount;credit.amount=credit.amount-amount
-                    if credit.source=='transferIn'then row.transfersIn=row.transfersIn+amount
-                    elseif credit.source=='transferOut'then row.transfersOut=row.transfersOut+amount
-                    else row[entry.kind][credit.source]=(row[entry.kind][credit.source]or 0)+amount end
+                    book(row,entry.kind,credit.source,amount)
                     if left==0 then break end
+                end
+            end
+            -- The server answers an action (buy, repair, mail) after the call, so the balance moves later:
+            -- the action leaves an intent, and the first matching movement soon after takes its source.
+            if left>0 then
+                for index,intent in ipairs(R.intents)do
+                    if intent.kind==entry.kind and entry.at>=intent.at-.5 and entry.at-intent.at<=3 and(not intent.amount or intent.amount==left)then
+                        book(row,entry.kind,intent.source,left);left=0;table.remove(R.intents,index);break
+                    end
                 end
             end
             if left>0 then row[entry.kind].other=(row[entry.kind].other or 0)+left end
@@ -68,6 +81,7 @@ function R.Flush(force)
     end
     R.pending=remaining
     local credits={};for _,credit in ipairs(R.hints)do if credit.amount>0 and now-credit.at<=2 then credits[#credits+1]=credit end end;R.hints=credits
+    local intents={};for _,intent in ipairs(R.intents)do if now-intent.at<=5 then intents[#intents+1]=intent end end;R.intents=intents
     R.Prune()
 end
 function R.Sample(deferLevel)
@@ -148,6 +162,8 @@ local function firstNumber(values)
     local first;for index in pairs(values or{})do if not first or index<first then first=index end end
     return first and values[first]
 end
+-- Deliberate exception: the Classic client names no ID for where chat money or XP comes from, so these hints
+-- are matched against the client's own localized format strings (GlobalStrings). Nothing else here reads text.
 local function lootMoney(message)
     for _,key in ipairs({'YOU_LOOT_MONEY','YOU_LOOT_MONEY_GUILD','LOOT_MONEY_SPLIT','LOOT_MONEY_SPLIT_GUILD'})do
         local _,strings=matchFormat(_G[key],message)
@@ -193,30 +209,41 @@ function R.OnEvent(event,...)
         R.mailMoney=nil;R.mailSent=nil
     elseif event=='MAIL_FAILED'or event=='MAIL_CLOSED'then R.mailMoney=nil;R.mailSent=nil
     elseif event=='MAIL_INBOX_UPDATE'or event=='MAIL_SHOW'then
+        R.ConfirmTakes()
         R.inbox={};local count=read(GetInboxNumItems)or 0
         for i=1,math.min(count,100)do local _,_,sender,subject,amount=A.Call(GetInboxHeaderInfo,i);if number(amount)and amount>0 then R.inbox[i]={amount=amount,own=ownAlt(sender),sender=text(sender),subject=text(subject)}end end
     elseif event=='PLAYER_LOGOUT'then R.Flush(true)end
 end
+-- A taken inbox money counts as confirmed only when the mail then shows no money any more (checked at once and
+-- again after the server's inbox update); the movement itself is matched later in Flush.
+function R.ConfirmTakes()
+    local open={}
+    for _,take in ipairs(R.takes)do
+        local _,_,sender,subject,amount=A.Call(GetInboxHeaderInfo,take.index)
+        if number(amount)==0 and text(sender)==take.mail.sender and text(subject)==take.mail.subject then
+            R.intents[#R.intents+1]={kind='income',source=take.mail.own and'transferIn'or'mail',amount=take.mail.amount,at=A.Clock()}
+            if R.inbox then R.inbox[take.index]=nil end
+        elseif A.Clock()-take.at<=5 then open[#open+1]=take end
+    end
+    R.takes=open
+end
 local function hooks()
     if R.hooked or type(hooksecurefunc)~='function'then return end;R.hooked=true
     local function hook(owner,key,callback)if type(owner)=='table'and type(owner[key])=='function'then pcall(hooksecurefunc,owner,key,callback)end end
-    hook(_G,'SendMail',function(target)R.mailSent={own=ownAlt(target),amount=read(GetSendMailMoney)}end)
+    hook(_G,'SendMail',function(target)if R.active then R.mailSent={own=ownAlt(target),amount=read(GetSendMailMoney)}end end)
     hook(_G,'TakeInboxMoney',function(index)
+        if not R.active then return end
         local mail=R.inbox and R.inbox[index];if not mail then return end
-        local _,_,sender,subject,amount=A.Call(GetInboxHeaderInfo,index)
-        if read(GetMoney)and number(amount)==0 and text(sender)==mail.sender and text(subject)==mail.subject then
-            local before=#R.pending;R.Sample(true)
-            for i=before+1,#R.pending do local entry=R.pending[i]
-                if entry.kind=='income'and entry.amount==mail.amount then hint('income',mail.own and'transferIn'or'mail',mail.amount);R.inbox[index]=nil;break end
-            end
-        end
+        R.takes[#R.takes+1]={index=index,mail=mail,at=A.Clock()};R.ConfirmTakes()
     end)
-    -- Only reclassify an immediate, observed movement after the exact action.
-    -- A window being open is never enough to assign a source.
+    -- The action only leaves an intent; the balance moves with the server's answer (PLAYER_MONEY), and
+    -- Flush then gives the first matching movement within a few seconds its source. A window being open
+    -- is never enough to assign a source.
     local function action(kind,source)
         return function()
-            if not R.record then return end;local before=#R.pending;R.Sample()
-            for i=before+1,#R.pending do local entry=R.pending[i];if entry.kind==kind then hint(kind,source,entry.amount)end end
+            if not R.active then return end
+            R.intents[#R.intents+1]={kind=kind,source=source,at=A.Clock()}
+            while#R.intents>16 do table.remove(R.intents,1)end
         end
     end
     hook(_G,'BuyMerchantItem',action('expenses','vendor'))
@@ -235,17 +262,32 @@ function R.Initialize()
     if type(record)~='table'then record={startedAt=A.Now(),days={}};root.progress.characters[key]=record end
     if type(record.days)~='table'then return end
     if R.record==record then return end -- slash commands may initialize the addon again.
-    R.record=record;R.pending={};R.hints={};R.money=nil;R.level=nil;R.ranks=nil;R.skillDue=0;R.cursor=0;R.turn=false
+    R.record=record;R.pending={};R.hints={};R.intents={};R.takes={};R.money=nil;R.level=nil;R.ranks=nil;R.skillDue=0;R.cursor=0;R.turn=false;R.active=false
     R.xpFormats={}
     for key,format in pairs(_G)do
         if type(key)=='string'and key:match('^COMBATLOG_XPGAIN_')and not key:find('QUEST',1,true)and not key:find('UNNAMED',1,true)and text(format)then R.xpFormats[#R.xpFormats+1]=format end
     end
-    R.Sample();hooks()
-    if not R.frame then
-        R.frame=CreateFrame('Frame')
-        for _,event in ipairs({'PLAYER_MONEY','PLAYER_XP_UPDATE','PLAYER_LEVEL_UP','QUEST_TURNED_IN','CHAT_MSG_COMBAT_XP_GAIN','CHAT_MSG_MONEY','CHAT_MSG_SYSTEM','SKILL_LINES_CHANGED','PLAYER_LOGOUT','SEND_MAIL_MONEY_CHANGED','MAIL_SEND_SUCCESS','MAIL_FAILED','MAIL_CLOSED','MAIL_SHOW','MAIL_INBOX_UPDATE'})do pcall(R.frame.RegisterEvent,R.frame,event)end
+    hooks()
+    if not R.frame then R.frame=CreateFrame('Frame')end
+    R.Refresh()
+end
+-- The progress is collected only while the companion export runs: the events and the timer are registered
+-- then and removed again with it. A new start begins with fresh baselines, so the pause is never counted.
+local EVENTS={'PLAYER_MONEY','PLAYER_XP_UPDATE','PLAYER_LEVEL_UP','QUEST_TURNED_IN','CHAT_MSG_COMBAT_XP_GAIN','CHAT_MSG_MONEY','CHAT_MSG_SYSTEM','SKILL_LINES_CHANGED','PLAYER_LOGOUT','SEND_MAIL_MONEY_CHANGED','MAIL_SEND_SUCCESS','MAIL_FAILED','MAIL_CLOSED','MAIL_SHOW','MAIL_INBOX_UPDATE'}
+function R.Refresh()
+    local C=Z.Companion;local on=R.record~=nil and R.frame~=nil and C~=nil and C.running==true and C.debugPixel~=true
+    if on==(R.active==true)then return end
+    R.active=on
+    if on then
+        R.pending,R.hints,R.intents,R.takes={},{},{},{};R.money,R.level,R.xp,R.maximum,R.ranks=nil,nil,nil,nil,nil;R.skillDue=0;R.xpDropAt=nil
+        R.Sample()
+        for _,event in ipairs(EVENTS)do pcall(R.frame.RegisterEvent,R.frame,event)end
         R.frame:SetScript('OnEvent',function(_,event,...)R.OnEvent(event,...)end)
         local elapsed=0;R.frame:SetScript('OnUpdate',function(_,delta)elapsed=elapsed+delta;if elapsed>=.5 then elapsed=0;R.Sample();R.Flush()end end)
+    else
+        R.frame:UnregisterAllEvents();R.frame:SetScript('OnEvent',nil);R.frame:SetScript('OnUpdate',nil)
+        R.Flush(true)
+        R.pending,R.hints,R.intents,R.takes={},{},{},{};R.money,R.level,R.xp,R.maximum,R.ranks=nil,nil,nil,nil,nil;R.xpDropAt=nil
     end
 end
 function R.Export()

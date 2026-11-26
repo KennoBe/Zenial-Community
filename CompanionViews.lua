@@ -17,15 +17,7 @@ local function readNumber(fn,...)
     if type(v)=='number'and v==v and math.abs(v)<1e15 then return v end
     return nil,'unknown'
 end
-local function collection(maxBytes,maxRows)
-    local out=P.Array();local bytes=0;local truncated=false
-    local function add(row)
-        local ok,json=pcall(P.Json,row)
-        if not ok or#out>=(maxRows or 100)or bytes+#json>(maxBytes or 40000)then truncated=true;return false end
-        out[#out+1]=row;bytes=bytes+#json+1;return true
-    end
-    return out,add,function()return truncated end
-end
+local collection=T.Collection
 local function target(key)return Z.db.contacts[key]and Z.db.contacts[key].target or key==Z.me.key and Z.me.target or key end
 function T.notifications()
     local rows,add,limited=collection(40000,50)
@@ -94,26 +86,6 @@ function T.groups()
     local name,kind,difficultyID,difficulty,maxPlayers=A.Call(GetInstanceInfo)
     local instance=project({name=name,kind=kind,difficultyID=n(difficultyID),difficulty=difficulty,maxPlayers=n(maxPlayers)},{'name','kind','difficultyID','difficulty','maxPlayers'})
     return{available=sampleTotal~=nil,roster=roster,total=math.max(1,rawTotal),inGroup=rawTotal>0,isRaid=raid,capacity=raid and 40 or 5,instance=instance,readOnly=true}
-end
-function T.professions()
-    local professions=P.Array();for _,r in ipairs(Z.db.professions or{})do professions[#professions+1]=project(r,{'id','name','rank','max'})end
-    local recipes,add,limited=collection(38000,250)
-    for _,r in ipairs(Z.db.recipes or{})do add(project(r,{'id','itemID','name','itemName','profession','materials'}))end
-    return{professions=professions,recipes=recipes,complete=Z.db.recipeComplete==true and not limited(),truncated=limited(),source='existing-profession-scan'}
-end
-function T.trade()
-    local rows,add,limited=collection(40000,150)
-    local function offers(owner,market)
-        for _,offer in ipairs(market or{})do if L.ValidOffer(offer,A.Now())then
-            local row=project(offer,{'id','kind','itemID','name','quantity','price','note','expires'});row.owner=owner;row.target=target(owner);row.own=owner==Z.me.key;add(row)
-        end end
-    end
-    offers(Z.me.key,Z.db.market)
-    if Z.db.consent then for key,peer in pairs(Z.db.peers)do
-        local data=peer.data
-        if key~=Z.me.key and Z.db.contacts[key]and not Z.db.blocked[key]and Z.IsOnline(key)and data and data.faction==Z.me.faction and(not peer.cap4 or data.generation==(peer.verifiedSession or peer.session))then offers(key,data.market)end
-    end end
-    return{entries=rows,truncated=limited(),source='existing-market-cache'}
 end
 function T.player()
     local unavailable={}

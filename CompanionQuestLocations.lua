@@ -30,13 +30,13 @@ function Q.AreaMap(category)
     maps();return A.Safe(category)and type(category)=='string'and Q.names[category]or nil
 end
 function Q.Read(quests)
-    maps();local current,points,areas,queried=A.CurrentMapID(),{},{},{}
+    maps();local current,points,areas,queried,foundOn=A.CurrentMapID(),{},{},{},{}
     local function scan(id)
         if not id or id<=0 or queried[id]then return end;queried[id]=true
         local pois=A.Call(C_QuestLog and C_QuestLog.GetQuestsOnMap,id)
         if A.PublicTable(pois)then for _,poi in ipairs(pois)do if A.PublicTable(poi)then
             local quest=num(poi.questID);local p=point(id,poi.x,poi.y)
-            if quest and p then points[quest]=p end
+            if quest and p then points[quest]=p;if id~=current then foundOn[quest]=foundOn[quest]or id end end
         end end end
     end
     scan(current)
@@ -51,6 +51,11 @@ function Q.Read(quests)
     for _=1,8 do
         local id=Q.ids[Q.cursor];if not id then break end
         scan(id);Q.cursor=Q.cursor%#Q.ids+1
+    end
+    -- The zone name of a quest header is localized text. Where it names no known map, the map the game itself
+    -- listed the quest on (not the player's own, possibly large map) or its waypoint map is the area instead.
+    for _,quest in ipairs(quests)do
+        if not areas[quest.id]then areas[quest.id]=foundOn[quest.id]or points[quest.id]and points[quest.id].mapID or nil end
     end
     return points,areas
 end

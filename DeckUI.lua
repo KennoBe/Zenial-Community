@@ -11,7 +11,6 @@ local function text(parent,role,x,y,w,h,colorKey,wrap)
     if wrap==false and fs.SetWordWrap then pcall(fs.SetWordWrap,fs,false)end
     return fs
 end
-local function plain(value)return(tostring(value or''):gsub('|c%x%x%x%x%x%x%x%x',''):gsub('|r',''))end
 local function exportOn()local C=Z.Companion;return C and C.settings and C.settings.enabled==true or false end
 -- Favourites that are known contacts, by name.
 local function favorites()

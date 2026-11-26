@@ -71,7 +71,7 @@ function T.itemdetails()
         local signature=tostring(ref.itemID)..':'..(ref.link or ref.instance or'')
         if(not previous or previous.signature~=signature or now>=previous.due)and not slotChanged(ref)then
             C.itemDetailCursor=index%#refs+1
-            local row=collect(ref);C.itemDetailSent[ref.key]={signature=signature,due=now+(row.complete and 60 or 8)}
+            local row=collect(ref);C.itemDetailSent[ref.key]={signature=signature,due=now+(row.complete and 60 or 8),complete=row.complete==true}
             return{entries=P.Array({row}),bootstrap=not previous or previous.signature~=signature}
         end
     end

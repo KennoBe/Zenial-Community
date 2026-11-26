@@ -4,6 +4,16 @@ local P=Z.CompanionProtocol;local T={};Z.CompanionTelemetry=T
 local function text(v,max)return A.Safe(v)and type(v)=='string'and#v<=(max or 256)and v or nil end
 local function number(v) return A.Safe(v)and type(v)=='number'and v==v and math.abs(v)<1e12 and v or nil end
 local function field(t,k)return A.PublicTable(t)and A.Safe(t[k])and t[k]or nil end
+-- Bounded list for one topic: a row that does not fit is left out and the list says so (never an oversized message).
+function T.Collection(maxBytes,maxRows)
+    local out=P.Array();local bytes=0;local truncated=false
+    local function add(row)
+        local ok,json=pcall(P.Json,row)
+        if not ok or#out>=(maxRows or 100)or bytes+#json>(maxBytes or 40000)then truncated=true;return false end
+        out[#out+1]=row;bytes=bytes+#json+1;return true
+    end
+    return out,add,function()return truncated end
+end
 local function item(id)
     local api=C_Item or{}
     local fn=api.GetItemInfo or GetItemInfo
@@ -79,9 +89,13 @@ function T.inventory()
     return{available=bag.known,observedAt=bag.at,items=rows,slots=P.Array(bag.slots),bags=P.Array(bag.bags),scope='active-character-bags'}
 end
 function T.quests()
-    local Q=Z.QuestHelper;local rows=P.Array();local mapID=A.CurrentMapID();local objectivesAvailable=true
+    local Q=Z.QuestHelper;local objectivesAvailable=true
     local C=Z.Companion;C.questPoints=C.questPoints or{};local active={}
     local byID,areaMaps=Z.CompanionQuestLocations.Read(Q.quests or{})
+    -- Who shares which quest: every contact's record is read once, not once per quest.
+    local sharedBy={};local contactKeys={};for key in pairs(Z.db.contacts or{})do contactKeys[#contactKeys+1]=key end;table.sort(contactKeys)
+    for _,key in ipairs(contactKeys)do local record=Q.Record(key);if record then for id in pairs(record.ids)do local list=sharedBy[id];if not list then list={};sharedBy[id]=list end;list[#list+1]=key end end end
+    local rows,add,limited=T.Collection(48000,256)
     for _,quest in ipairs(Q.quests or{})do
         active[quest.id]=true
         if byID[quest.id]then C.questPoints[quest.id]=byID[quest.id]end
@@ -92,11 +106,11 @@ function T.quests()
             objectives[#objectives+1]={text=text(field(o,'text')),fulfilled=number(field(o,'numFulfilled')),required=number(field(o,'numRequired')),finished=field(o,'finished')==true}
         end end
         local shared=P.Array()
-        for key in pairs(Z.db.contacts or{})do local record=Q.Record(key);if record and record.ids[quest.id]then shared[#shared+1]=key end end
-        rows[#rows+1]={id=quest.id,title=quest.title,level=quest.level,category=quest.category,objectives=objectives,objectivesAvailable=A.PublicTable(raw),point=byID[quest.id]or C.questPoints[quest.id],areaMapID=areaMaps[quest.id],pointSource=byID[quest.id]and'native'or C.questPoints[quest.id]and'last-known',sharedWith=shared}
+        for _,key in ipairs(sharedBy[quest.id]or{})do if#shared>=100 then break end;shared[#shared+1]=key end
+        add({id=quest.id,title=quest.title,level=quest.level,category=quest.category,objectives=objectives,objectivesAvailable=A.PublicTable(raw),point=byID[quest.id]or C.questPoints[quest.id],areaMapID=areaMaps[quest.id],pointSource=byID[quest.id]and'native'or C.questPoints[quest.id]and'last-known',sharedWith=shared})
     end
     for id in pairs(C.questPoints)do if not active[id]then C.questPoints[id]=nil end end
-    return{available=Q.sampleAt~=nil,observedAt=Q.sampleAt or 0,listObservedAt=Q.sampleAt or 0,objectivesAvailable=objectivesAvailable,objectivesObservedAt=objectivesAvailable and A.Now()or nil,refreshReason=Q.lastError,refreshing=Q.scanState~='ready',scanState=Q.scanState,quests=rows}
+    return{available=Q.sampleAt~=nil,observedAt=Q.sampleAt or 0,listObservedAt=Q.sampleAt or 0,objectivesAvailable=objectivesAvailable,objectivesObservedAt=objectivesAvailable and A.Now()or nil,refreshReason=Q.lastError,refreshing=Q.scanState~='ready',scanState=Q.scanState,quests=rows,truncated=limited()}
 end
 function T.character()
     local equipment=P.Array();local stats=P.Array();local armor=number(select(2,A.Call(UnitArmor,'player')))
@@ -153,15 +167,15 @@ function T.community()
     return{members=rows,offers=offers,positionTTL=300,source='existing-community-cache',truncated=truncated,offersTruncated=offersTruncated}
 end
 function T.materials()
-    local plans=P.Array();local M=Z.MaterialPlanner
+    local plans,addPlan,limited=T.Collection(48000,100);local M=Z.MaterialPlanner
     for _,plan in ipairs(M.List())do
         local progress=M.Progress(plan.id);local rows=P.Array()
         for _,r in ipairs(progress and progress.rows or{})do
             local row=item(r.itemID);for _,key in ipairs({'needed','available','allocated','missing','reservedElsewhere'})do row[key]=r[key]end;rows[#rows+1]=row
         end
-        plans[#plans+1]={id=plan.id,title=plan.recipe.itemName~=''and plan.recipe.itemName or plan.recipe.name,crafts=plan.crafts,items=rows,updatedAt=plan.updatedAt}
+        addPlan({id=plan.id,title=plan.recipe.itemName~=''and plan.recipe.itemName or plan.recipe.name,crafts=plan.crafts,items=rows,updatedAt=plan.updatedAt})
     end
-    return{plans=plans}
+    return{plans=plans,truncated=limited()}
 end
 function T.activities()
     local rows=P.Array()
@@ -170,9 +184,10 @@ function T.activities()
 end
 function T.private()
     -- This topic requires its own explicit opt-in; no peer private profile is copied.
-    local notes=P.Array();local social=Z.Social and Z.Social.store
+    local notes,addNote,limited=T.Collection(48000,500);local social=Z.Social and Z.Social.store
     local keys={};for key in pairs(social and social.notes or{})do keys[key]=true end;for key in pairs(social and social.favorites or{})do keys[key]=true end
-    for key in pairs(keys)do notes[#notes+1]={key=key,note=text(social.notes[key],500),favorite=social.favorites[key]==true}end
+    local ordered={};for key in pairs(keys)do ordered[#ordered+1]=key end;table.sort(ordered)
+    for _,key in ipairs(ordered)do addNote({key=key,note=text(social.notes[key],500),favorite=social.favorites[key]==true})end
     -- 'wishes' stays in the payload as an empty list: the companion's schema still expects the field.
-    return{notes=notes,wishes=P.Array()}
+    return{notes=notes,wishes=P.Array(),truncated=limited()}
 end

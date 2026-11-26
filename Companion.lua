@@ -2,59 +2,33 @@
 local Z,A,L=ZenialCommunity,ZenialCommunity.Adapter,ZenialCommunity.Logic
 local P,T=Z.CompanionProtocol,Z.CompanionTelemetry
 local C={};Z.Companion=C
-C.TOPICS={'position','map','inventory','quests','character','community','materials','activities','private','groups','requests','notifications','chat','professions','trade','player','itemdetails','mapcatalog','questareas','progress','bindings','pvp','deckslots'}
+C.TOPICS={'position','map','inventory','quests','character','community','materials','activities','private','groups','requests','notifications','chat','player','itemdetails','mapcatalog','questareas','progress','bindings','pvp','deckslots'}
 local intervals={identity=60,position=1,inventory=5,quests=5,character=10,community=60,materials=15,activities=30,private=60,heartbeat=5,policy=60}
 for _,topic in ipairs({'groups','requests','notifications','chat','player'})do intervals[topic]=5 end
-intervals.professions=60;intervals.trade=30;intervals.map=5
+intervals.map=5
 intervals.itemdetails=1
 intervals.mapcatalog=.5;intervals.questareas=5
 intervals.progress=5
 intervals.bindings=10;intervals.pvp=2;intervals.deckslots=10
+local heavyTopics={community=true,materials=true,activities=true,private=true,quests=true}
 local incomingEvents={'CHAT_MSG_PARTY','CHAT_MSG_PARTY_LEADER','CHAT_MSG_RAID','CHAT_MSG_RAID_LEADER','CHAT_MSG_RAID_WARNING','CHAT_MSG_INSTANCE_CHAT','CHAT_MSG_INSTANCE_CHAT_LEADER','CHAT_MSG_GUILD','CHAT_MSG_OFFICER','CHAT_MSG_WHISPER','CHAT_MSG_BN_WHISPER','CHAT_MSG_WHISPER_INFORM','CHAT_MSG_BN_WHISPER_INFORM'}
 local incomingSet={};for _,event in ipairs(incomingEvents)do incomingSet[event]=true end
 local defaultCategories={position=true,inventory=true,quests=true,character=true,community=true,activities=true}
-local function logging()
-    local fn=C_ChatInfo and C_ChatInfo.IsLoggingChat
-    if type(fn)=='function'then return A.Call(fn)==true end
-    return A.Call(LoggingChat)==true
-end
 local function changed()if C.RefreshUI then C.RefreshUI()end end
-function C.IsPixel()return not C.settings or C.settings.transport~='chatlog'end
+-- The chat-log transport is gone: the pixel strip is the only way out. Events.lua still asks.
+function C.IsPixel()return true end
 function C.Status()
-    local f=C.filterStats or{};local p=C.flushProbe
-    return{state=C.state or'disabled',reason=C.reason or'',sent=C.stats and C.stats.sent or 0,echoed=C.stats and C.stats.echoed or 0,
-        automatic=C.stats and C.stats.automatic or 0,queued=C.pendingCount or 0,logging=not C.IsPixel()and logging()or false,session=C.session or'',lastSend=C.lastSend or 0,
-        filterCalls=f.calls or 0,filterHidden=f.hidden or 0,filterUnmatched=f.unmatched or 0,filterForeign=f.foreign or 0,filterUnreadable=f.unreadable or 0,
-        transport=C.IsPixel()and'pixel'or'chatlog',pixelPackets=C.Pixel and C.Pixel.packets or 0,
-        flushState=p and p.state or'idle',flushStep=p and p.step or 0,flushMethod=p and p.method or'',flushStartedAt=p and p.startedAt or 0}
+    return{state=C.state or'disabled',reason=C.reason or'',sent=C.stats and C.stats.sent or 0,automatic=C.stats and C.stats.automatic or 0,queued=C.pendingCount or 0,
+        session=C.session or'',lastSend=C.lastSend or 0,transport='pixel',pixelPackets=C.Pixel and C.Pixel.packets or 0}
 end
 function C.Stop(reason)
     if C.QuestAreas then C.QuestAreas.Reset()end
     if Z.Events then Z.Events.Reset()end
     if C.Pixel and not C.debugPixel then C.Pixel.Stop()end
-    local probe=C.flushProbe
-    -- Late server echoes can arrive after an automatic timeout. Keep only the
-    -- exact own lines for a short, callback-only drain; manual OFF removes it.
-    if reason and C.settings and C.settings.enabled then
-        C.retiredLines={};for line in pairs(C.waiting or{})do C.retiredLines[line]=true end
-        for line in pairs(C.seenEcho or{})do C.retiredLines[line]=true end
-        C.retiredUntil=A.Clock()+60
-    else C.retiredLines=nil;C.retiredUntil=nil end
-    C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.inventoryParts=nil;C.waiting={};C.due={};C.signatures={};C.finished={};C.seenEcho={};C.pendingCount=0
-    if C.SetActive then C.SetActive(C.debugPixel==true,C.retiredUntil~=nil)end
-    if C.flushFrame then C.flushFrame:UnregisterAllEvents();C.flushFrame:SetScript('OnEvent',nil);C.flushFrame:SetScript('OnUpdate',nil)end
+    C.running=false;C.state=reason and'blocked'or'disabled';C.reason=reason or'';C.jobs={};C.latest={};C.inventoryParts=nil;C.due={};C.signatures={};C.finished={};C.pendingCount=0
+    if C.SetActive then C.SetActive(C.debugPixel==true)end
     C.chatRows={};C.chatCounter=0;C.chatDropped=0;C.positionRenewAt=0
-    -- Restore only logging enabled by this module. Pre-existing user logging stays on.
-    if C.flushProbe and C.flushProbe.state=='running'then C.flushProbe.state='stopped'end
-    -- An explicit stop between the two timer phases must preserve logging
-    -- which was already enabled before the export. Never retry a refused call.
-    if probe and probe.closed and not C.ownsLogging and not C.loggingCall then
-        probe.closed=false;C.inCall=true;C.loggingCall=true
-        local ok=type(LoggingChat)=='function'and pcall(LoggingChat,true)
-        C.inCall=false;C.loggingCall=false
-        if not ok or not logging()then C.state='blocked';C.reason='Log test stopped; logging could not be restored. Check /chatlog.'end
-    end
-    if C.ownsLogging then C.ownsLogging=false;if not C.loggingCall and type(LoggingChat)=='function'then pcall(LoggingChat,false)end end
+    if Z.CompanionProgress then Z.CompanionProgress.Refresh()end
     changed()
 end
 function C.Initialize()
@@ -72,6 +46,7 @@ function C.Initialize()
     -- remain separate/preserved; later logins use this one authoritative table.
     root.companion.shared=s
     s.categories=type(s.categories)=='table'and s.categories or{}
+    s.categories.professions=nil;s.categories.trade=nil -- no longer exported
     for _,topic in ipairs(C.TOPICS)do if type(s.categories[topic])~='boolean'then s.categories[topic]=defaultCategories[topic]==true end end
     if s.enabled==true then for _,topic in ipairs(C.TOPICS)do s.categories[topic]=true end end
     s.questAreasEnabled=s.questAreasEnabled==true;s.categories.questareas=s.questAreasEnabled
@@ -81,8 +56,8 @@ function C.Initialize()
     s.categories.map=s.categories.position -- Map texture references share the position opt-in.
     s.categories.mapcatalog=s.categories.position
     s.categories.itemdetails=s.categories.inventory or s.categories.character
-    if s.transport~='chatlog'then s.transport='pixel'end
-    C.settings=s;C.source=P.Source(Z.me.key);C.stats={sent=0,echoed=0,automatic=0};C.Stop()
+    s.transport='pixel' -- an old profile with the chat-log transport never starts it again
+    C.settings=s;C.source=P.Source(Z.me.key);C.stats={sent=0,automatic=0};C.Stop()
     if s.enabled==true then C.BeginSession()end
     if Z.Deck then Z.Deck.Request()end
 end
@@ -90,18 +65,20 @@ function C.BeginSession()
     if not C.settings or not Z.identityReady or A.Now()<1 then return false end
     C.settings.sessionSequence=(tonumber(C.settings.sessionSequence)or 0)%1000000000+1
     C.session=string.format('%.0f.%d.%.0f',A.Now(),C.settings.sessionSequence,math.floor(A.Clock()*1000))
-    C.sequence=0;C.jobs={};C.latest={};C.inventoryParts=nil;C.finished={};C.signatures={};C.due={};C.waiting={};C.seenEcho={};C.stats={sent=0,echoed=0,automatic=0}
+    C.sequence=0;C.jobs={};C.latest={};C.inventoryParts=nil;C.finished={};C.signatures={};C.due={};C.stats={sent=0,automatic=0}
     C.itemDetailSent={}
     if Z.Events then Z.Events.Reset()end
     C.questScanDue=0;if C.QuestAreas then C.QuestAreas.Reset()end
     C.mapCatalogIDs=nil;C.mapCatalogCursor=nil;C.mapCatalogDue=nil;C.mapCatalogEssential=nil;C.mapCatalogEssentialMap=nil;C.mapCatalogEssentialDue=0
     C.chatRows={};C.chatCounter=0;C.chatDropped=0
     C.questPoints={}
-    C.filterStats={calls=0,hidden=0,unmatched=0,foreign=0,unreadable=0};C.flushProbe=nil
-    C.retiredLines=nil;C.retiredUntil=nil
     if C.Pixel and not C.debugPixel then C.Pixel.Stop();C.Pixel.packets=0 end
-    C.cursor=1;C.state='logging-required';C.reason='';C.running=true;C.nextSend=0;C.loggingAttempted=false;C.loggingDue=A.Clock()+1;C.startedAt=A.Clock();C.blockedCall=nil
+    C.cursor=1;C.state='unverified';C.reason='';C.running=true;C.nextSend=0;C.startedAt=A.Clock();C.blockedCall=nil
+    -- The topics fall due one after another, not all in the same tick (they repeat at their own pace from there).
+    local slot=0
+    for _,topic in ipairs(C.TOPICS)do if topic~='position'then C.due[topic]=C.startedAt+(slot%25)*.2;slot=slot+1 end end
     C.SetActive(true)
+    if Z.CompanionProgress then Z.CompanionProgress.Refresh()end
     changed();return true
 end
 function C.Enable(enabled)
@@ -191,15 +168,6 @@ function C.Queue(topic,data,force)
     if force or C.signatures[topic]~=signature then C.latest[topic]={data=data,signature=signature,observedAt=A.Now()};C.signatures[topic]=signature end
     return true
 end
-local function inventoryDelta(data,previous)
-    if data.available==false then data.replace=true;return data end
-    if not previous then data.replace=true;return data end
-    local old={};for _,r in ipairs(previous.data.items or{})do old[r.itemID]=P.Json(r)end
-    local added=P.Array();local seen={}
-    for _,r in ipairs(data.items or{})do seen[r.itemID]=true;if old[r.itemID]~=P.Json(r)then added[#added+1]=r end end
-    local removed=P.Array();for id in pairs(old)do if not seen[id]then removed[#removed+1]=id end end
-    return{replace=false,baseSequence=previous.sequence,available=data.available,observedAt=data.observedAt,scope=data.scope,items=added,removed=removed,slots=data.slots,bags=data.bags}
-end
 -- Pixel inventory: the stream is one-way and one lost line voids a whole message, so a full
 -- inventory travels as small parts the receiver can collect across passes. The snapshot name is
 -- derived from the content: a receiver that already holds it only has to confirm it.
@@ -236,10 +204,11 @@ local function inventoryChanges(data,prior,snapshot)
 end
 local function inventoryMessage(data,row,fields,repeated)
     C.sequence=C.sequence+1
+    -- A message that cannot be encoded or is too large drops this topic only; the export goes on.
     local ok,body=pcall(P.Json,{origin='timer',uptime=A.Clock(),data=data})
-    if not ok then C.Stop('Payload could not be encoded: inventory');return nil end
+    if not ok then C.sequence=C.sequence-1;C.reason='Payload could not be encoded: inventory';return nil end
     local lines,reason=P.Frames(C.source,C.session,C.sequence,'inventory',row.observedAt,body)
-    if not lines then C.Stop(reason);return nil end
+    if not lines then C.sequence=C.sequence-1;C.reason='Payload dropped: inventory ('..tostring(reason)..')';return nil end
     -- A lost change blocks all later ones until the next full inventory, so it is shown twice.
     if repeated and#lines>1 then for i=1,#lines do lines[#lines+1]=lines[i]end end
     local job={lines=lines,next=1,at=A.Clock(),data=row.data,sequence=C.sequence,fullAt=fields.fullAt,snapshot=fields.snapshot,partial=fields.partial}
@@ -266,7 +235,7 @@ local function inventoryJob()
 end
 function C.Job(topic)
     if C.jobs[topic]then return C.jobs[topic]end
-    if topic=='inventory'and C.IsPixel()then return inventoryJob()end
+    if topic=='inventory'then return inventoryJob()end
     local row=C.latest[topic];if not row then return nil end;C.latest[topic]=nil
     C.sequence=C.sequence+1
     local data=row.data
@@ -289,15 +258,11 @@ function C.Job(topic)
         -- replay fail the receiver's ten-minute transport expiry.
         row.data=data
     end
-    if topic=='inventory'then
-        local prior=C.finished.inventory
-        if prior and A.Clock()-prior.fullAt>=inventoryFullAfter()then prior=nil end
-        data=inventoryDelta(data,prior);row.fullAt=data.replace and A.Clock()or C.finished.inventory.fullAt
-    end
+    -- A message that cannot be encoded or is too large drops this topic only; the export goes on.
     local ok,body=pcall(P.Json,{origin='timer',uptime=A.Clock(),data=data})
-    if not ok then C.Stop('Payload could not be encoded: '..topic);return nil end
+    if not ok then C.sequence=C.sequence-1;C.reason='Payload could not be encoded: '..topic;return nil end
     local lines,reason=P.Frames(C.source,C.session,C.sequence,topic,row.observedAt,body)
-    if not lines then C.Stop(reason);return nil end
+    if not lines then C.sequence=C.sequence-1;C.reason='Payload dropped: '..topic..' ('..tostring(reason)..')';return nil end
     local job={lines=lines,next=1,at=A.Clock(),data=row.data,sequence=C.sequence,fullAt=row.fullAt};C.jobs[topic]=job;return job
 end
 local function choose()
@@ -327,101 +292,13 @@ local function choose()
     end
     return'position'
 end
-function C.OnBlocked(event,addon,fn)
-    if C.QuestAreas and C.QuestAreas.inCall and A.Safe(addon)and addon=='ZenialCommunity'then C.QuestAreas.Fail('native-call-blocked');return end
-    if C.inCall and A.Safe(addon,fn)and addon=='ZenialCommunity'then C.blockedCall=tostring(fn or event);C.Stop('WoW blocked '..C.blockedCall..'. Automatic export stopped.')end
+function C.OnBlocked(event,addon)
+    if C.QuestAreas and C.QuestAreas.inCall and A.Safe(addon)and addon=='ZenialCommunity'then C.QuestAreas.Fail('native-call-blocked')end
 end
 function C.SendLine(line,origin)
-    if C.IsPixel()then
-        if not C.Pixel or not C.Pixel.Publish(line)then C.Stop('Pixel packet unavailable.');return false end
-        C.stats.sent=C.stats.sent+1;if origin=='timer'then C.stats.automatic=C.stats.automatic+1 end
-        C.lastSend=A.Now();return true
-    end
-    local fn=C_ChatInfo and C_ChatInfo.SendChatMessage or SendChatMessage
-    if type(fn)~='function'then C.Stop('Chat sending API unavailable.');return false end
-    if A.Call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)==true then C.Stop('Chat is locked down. Restart the probe after the restriction ends.');return false end
-    C.blockedCall=nil;C.inCall=true
-    C.waiting[line]=A.Clock()
-    local ok,result=pcall(fn,line,'WHISPER',nil,Z.me.target)
-    C.inCall=false
-    if C.blockedCall then return false end
-    if not ok or not A.Safe(result)or result==false or type(result)=='number'and result~=0 then
-        C.Stop('Chat send refused. Automatic export stopped.');return false
-    end
+    if not C.Pixel or not C.Pixel.Publish(line)then C.Stop('Pixel packet unavailable.');return false end
     C.stats.sent=C.stats.sent+1;if origin=='timer'then C.stats.automatic=C.stats.automatic+1 end
     C.lastSend=A.Now();return true
-end
-function C.Probe()
-    if not C.settings then return false end
-    C.settings.enabled=true;if not C.BeginSession()then return false end
-    if Z.Deck then Z.Deck.Request()end
-    if C.IsPixel()then C.state='unverified';C.reason='Pixel transport requires verification in the companion.';changed();return true end
-    if not logging()then C.reason='Enable /chatlog once, then start the probe again.';changed();return false end
-    -- This first send runs in our own button click. Timer-origin sends follow
-    -- only in Tick; input events never drain the queue or impersonate a timer.
-    local body=P.Json({origin='click',uptime=A.Clock(),data={phase='initial'}})
-    C.sequence=C.sequence+1
-    local lines=P.Frames(C.source,C.session,C.sequence,'probe',A.Now(),body)
-    for _,line in ipairs(lines or{})do if not C.SendLine(line,'click')then return false end end
-    C.state='probing';C.reason='Automatic delivery is unverified; inspect the companion diagnostics.';changed();return true
-end
-function C.OnEcho(message,sender)
-    if C.IsPixel()then return end
-    if not C.running or not A.Safe(message,sender)or type(message)~='string'or L.Identity(sender)~=L.Identity(Z.me.target)then return end
-    if C.waiting[message]and not C.seenEcho[message]then C.seenEcho[message]=true;C.waiting[message]=nil;C.stats.echoed=C.stats.echoed+1 end
-end
-function C.ChatFilter(_,_,message,sender)
-    -- Filter only an exact line actually sent in this session and only to self.
-    local retired=C.retiredUntil and C.settings and C.settings.enabled and A.Clock()<=C.retiredUntil
-    if not C.running and not retired then C.retiredLines=nil;C.retiredUntil=nil;return false end
-    local f=C.filterStats;f.calls=f.calls+1
-    if not A.Safe(message,sender)or type(message)~='string'then f.unreadable=f.unreadable+1;return false end
-    if not Z.me or L.Identity(sender)~=L.Identity(Z.me.target)then f.foreign=f.foreign+1;return false end
-    local hide=C.waiting and(C.waiting[message]~=nil or C.seenEcho[message]==true)or retired and C.retiredLines[message]==true or false
-    if hide then f.hidden=f.hidden+1 else f.unmatched=f.unmatched+1 end
-    return hide
-end
-function C.StartFlushProbe()
-    if C.IsPixel()then return false end
-    if not logging()then C.reason='Enable /chatlog before the flush test.';changed();return false end
-    if C.flushProbe and C.flushProbe.state=='running'then return false end
-    -- Own button arms a finite timer test; it does not call LoggingChat itself.
-    -- Same-callback off/on did not flush in the real client. Leave logging
-    -- off across frames for at least 250 ms; no new whispers run during this test.
-    C.flushProbe={state='running',step=0,nextAt=A.Clock()+1,startedAt=A.Now(),method='close-wait-reopen'}
-    if not C.running then C.reason='Independent log test running; no whisper is retried.'end
-    C.flushFrame:RegisterEvent('ADDON_ACTION_BLOCKED');C.flushFrame:RegisterEvent('ADDON_ACTION_FORBIDDEN')
-    C.flushFrame:SetScript('OnEvent',function(_,event,...)C.OnBlocked(event,...)end)
-    C.flushFrame:SetScript('OnUpdate',function()C.FlushTick(A.Clock())end)
-    changed();return true
-end
-local function changeLogging(enabled)
-    C.blockedCall=nil;C.inCall=true;C.loggingCall=true
-    local ok=type(LoggingChat)=='function'and pcall(LoggingChat,enabled)
-    C.inCall=false;C.loggingCall=false
-    return C.flushProbe and C.flushProbe.state=='running'and not C.blockedCall and ok and logging()==enabled
-end
-function C.FlushTick(clock)
-    local p=C.flushProbe;if not p or p.state~='running'then return end
-    if p.closed then
-        if clock<p.reopenAt then return end
-        -- Clear before calling so a refusal cannot cause a cleanup retry.
-        p.closed=false
-        if not changeLogging(true)then
-            C.ownsLogging=false;if p.state=='running'then C.Stop('Timed log-flush test refused; export stopped. Check /chatlog before another test.')end;return
-        end
-        if p.step>=10 then
-            p.state='complete';p.finishedAt=A.Now();C.flushFrame:UnregisterAllEvents();C.flushFrame:SetScript('OnEvent',nil);C.flushFrame:SetScript('OnUpdate',nil)
-        else p.nextAt=clock+1 end
-    else
-        if clock<p.nextAt then return end
-        p.step=p.step+1
-        if not changeLogging(false)then
-            C.ownsLogging=false;if p.state=='running'then C.Stop('Timed log-flush test refused; export stopped without retry.')end;return
-        end
-        p.closed=true;p.reopenAt=clock+.25
-    end
-    changed()
 end
 function C.Tick()
     if C.debugPixel then C.DebugTick();return end
@@ -434,31 +311,16 @@ function C.Tick()
         C.questScanDue=clock+30
         if Z.QuestHelper.CanScan()then Z.QuestHelper.OnEvent()end
     end
-    -- The independent probe owns both logger phases. The export must neither
-    -- reopen its intentional gap nor mistake pre-existing logging for its own.
-    if C.flushProbe and C.flushProbe.state=='running'then return end
-    if not C.IsPixel()and not logging()then
-        C.state='logging-required'
-        if not C.loggingAttempted and clock>=C.loggingDue then
-            C.loggingAttempted=true;C.inCall=true;local ok=type(LoggingChat)=='function'and pcall(LoggingChat,true);C.inCall=false
-            if C.blockedCall then return end
-            if not ok or not logging()then C.reason='Enable /chatlog once; no data was sent.';changed();return end
-            C.ownsLogging=true
-        else return end
-    end
-    if not C.IsPixel()and not C.filterReady then C.Stop('Whisper filters unavailable; no export was sent.');return end
-    C.state='unverified';C.reason=C.IsPixel()and'Pixel transport requires verification in the companion.'or'Automatic transport requires verification in the companion.'
-    for line,at in pairs(C.waiting)do if clock-at>10 then C.Stop('No self-whisper echo within 10 seconds. Export stopped.');return end end
-    -- Keep only a bounded set of previously sent exact lines for UI filtering.
-    if L.Count(C.seenEcho)>2048 then C.seenEcho={}end
+    C.state='unverified';C.reason='Pixel transport requires verification in the companion.'
+    -- Big topics are stretched while fighting, so they do not add to the combat frame time.
+    local fighting=A.Call(InCombatLockdown)==true
     for topic,interval in pairs(intervals)do
-        if C.IsPixel()then
-            if topic=='identity'or topic=='policy'then interval=10 elseif topic=='position'then interval=.25 elseif topic=='heartbeat'then interval=2 else interval=math.min(interval,5)end
-        end
+        if topic=='identity'or topic=='policy'then interval=10 elseif topic=='position'then interval=.25 elseif topic=='heartbeat'then interval=2 else interval=math.min(interval,5)end
+        if fighting and heavyTopics[topic]then interval=interval*3 end
         if clock>=(C.due[topic]or 0)and(topic=='identity'or topic=='policy'or topic=='heartbeat'or C.settings.categories[topic])then
             C.due[topic]=clock+interval
             if topic=='policy'then C.Queue(topic,{categories=C.settings.categories},true)
-            elseif topic=='heartbeat'then C.Queue(topic,{transport=C.IsPixel()and'pixel'or'chatlog',automatic=C.stats.automatic,echoed=C.stats.echoed,probeStartedAt=C.startedAt,flushProbe=C.flushProbe and{state=C.flushProbe.state,step=C.flushProbe.step,method=C.flushProbe.method,startedAt=C.flushProbe.startedAt}},true)
+            elseif topic=='heartbeat'then C.Queue(topic,{transport='pixel',automatic=C.stats.automatic,probeStartedAt=C.startedAt},true)
             elseif T[topic]then
                 local ok,data=pcall(T[topic]);if ok and type(data)=='table'then
                     local renew=topic=='position'and clock>=(C.positionRenewAt or 0)
@@ -557,13 +419,18 @@ function C.OnEvent(event,...)
         return
     end
     if incomingSet[event]then C.CaptureChat(event,...)end
-    if event=='CHAT_MSG_WHISPER'or event=='CHAT_MSG_WHISPER_INFORM'then C.OnEcho(...)
-    elseif event=='ADDON_ACTION_BLOCKED'or event=='ADDON_ACTION_FORBIDDEN'then C.OnBlocked(event,...)
+    if event=='ADDON_ACTION_BLOCKED'or event=='ADDON_ACTION_FORBIDDEN'then C.OnBlocked(event,...)
     elseif event=='BAG_UPDATE_DELAYED'then C.due.inventory=0;C.due.materials=0
     elseif event=='PLAYER_EQUIPMENT_CHANGED'then C.due.character=0
     elseif event=='UNIT_STATS'then local unit=...;if not A.Safe(unit)or unit=='player'then C.due.character=0 end
-    elseif event=='GET_ITEM_INFO_RECEIVED'then C.due.inventory=0;C.due.character=0;C.itemDetailSent={};C.due.itemdetails=0
-    elseif event:match('^QUEST_')then C.due.quests=A.Clock()+1 end
+    elseif event=='GET_ITEM_INFO_RECEIVED'then
+        -- Only descriptions that were still incomplete are read again; finished ones keep their schedule.
+        C.due.inventory=0;C.due.character=0;C.due.itemdetails=0
+        for key,sent in pairs(C.itemDetailSent or{})do if not sent.complete then C.itemDetailSent[key]=nil end end
+    elseif event:match('^QUEST_')then
+        -- A burst of quest events must not keep pushing the topic back: an earlier due time stays.
+        local soon=A.Clock()+1;C.due.quests=math.min(C.due.quests or soon,soon)
+    end
 end
 -- Game links inside a message: enough to colour the name and open its wiki page, nothing else.
 local LINK_KINDS={item=true,spell=true,quest=true}
@@ -628,20 +495,14 @@ function C.CaptureChat(event,message,sender,language,...)
     C.due.chat=0
 end
 local frame=CreateFrame('Frame');C.frame=frame
-local flushFrame=CreateFrame('Frame');C.flushFrame=flushFrame
 function C.ConfigureChat()
     for _,event in ipairs(incomingEvents)do
         if C.running and C.settings.categories.chat then pcall(frame.RegisterEvent,frame,event)
-        elseif(event~='CHAT_MSG_WHISPER'and event~='CHAT_MSG_WHISPER_INFORM')or C.IsPixel()then pcall(frame.UnregisterEvent,frame,event)end
+        else pcall(frame.UnregisterEvent,frame,event)end
     end
 end
-function C.SetActive(active,keepFilters)
+function C.SetActive(active)
     frame:UnregisterAllEvents();frame:SetScript('OnEvent',nil);frame:SetScript('OnUpdate',nil)
-    local remove=ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter or ChatFrame_RemoveMessageEventFilter
-    if not keepFilters and C.filtersInstalled and type(remove)=='function'then
-        pcall(remove,'CHAT_MSG_WHISPER',C.ChatFilter);pcall(remove,'CHAT_MSG_WHISPER_INFORM',C.ChatFilter);C.filtersInstalled=false
-    end
-    C.filterReady=false
     if not active then return end
     if C.debugPixel then
         for _,event in ipairs({'ADDON_ACTION_BLOCKED','ADDON_ACTION_FORBIDDEN'})do pcall(frame.RegisterEvent,frame,event)end
@@ -654,15 +515,7 @@ function C.SetActive(active,keepFilters)
     -- registration; OnEvent still filters the unit if only RegisterEvent works.
     local unitOK,unitResult=false,nil;if type(frame.RegisterUnitEvent)=='function'then unitOK,unitResult=pcall(frame.RegisterUnitEvent,frame,'UNIT_STATS','player')end
     if not unitOK or unitResult==false then pcall(frame.RegisterEvent,frame,'UNIT_STATS')end
-    if not C.IsPixel()then frame:RegisterEvent('CHAT_MSG_WHISPER');frame:RegisterEvent('CHAT_MSG_WHISPER_INFORM')end
     C.ConfigureChat()
     frame:SetScript('OnEvent',function(_,event,...)if C.running then C.OnEvent(event,...)end end)
-    local elapsed=0;frame:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>=(C.IsPixel()and .05 or .25)then elapsed=0;C.Tick()end end)
-    if C.IsPixel()then return end
-    local add=ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter or ChatFrame_AddMessageEventFilter
-    if type(add)=='function'then
-        local ok,result=pcall(add,'CHAT_MSG_WHISPER',C.ChatFilter);local other,value=pcall(add,'CHAT_MSG_WHISPER_INFORM',C.ChatFilter)
-        C.filterReady=ok and result~=false and other and value~=false;C.filtersInstalled=C.filterReady
-        if not C.filterReady and type(remove)=='function'then pcall(remove,'CHAT_MSG_WHISPER',C.ChatFilter);pcall(remove,'CHAT_MSG_WHISPER_INFORM',C.ChatFilter)end
-    end
+    local elapsed=0;frame:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>=.05 then elapsed=0;C.Tick()end end)
 end
