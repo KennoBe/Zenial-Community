@@ -1,6 +1,6 @@
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local function tr(value)return Z.T and Z.T(value)or value end
-local P={jobs={},deathArmed=false};Z.PvPHelp=P
+local P={jobs={}};Z.PvPHelp=P
 local CALL_LIFETIME,DEATH_WINDOW,CALL_COOLDOWN=600,3600,600
 P.HISTORY_WINDOW,P.MAX_HISTORY=7200,100
 P.DEATH_MARK_WINDOW=600
@@ -128,7 +128,7 @@ function P.ListCalls()
 end
 
 function P.Initialize(root,key)
-    root.pvpHelp=type(root.pvpHelp)=="table"and root.pvpHelp or{};P.store=loadStore(root.pvpHelp[key],A.Now());root.pvpHelp[key]=P.store;P.deathArmed=not A.IsDeadOrGhost();P.notified=nil;if Z.PvPDeath then Z.PvPDeath.Initialize()end;P.jobs={};P.nextAnnounce=0;if P.store.own then remember(Z.me.key,P.store.own)end;P.Expire()
+    root.pvpHelp=type(root.pvpHelp)=="table"and root.pvpHelp or{};P.store=loadStore(root.pvpHelp[key],A.Now());root.pvpHelp[key]=P.store;P.notified=nil;if Z.PvPDeath then Z.PvPDeath.Initialize()end;P.jobs={};P.nextAnnounce=0;if P.store.own then remember(Z.me.key,P.store.own)end;P.Expire()
 end
 function P.UnreadCount()local n,now=0,A.Now();for _,r in pairs(P.store and P.store.received or{})do if r.unread and r.expires>now and not Z.db.blocked[r.key]and Z.IsOnline(r.key)then n=n+1 end end;return n end
 -- Confirmed PvP deaths of the last 60 minutes (older or future records are dropped).
@@ -203,19 +203,31 @@ function P.PumpJobs()
         elseif j.track then local o=currentCall();if o and o.id==j.track then o.recipients[j.key]={state="error",at=A.Now()}end end
     end
 end
+-- Direct delivery: at most this many helpers per call (the public relay reaches everybody else).
+local MAX_DIRECT=40
+-- A helper is known from the presence (receive switch, area filter, map of the helper) or, for older clients, from their H1R readiness.
 local function eligibleHelper(key,o)
+    if key==Z.me.key or Z.db.blocked[key]or not Z.db.contacts[key]or peerFaction(key)~=Z.me.faction or not Z.IsOnline(key)then return false end
+    local peer=Z.db.peers[key];local pr=peer and peer.presence
+    if pr and pr.pvpEnabled==true and(pr.pvpScope=="all"or o.mapID>0 and pr.pvpMapID==o.mapID)then return true end
     local h=P.store.helpers[key]
-    return h and h.enabled and h.at>A.Now()-600 and Z.IsOnline(key) and peerFaction(key)==Z.me.faction and (h.scope=="all"or h.mapID==o.mapID)
+    return h and h.enabled and h.at>A.Now()-600 and(h.scope=="all"or h.mapID==o.mapID)or false
 end
 local function enqueueCallFor(key,o)
-    if o.recipients[key]or not eligibleHelper(key,o)then return false end
+    if o.recipients[key]or count(o.recipients)>=MAX_DIRECT or not eligibleHelper(key,o)then return false end
+    o.recipients[key]={state="queued",at=A.Now()}
     return enqueue(key,compact("H1C",o),95,"H1C:"..key..":"..o.id,o.id)
 end
-function P.SendReadiness(key)
-    if not P.store or not Z.db.contacts[key]or key==Z.me.key then return end
-    enqueue(key,{kind="H1R",enabled=P.store.receive,scope=P.store.scope,mapID=A.CurrentMapID()},85,"H1R:"..key)
+-- Hands the call to every fitting helper that has not got it yet (sorted, so the limit is reproducible).
+function P.NotifyHelpers(o)
+    if not P.store or not o or not Z.db then return 0 end
+    local keys={};for key in pairs(Z.db.contacts)do keys[#keys+1]=key end;table.sort(keys)
+    local n=0;for _,key in ipairs(keys)do if enqueueCallFor(key,o)then n=n+1 end end;return n
 end
-function P.SendReadinessAll()if not P.store or not Z.db then return end;for key in pairs(Z.db.contacts)do P.SendReadiness(key)end end
+-- A new location revision goes on to the helpers who already have the call.
+local function updateRecipients(o)
+    for key,r in pairs(o.recipients)do if(r.state=="notified"or r.state=="confirmed")and Z.IsOnline(key)then enqueue(key,compact("H1U",o),90,"H1U:"..key..":"..o.id)end end
+end
 function P.SetReceive(enabled)P.store.receive=enabled==true;if Z.Network3 then Z.Network3.nextPresence=0 end;refresh();return P.store.receive end
 function P.SetScope(scope)P.store.scope=scope=="zone"and"zone"or"all";if Z.Network3 then Z.Network3.nextPresence=0 end;refresh();return P.store.scope end
 local function announce(o,kind)
@@ -237,17 +249,20 @@ function P.CreateCall(note,shareEnemy)
     -- H1I (old clients) carries the proven killer of the latest death, never the current target.
     local k=o.killLog and o.killLog[1] and o.killLog[1].killer;o.enemy=k and cleanEnemy({name=k.name,class=L.ClassName("",k.classFile),level=k.level or 0,faction=""})or nil
     o.recipients={};o.responses={};P.store.own=o;P.store.deaths={};P.notified=nil;P.store.lastCallAt=now;remember(Z.me.key,o)
+    P.nextDirect=A.Clock()+10;P.NotifyHelpers(o)
     if Z.Network3 then announce(o)end;refresh();return o.id
 end
 function P.EndOwn()
     local o=currentCall();if not o then return false,"Kein aktiver Hilferuf."end
     clearCallJobs(o.id);o.rev=math.min(o.rev+1,2147483646);remember(Z.me.key,o,true)
+    for key,r in pairs(o.recipients)do if r.state~="error"and Z.IsOnline(key)then enqueue(key,{kind="H1X",id=o.id},100,"H1X:"..key..":"..o.id)end end
     P.store.ended[o.id]={rev=o.rev,expires=o.expires+CALL_LIFETIME,next=0}
-    if Z.Network3 then Z.Network3.CancelPublic("PVPCALL");Z.Network3.QueuePublic("PX",Z.Network3.Pack({o.id,o.rev}),100,"PVPCANCEL:"..o.id)end;P.store.own=nil;refresh();return true
+    if Z.Network3 then Z.Network3.QueuePublic("PX",Z.Network3.Pack({o.id,o.rev}),100,"PVPCANCEL:"..o.id)end;P.store.own=nil;refresh();return true
 end
 function P.UpdateLocation()
     local o=currentCall();if not o then return false,"Kein aktiver Hilferuf."end;local now=A.Now();if o.lastUpdate and now-o.lastUpdate<30 then return false,"Standort kann nur alle 30 Sekunden aktualisiert werden."end
     local loc=A.PvpLocation(false);copyLocation(o,loc);o.rev=math.min(o.rev+1,2147483646);o.lastUpdate=now;remember(Z.me.key,o)
+    updateRecipients(o)
     if Z.Network3 then announce(o,"PU")end;refresh();return true
 end
 function P.ListReceived()
@@ -294,18 +309,20 @@ local function announceCall(r)
 end
 local function acceptCall(key,s,noAck)
     if peerFaction(key)~=Z.me.faction or Z.db.blocked[key]then return end
-    if not P.store.cancelled[key..":"..s.id]then remember(key,s)end
     -- Every active call of the same faction is listed (and counted as unread); only a helper who opted in (and whose area
     -- filter matches) is also acked, fetches the details at once and gets the banner.
     local listen=P.store.receive and(P.store.scope~="zone"or A.CurrentMapID()==s.mapID)or false
     local now=A.Now();local token=key..":"..s.id
     if P.store.cancelled[token]then return end
     if P.store.received[token]then
-        local r=P.store.received[token];rememberDeathPlace(token,s)
+        local r=P.store.received[token];remember(key,s);rememberDeathPlace(token,s)
         if s.rev>(r.locationRev or 0)then copyLocation(r,cleanLocation(s));r.locationRev=s.rev;r.rev=math.max(r.rev,s.rev)end
         if not noAck and listen then enqueue(key,{kind="H1A",id=s.id},100,"H1A:"..key..":"..s.id)end;return end
-    if P.store.seen[token]or(P.store.senderLast[key]and now-P.store.senderLast[key]<CALL_COOLDOWN)then return end
-    if count(P.store.received)>=40 then return end
+    -- The history is only written once the cooldown per caller and the limit passed; a known call is still updated.
+    if P.store.seen[token]or(P.store.senderLast[key]and now-P.store.senderLast[key]<CALL_COOLDOWN)or count(P.store.received)>=40 then
+        if P.store.history[token]then remember(key,s)end;return
+    end
+    remember(key,s)
     local r=cleanLocation(s);r.locationRev=s.rev;r.detailRev=0;r.key,r.id,r.rev,r.at,r.expires,r.unread,r.note,r.detail,r.response=key,s.id,s.rev,s.at,s.expires,true,"",false,"";P.store.received[token]=r;P.store.seen[token]=s.expires+CALL_COOLDOWN;P.store.senderLast[key]=now
     rememberDeathPlace(token,s);local known=P.store.history[token]
     if known then r.response=known.response or"";if known.detail then r.note,r.enemy,r.detail=known.note,cleanEnemy(known.enemy),true;r.killLog,r.killRev=known.killLog,known.killRev end end
@@ -370,7 +387,7 @@ function P.OnEvent(event,unit)
     elseif event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"then
         if Z.PvPDeath then Z.PvPDeath.OnEvent(event)end
         local d=P.store.lastDeath;if d and not d.hasPos then local corpse=A.PvpLocation(true);if corpse.hasPos and(d.mapID==0 or corpse.mapID==d.mapID)then d.mapID,d.hasPos,d.x,d.y=corpse.mapID,true,corpse.x,corpse.y end end
-        if not A.IsDeadOrGhost()then P.deathArmed=true end;refresh()
+        refresh()
     end
 end
 function P.Expire()
@@ -385,6 +402,7 @@ function P.Expire()
 end
 function P.Tick()
     P.Expire();P.PumpJobs();if Z.PvPDeath then Z.PvPDeath.Tick()end
+    local own=currentCall();if own and A.Clock()>=(P.nextDirect or 0)then P.nextDirect=A.Clock()+10;P.NotifyHelpers(own)end
     if not Z.Network3 or not Z.db.consent or not Z.db.autoDiscovery then return end
     local o=currentCall();if o and A.Clock()>=(P.nextAnnounce or 0)then announce(o)end
     local now=A.Now();for id,row in pairs(P.store.ended)do if row.expires<=now then P.store.ended[id]=nil elseif A.Clock()>=(row.next or 0)then Z.Network3.QueuePublic("PX",Z.Network3.Pack({id,row.rev}),100,"PVPCANCEL:"..id);row.next=A.Clock()+60 end end

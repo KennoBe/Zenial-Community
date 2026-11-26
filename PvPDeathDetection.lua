@@ -1,10 +1,10 @@
 -- PvP death detection. At PLAYER_DEAD the place of death is secured at once; the Death Recap is read
--- afterwards (0.3 s, then once more 0.7 s later) and classified. Only a death whose fatal blow came from
+-- afterwards (0.3 s, then 0.7 s and 2 s later) and classified. Only a death whose fatal blow came from
 -- a player (or a player's pet) is confirmed. Everything unreadable stays unknown and never counts.
 -- The Recap is no full combat log: attackers are only ever a minimum, never an exact number.
 -- GUIDs are used for de-duplication in memory only; they are neither saved nor sent.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local D={WAIT=.3,RETRY=.7,MAX_ATTACKERS=5,MAX_EVENTS=40,CACHE_TTL=120,CACHE_MAX=60,serial=0,armed=false}
+local D={WAIT=.3,RETRY=.7,LATE=2,MAX_ATTACKERS=5,MAX_EVENTS=40,CACHE_TTL=120,CACHE_MAX=60,serial=0,armed=false}
 Z.PvPDeath=D
 
 -- A secret value errors when compared; every API value passes through here before use.
@@ -168,12 +168,21 @@ end
 
 -- Companion event for every death of the own character, whatever its cause; the zone is the UiMapID (0 when unknown).
 local EVENT_CAUSE={player="player",mob="mob",environment="env",self="self"}
+-- Failures of the guarded steps go to the session diagnostics: the step only, never a name or a GUID.
+local function fail(step,err)
+    if Z.Diagnostics then pcall(Z.Diagnostics.Record,"pvpdeath:error",step,(tostring(err):gsub('"[^"]*"','"?"'):gsub("'[^']*'","'?'"):gsub("%a+%-[%x%-]+","?"):sub(1,100)))end
+end
 function D.Announce(snapshot,cause)
     if not Z.Events then return end
     local mapID=snapshot and snapshot.mapID
-    pcall(Z.Events.Emit,"community","community.player.died",{cause=EVENT_CAUSE[cause]or"unknown",zone=L.Int(mapID,0,99999)and mapID or 0})
+    local ok,err=pcall(Z.Events.Emit,"community","community.player.died",{cause=EVENT_CAUSE[cause]or"unknown",zone=L.Int(mapID,0,99999)and mapID or 0})
+    if not ok then fail("announce",err)end
 end
+-- Armed again once the character is alive: the events alone can miss a resurrection that the client reports late.
 function D.Tick()
+    if not D.armed and not D.pending and A.Clock()>=(D.nextArmCheck or 0)then
+        D.nextArmCheck=A.Clock()+2;if not A.IsDeadOrGhost()then D.armed=true end
+    end
     local p=D.pending;if not p or A.Clock()<p.due then return end
     D.pending=nil -- cleared first: an error below must never repeat on every tick
     local ok,err=pcall(function()
@@ -182,19 +191,20 @@ function D.Tick()
         -- A recap identical to the one of the previous death is stale: it belongs to an earlier life.
         local fresh=sig~=nil and(not store or sig~=store.recapSig)
         if not fresh then
-            if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;D.pending=p else D.last={cause="unknown"};D.Announce(p.snapshot,"unknown")end
+            if p.stage==1 then p.stage=2;p.due=A.Clock()+D.RETRY;D.pending=p
+            elseif p.stage==2 then p.stage=3;p.due=A.Clock()+D.LATE;D.pending=p else D.last={cause="unknown"};D.Announce(p.snapshot,"unknown")end
             return
         end
         if store then store.recapSig=sig end
         local myGUID=public(A.Call(UnitGUID,"player"))
         -- The private rivalry history also keeps deaths in battlegrounds; its errors never reach the help rules.
-        if Z.Rivalry then pcall(Z.Rivalry.OnRecapDeath,events,p.snapshot,myGUID)end
+        if Z.Rivalry then local done,problem=pcall(Z.Rivalry.OnRecapDeath,events,p.snapshot,myGUID);if not done then fail("rivalry",problem)end end
         D.Announce(p.snapshot,D.Classify(events[1],myGUID).cause)
         if p.ignore then D.last={cause="ignored"};return end
         local death,cause=D.Evaluate(events,p.snapshot,myGUID)
         D.last={cause=cause,death=death}
         if death and Z.PvPHelp then Z.PvPHelp.RecordDeath(death)end
     end)
-    if not ok then D.last={cause="error"}end
+    if not ok then D.last={cause="error"};fail("tick",err)end
 end
 return D

@@ -4,18 +4,20 @@
 -- What the client lets an addon see (the combat log is closed to addons):
 --   kill    PARTY_KILL with the player or the player's pet as attacker and a player as victim
 --   assist  an enemy player dies and the player successfully used an ability on exactly that player within
---           ASSIST_WINDOW seconds before. Signals of the death: PARTY_KILL by someone else, UNIT_DIED, the
---           dead target or focus, or the honor message naming that player
+--           ASSIST_WINDOW seconds before. Signals of the death: PARTY_KILL by someone else, UNIT_DIED or the honor
+--           message naming that player. A dead target or focus only counts together with one of these (a hunter
+--           feigning death looks dead, too)
 --   death   the Death Recap read by PvPDeathDetection: fatal blow by a player, further attackers as a minimum
 --   duel    the client's own duel result message (DUEL_WINNER_KNOCKOUT / DUEL_WINNER_RETREAT)
 -- An honorable kill alone is never counted. Whatever cannot be read (secret values) is not recorded.
 --
--- Storage: no entry limit and no automatic cleanup. Every opponent has running counters plus a compact
--- event list ("<time>:<kind><context>:<zone>:<subzone>", zone names in one shared dictionary). Recording
--- touches one profile only; lists are built when the window asks for them and cached per revision.
+-- Storage: the counters (kills, deaths, assists) are never trimmed. Every opponent has running counters plus a compact
+-- event list of the last MAX_EVENTS events ("<time>:<kind><context>:<zone>:<subzone>[:<map>]", zone names in one shared
+-- dictionary, map = UiMapID or 900000 + instance ID). Recording touches one profile only; lists are built when the
+-- window asks for them and cached per revision.
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local R={VERSION=1,ASSIST_WINDOW=10,SETTLE=.5,DEDUPE=5,CAST_TTL=20,MAX_CASTS=8,MAX_ENGAGED=32,MAX_SETTLED=64,
-    DUEL_DEDUPE=3,MAX_INVOLVED=5,RIVAL_FIGHTS=5,NEMESIS_DEATHS=3,revision=0}
+    DUEL_DEDUPE=3,MAX_INVOLVED=5,MAX_EVENTS=200,RIVAL_FIGHTS=5,NEMESIS_DEATHS=3,revision=0}
 Z.Rivalry=R
 local MAX_TIME=4102444800
 -- Event kind -> profile counter. X: took part in the player's death without the fatal blow.
@@ -38,6 +40,12 @@ local function public(v)
     return v
 end
 local function guidKind(guid)return type(guid)=="string"and guid:match("^(%a+)%-")or nil end
+-- Errors of the guarded event handlers: kept in R.lastError and written to the session diagnostics (the step and a
+-- shortened message without quoted text or GUIDs, never a name).
+local function fail(step,err)
+    R.lastError=err
+    if Z.Diagnostics then pcall(Z.Diagnostics.Record,"rivalry:error",step,(tostring(err):gsub('"[^"]*"','"?"'):gsub("'[^']*'","'?'"):gsub("%a+%-[%x%-]+","?"):sub(1,100)))end
+end
 local function int(v)return L.Int(v,0,2147483646)and v or 0 end
 local function classToken(v)return type(v)=="string"and #v<=16 and v:match("^[A-Z_]+$")and v or nil end
 local function clean(name)
@@ -94,6 +102,7 @@ local function profile(p)
     R.cleanProfiles[p]=true
     for _,f in ipairs(COUNTERS)do p[f]=int(p[f])end
     if type(p.events)~="table"then p.events={}end
+    if #p.events>R.MAX_EVENTS then local keep={};for i=#p.events-R.MAX_EVENTS+1,#p.events do keep[#keep+1]=p.events[i]end;p.events=keep end
     p.name=L.Text(p.name,80)and p.name or nil
     p.realm=L.Text(p.realm,64)and p.realm or nil
     p.guid=L.Text(p.guid,80)and p.guid or nil
@@ -149,7 +158,14 @@ local function here()
     if ctx~="W"and ctx~="U"and L.Text(name,64)then area=name end
     area=L.Text(area,64)and area or""
     sub=L.Text(sub,64)and sub~=area and sub or""
-    return ctx,area,sub
+    -- Language-independent place: the UiMapID in the open world, 900000 + instance ID inside an instance (0 when unknown).
+    local map=0
+    if ctx=="W"or ctx=="U"then map=A.CurrentMapID()
+    else
+        local ok,_,_,_,_,_,_,_,instanceID=pcall(GetInstanceInfo);instanceID=ok and public(instanceID)or nil
+        if L.Int(instanceID,1,99999)then map=900000+instanceID end
+    end
+    return ctx,area,sub,map
 end
 
 -- Forever characters have a first name and a surname, and the name APIs return the surname where
@@ -232,6 +248,7 @@ local function merge(dst,src)
     for _,f in ipairs(COUNTERS)do dst[f]=dst[f]+src[f]end
     for _,e in ipairs(src.events)do dst.events[#dst.events+1]=e end
     table.sort(dst.events,function(a,b)return tostring(a)<tostring(b)end)
+    if #dst.events>R.MAX_EVENTS then local keep={};for i=#dst.events-R.MAX_EVENTS+1,#dst.events do keep[#keep+1]=dst.events[i]end;dst.events=keep end
     if src.first and(not dst.first or src.first<dst.first)then dst.first=src.first end
     if src.last and(not dst.last or src.last>dst.last)then dst.last=src.last;dst.outcome=src.outcome or dst.outcome end
     for _,f in ipairs({"guid","classFile","race","raceFile","faction","level"})do dst[f]=dst[f]or src[f]end
@@ -271,12 +288,17 @@ local function upsert(info)
     return p,key,isNew
 end
 -- Appends one event and moves the counters; the only write path of the history.
-local function record(p,kind,ctx,area,sub,at)
+local function record(p,kind,ctx,area,sub,at,map)
     local c=R.char
     p[KINDS[kind]]=p[KINDS[kind]]+1
     local total=KIND_TOTAL[kind];if total then c.totals[total]=c.totals[total]+1 end
     p.first=p.first or at;if not p.last or at>p.last then p.last=at end
-    p.events[#p.events+1]=at..":"..kind..ctx..":"..zoneIndex(area)..":"..zoneIndex(sub)
+    p.events[#p.events+1]=at..":"..kind..ctx..":"..zoneIndex(area)..":"..zoneIndex(sub)..(L.Int(map,1,1000000)and":"..map or"")
+    if #p.events>R.MAX_EVENTS then
+        -- Only the single events are limited; the entries of recent kills move down with the list.
+        table.remove(p.events,1);local moved={}
+        for _,s in pairs(R.settled or{})do if not moved[s]and R.char.rivals[s.key]==p then moved[s]=true;s.index=s.index-1 end end
+    end
     if kind=="K"or kind=="D"then p.outcome=kind end
     invalidate()
 end
@@ -289,8 +311,8 @@ local function tagFor(p,key,kind,isNew,revenge)
     if revenge then return"REVENGE"end
     if isNew then return"FIRST"end
 end
-local function snapshot(p,kind,tag)
-    return{kind=kind,name=p.name,classFile=p.classFile,kills=p.kills,deaths=p.deaths,assists=p.assists,
+local function snapshot(p,kind,tag,key)
+    return{kind=kind,key=key,name=p.name,classFile=p.classFile,kills=p.kills,deaths=p.deaths,assists=p.assists,
         duelWins=p.duelWins,duelLosses=p.duelLosses,fights=p.kills+p.deaths,tag=tag}
 end
 -- Companion events: kill, death and duel (win or loss). Assists and involvement are not announced.
@@ -300,11 +322,11 @@ local function announce(kind,p,key)
     local mark=nemesisOf(R.char)==key and"nemesis"or p.kills+p.deaths>=R.RIVAL_FIGHTS and"rival"or"none"
     Z.Events.Emit("community",name,{mark=mark,class=classToken(p.classFile),enemyGuid=p.guid or key})
 end
-local function notify(kind,p,key,tag)
+local function notify(kind,p,key,tag,replaces)
     R.last={kind=kind,key=key,tag=tag}
     pcall(announce,kind,p,key)
     local B=Z.RivalryBanner
-    if B and B.Push then pcall(B.Push,snapshot(p,kind,tag))end
+    if B and B.Push then local data=snapshot(p,kind,tag,key);data.replaces=replaces;pcall(B.Push,data)end
     if Z.UI and Z.UI.RefreshRivalry then pcall(Z.UI.RefreshRivalry)end
 end
 
@@ -333,7 +355,7 @@ local function upgrade(s)
     p.assists=p.assists-1;p.kills=p.kills+1;p.outcome="K"
     c.totals.assists=math.max(0,c.totals.assists-1);c.totals.kills=c.totals.kills+1
     s.kind="K";invalidate()
-    notify("K",p,s.key,tagFor(p,s.key,"K",false,false))
+    notify("K",p,s.key,tagFor(p,s.key,"K",false,false),"A")
 end
 -- Records the kill or assist of one enemy player; one entry per death of that player.
 -- id is the victim's GUID, or "n:"..key for a victim only known by name (then fallback carries the name).
@@ -350,9 +372,9 @@ local function settle(id,kind,fallback)
     local at=A.Now();if at==0 or not info then return false end
     local p,isNew
     p,key,isNew=upsert(info);if not p then return false end
-    local ctx,area,sub=here()
+    local ctx,area,sub,map=here()
     local revenge=kind=="K"and p.outcome=="D"
-    record(p,kind,ctx,area,sub,at)
+    record(p,kind,ctx,area,sub,at,map)
     prune(R.settled,R.DEDUPE,R.MAX_SETTLED,now)
     s={at=now,kind=kind,key=key,index=#p.events}
     R.settled[id]=s;R.settled["n:"..key]=s
@@ -363,8 +385,9 @@ local function settle(id,kind,fallback)
 end
 local function onUpdate()R.Tick()end
 -- An enemy player died without the player's fatal blow: an assist only with proof of an own attack.
--- The victim is known by GUID, by name key, or both.
-local function enemyDied(guid,key,name)
+-- The victim is known by GUID, by name key, or both. confirmed: the signal is a real death (PARTY_KILL, UNIT_DIED, honor
+-- message); the dead state of a target or focus alone is not (feigned death) and only counts when a real signal follows.
+local function enemyDied(guid,key,name,confirmed)
     local now=A.Clock()
     prune(R.engaged,R.ASSIST_WINDOW,R.MAX_ENGAGED,now);prune(R.engagedGuid,R.ASSIST_WINDOW,R.MAX_ENGAGED,now)
     if not next(R.engaged)and not next(R.engagedGuid)then return end
@@ -375,17 +398,17 @@ local function enemyDied(guid,key,name)
     end
     if not at or now-at>R.ASSIST_WINDOW then return end
     local id=guid or"n:"..key
-    if R.pending[id]then return end
+    if R.pending[id]then if confirmed then R.pending[id].confirmed=true end;return end
     local s=R.settled[id]or key and R.settled["n:"..key]or nil
     if s and now-s.at<R.DEDUPE then return end
     -- Wait a moment: the PARTY_KILL naming the player as attacker may arrive right after the other signals.
-    R.pending[id]={due=now+R.SETTLE,name=name}
+    R.pending[id]={due=now+R.SETTLE,name=name,confirmed=confirmed==true}
     if R.frame then R.frame:SetScript("OnUpdate",onUpdate)end
 end
 function R.Tick()
     local now=A.Clock()
     for id,p in pairs(R.pending or{})do
-        if now>=p.due then R.pending[id]=nil;settle(id,"A",p.name and{name=p.name}or nil)end
+        if now>=p.due then R.pending[id]=nil;if p.confirmed then settle(id,"A",p.name and{name=p.name}or nil)end end
     end
     if R.frame and not next(R.pending or{})then R.frame:SetScript("OnUpdate",nil)end
 end
@@ -395,12 +418,12 @@ local function onPartyKill(attacker,victim)
     if guidKind(victim)~="Player"or type(attacker)~="string"then return end
     local me,pet=myGUIDs();if not me or victim==me then return end
     if attacker==me or(pet~=nil and attacker==pet)then R.pending[victim]=nil;settle(victim,"K")
-    else enemyDied(victim)end
+    else enemyDied(victim,nil,nil,true)end
 end
 local function onUnitDied(guid)
     guid=public(guid);if guidKind(guid)~="Player"then return end
     local me=myGUIDs();if guid==me then return end
-    enemyDied(guid)
+    enemyDied(guid,nil,nil,true)
 end
 -- The target or focus is a dead player: one more sign that an attacked enemy died.
 local function onUnitState(unit)
@@ -430,11 +453,11 @@ local function onHonor(text)
     local now=A.Clock();local byShort,shortCount
     for key,e in pairs(R.engaged)do
         if now-e.at<=R.ASSIST_WINDOW then
-            if mentions(text,e.name)then enemyDied(e.guid,key,e.name);return end
+            if mentions(text,e.name)then enemyDied(e.guid,key,e.name,true);return end
             if e.short and mentions(text,e.short)then shortCount=(shortCount or 0)+1;byShort=key end
         end
     end
-    if shortCount==1 then local e=R.engaged[byShort];enemyDied(e.guid,byShort,e.name)end
+    if shortCount==1 then local e=R.engaged[byShort];enemyDied(e.guid,byShort,e.name,true)end
 end
 -- UNIT_SPELLCAST_SENT names the target. It only counts as an attack when that name belongs to an
 -- attackable player the client shows as target, focus or mouseover.
@@ -531,8 +554,8 @@ local function onSystemMessage(text)
             local now=A.Clock();local last=R.lastDuel
             if last and last.key==key and now-last.at<R.DUEL_DEDUPE then return end
             R.lastDuel={key=key,at=now}
-            local _,area,sub=here()
-            record(row,kind,"D",area,sub,at)
+            local _,area,sub,map=here()
+            record(row,kind,"D",area,sub,at,map)
             notify(kind,row,key,isNew and"FIRST"or nil)
             return
         end
@@ -577,9 +600,10 @@ local function recapDeath(events,snap,myGUID)
     if fatal.cause~="player"then return end
     pcall(recapCheck,events,fatal,myGUID)
     local at=type(snap)=="table"and L.Int(snap.at,1,MAX_TIME)and snap.at or A.Now();if at==0 then return end
-    local ctx,area,sub=here()
+    local ctx,area,sub,map=here()
     if ctx=="W"and type(snap)=="table"and L.Text(snap.area,64)then
         area=snap.area;sub=L.Text(snap.subzone,64)and snap.subzone~=area and snap.subzone or""
+        if L.Int(snap.mapID,1,1000000)then map=snap.mapID end
     end
     local c=R.char;local killer=not fatal.pet and guidKind(fatal.guid)=="Player"and fatal or nil
     local named=false
@@ -587,7 +611,7 @@ local function recapDeath(events,snap,myGUID)
         local info=describe(killer.guid,killer.name);local p,key,isNew=nil,nil,nil
         if info then p,key,isNew=upsert(info)end
         if p then
-            record(p,"D",ctx,area,sub,at);named=true
+            record(p,"D",ctx,area,sub,at,map);named=true
             local worst=nemesisOf(c)and profile(c.rivals[c.nemesis])
             if p.deaths>=R.NEMESIS_DEATHS and(not worst or p.deaths>=worst.deaths)then c.nemesis=key end
             notify("D",p,key,tagFor(p,key,"D",isNew,false))
@@ -599,14 +623,14 @@ local function recapDeath(events,snap,myGUID)
     for _,class in ipairs(order)do
         if class~=killer and involved<R.MAX_INVOLVED then
             local info=describe(class.guid,class.name);local p=info and upsert(info)
-            if p then record(p,"X",ctx,area,sub,at);involved=involved+1 end
+            if p then record(p,"X",ctx,area,sub,at,map);involved=involved+1 end
         end
     end
     if Z.UI and Z.UI.RefreshRivalry then pcall(Z.UI.RefreshRivalry)end
 end
 function R.OnRecapDeath(events,snap,myGUID)
     local ok,err=pcall(recapDeath,events,snap,myGUID)
-    if not ok then R.lastError=err end
+    if not ok then fail("recap",err)end
     return ok
 end
 
@@ -635,7 +659,7 @@ local function registerEvents()
     f:SetScript("OnEvent",function(_,event,...)
         if not R.char then return end
         local ok,err=pcall(R.OnEvent,event,...)
-        if not ok then R.lastError=err end
+        if not ok then fail("event",err)end
     end)
 end
 registerEvents()
@@ -667,7 +691,7 @@ local function registerTooltip()
     if type(processor)~="table"or type(processor.AddTooltipPostCall)~="function"or type(kinds)~="table"or kinds.Unit==nil then return end
     R.tooltipHooked=pcall(processor.AddTooltipPostCall,kinds.Unit,function(tooltip)
         local ok,err=pcall(onTooltip,tooltip)
-        if not ok then R.lastError=err end
+        if not ok then fail("tooltip",err)end
     end)
 end
 
@@ -779,7 +803,7 @@ local function baseRows(scope)
                     byKey[key]=r;rows[#rows+1]=r
                 end
                 for _,f in ipairs(COUNTERS)do r[f]=r[f]+p[f]end
-                r.encounters=r.encounters+#p.events
+                for _,f in ipairs(COUNTERS)do r.encounters=r.encounters+p[f]end
                 if p.first and(not r.first or p.first<r.first)then r.first=p.first end
                 if p.last and(not r.last or p.last>=r.last)then
                     r.last=p.last;r.name=p.name or r.name
@@ -861,24 +885,28 @@ function R.Timeline(scope,key)
     for _,c in ipairs(scopeCharacters(scope))do
         local p=profile(c.rivals[key])
         for _,e in ipairs(p and p.events or{})do
-            local at,kind,ctx,zone,sub
-            if type(e)=="string"then at,kind,ctx,zone,sub=e:match("^(%d+):(%a)(%a):(%d+):(%d+)$")end
+            local at,kind,ctx,zone,sub,map
+            if type(e)=="string"then at,kind,ctx,zone,sub,map=e:match("^(%d+):(%a)(%a):(%d+):(%d+):?(%d*)$")end
             at=tonumber(at)
             if at and KINDS[kind]then
-                out[#out+1]={at=at,kind=kind,context=ctx,zone=zoneName(zone),subzone=zoneName(sub),character=c.name}
+                out[#out+1]={at=at,kind=kind,context=ctx,zone=zoneName(zone),subzone=zoneName(sub),map=tonumber(map)or 0,character=c.name}
             end
         end
     end
     table.sort(out,function(a,b)if a.at~=b.at then return a.at>b.at end;return a.kind<b.kind end)
     return out
 end
--- Places of a timeline, most frequent first.
+-- Places of a timeline, most frequent first. Events with a map ID are grouped by it (whatever language the name was saved in);
+-- older events without one are grouped by name and join the map of the same name.
 function R.Places(timeline,limit)
-    local counts,out={},{}
+    local counts,out,byName={},{},{}
+    for _,e in ipairs(timeline or{})do if e.zone~=""and(e.map or 0)>0 and not byName[e.zone]then byName[e.zone]=e.map end end
     for _,e in ipairs(timeline or{})do
         if e.zone~=""then
-            local row=counts[e.zone]
-            if not row then row={zone=e.zone,count=0};counts[e.zone]=row;out[#out+1]=row end
+            local map=(e.map or 0)>0 and e.map or byName[e.zone]
+            local id=map and"m"..map or"n"..e.zone
+            local row=counts[id]
+            if not row then row={zone=e.zone,map=map,count=0};counts[id]=row;out[#out+1]=row end
             row.count=row.count+1
         end
     end

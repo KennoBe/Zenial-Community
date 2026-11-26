@@ -199,11 +199,29 @@ function B.Tick(now)
     if B.root and not busy and #B.queue==0 then B.root:SetScript("OnUpdate",nil);B.running=false end
 end
 -- data: kind (K, D, A, W, L), name, classFile, kills, deaths, assists, duelWins, duelLosses, tag, preview.
+-- data.replaces = "A" with data.key: an assist that became a kill takes the place of its own banner (waiting or visible, no second tone).
+local function replaceAssist(data)
+    for i,queued in ipairs(B.queue)do
+        if queued.kind==data.replaces and queued.key==data.key and not queued.preview then B.queue[i]=data;return true end
+    end
+    for slot=1,B.SLOTS do
+        local a=B.active[slot]
+        if a and a.data.kind==data.replaces and a.data.key==data.key and not a.data.preview then
+            a.data=data;a.at=A.Clock()-(a.animate and B.FADE_IN or 0);a.hold=settings().duration
+            fill(B.rows[slot],data,settings().style);return true
+        end
+    end
+    return false
+end
 function B.Push(data)
     if type(data)~="table"or not KIND[data.kind]then return false end
     local s=settings()
     if not data.preview and(not s.banner or not s[KIND[data.kind].switch])then return false end
     if not ensureRoot()then return false end
+    if data.replaces and data.key and replaceAssist(data)then
+        if not B.running then B.running=true;B.root:SetScript("OnUpdate",onUpdate)end
+        return true
+    end
     if #B.queue>=B.MAX_QUEUE then table.remove(B.queue,1)end
     B.queue[#B.queue+1]=data
     if not B.running then B.running=true;B.root:SetScript("OnUpdate",onUpdate)end
