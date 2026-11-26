@@ -9,7 +9,7 @@
 -- not have. The catalogue takes one in as soon as the client offers it (GroupFinderCatalog, C.SyncExtras).
 local Z, L, A = ZenialCommunity, ZenialCommunity.Logic, ZenialCommunity.Adapter
 local D = Z.PublicLFGMapData
-local M = { build = D.build, none = D.none }
+local M = {}
 Z.PublicLFGMap = M
 
 local owner, kindOf, offered = {}, {}, {}

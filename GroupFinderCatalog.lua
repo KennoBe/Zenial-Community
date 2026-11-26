@@ -167,27 +167,6 @@ function C.Wanted(g)
     return (g.tank or 0) + (g.healer or 0) + (g.dd or 0)
 end
 
--- Wanted roles for a new group of `size` whose creator plays `ownRole`: one tank and one healer per five
--- players (raids: 2/2 for 10, 2/4 for 20, 4/8 for 40), the rest damage; the creator's place is taken off.
-function C.RoleDefaults(size, ownRole)
-    size = L.Int(size, 2, 40) and size or 5
-    local tank = size >= 40 and 4 or size >= 10 and 2 or 1
-    local healer = size >= 40 and 8 or size >= 20 and 4 or size >= 10 and 2 or 1
-    if size < 3 then
-        tank, healer = 0, 0
-    end
-    local dd = math.max(0, size - tank - healer)
-    local role = L.Role(ownRole)
-    if role == 'TANK' and tank > 0 then
-        tank = tank - 1
-    elseif role == 'HEALER' and healer > 0 then
-        healer = healer - 1
-    elseif dd > 0 then
-        dd = dd - 1
-    end
-    return { tank = tank, healer = healer, dd = dd, size = size }
-end
-
 local function blank()
     return { groups = 0, full = 0, seekers = 0, planned = 0, ownGroup = false, ownSearch = false, applied = false, rows = { groups = {}, seekers = {}, planned = {} } }
 end
@@ -196,10 +175,11 @@ end
 --   by[activityID]   figures and rows of one activity (see blank())
 --   totals[category] { groups, seekers, planned } for DUNGEON / RAID / PVP / QUEST / CUSTOM
 --   groups / seekers / planned / other   all rows of that sort, in board order (other = quest and PvP help)
+--   open                                 number of groups with a free place (what every group count shows)
 --   own.group / own.search               the player's own live record
 -- Saved rows of unreachable players are not current and are left out (r.saved).
 function C.Snapshot()
-    local snap = { by = {}, totals = {}, groups = {}, seekers = {}, planned = {}, other = {}, own = {} }
+    local snap = { by = {}, totals = {}, groups = {}, seekers = {}, planned = {}, other = {}, own = {}, open = 0 }
     local B = Z.ActivityBoard
     if not B or not Z.db then
         return snap
@@ -246,6 +226,7 @@ function C.Snapshot()
                     if C.Wanted(r.data) > 0 then
                         b.groups = b.groups + 1
                         t.groups = t.groups + 1
+                        snap.open = snap.open + 1
                     else
                         b.full = b.full + 1
                     end

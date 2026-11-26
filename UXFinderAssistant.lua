@@ -84,6 +84,10 @@ function FA.Open()
         return false
     end
     local items = FP.Candidates()
+    -- Only the rows that are shown can be picked; the rest is left out of the selection and the queue.
+    for index = ROWS + 1, #items do
+        items[index] = nil
+    end
     for _, item in ipairs(items) do
         item.selected = item.fit.tier ~= 'UNKNOWN'
     end
@@ -107,6 +111,14 @@ end
 -- Moves to the next candidate that can still be contacted, or to the end.
 local function advance()
     local s = FA.state
+    -- A chat box counts as contacted only once the message was sent.
+    local last = s.waiting and s.queue[s.index] or nil
+    if last then
+        local state = X.State(last.row)
+        if state == 'SENT' or state == 'JOINED' then
+            s.done = s.done + 1
+        end
+    end
     s.waiting, s.role = false, nil
     repeat
         s.index = s.index + 1
@@ -143,7 +155,7 @@ local function act()
     else
         local ok = FP.Contact(item.row, s.text)
         if ok then
-            s.done, s.waiting = s.done + 1, true
+            s.waiting = true
         else
             advance()
         end

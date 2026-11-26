@@ -689,9 +689,12 @@ function U.Refresh(all, revisionDriven)
     if U.activityArchive and U.activityArchive:IsShown() then
         U.RefreshActivityArchive()
     end
-    U.RefreshAddonAvailability()
-    if U.page == ADDON_PAGE then
-        U.RefreshAddonManager()
+    -- Network changes do not touch the add-on page: refilling it would close an open menu.
+    if not (revisionDriven and U.page == ADDON_PAGE) then
+        U.RefreshAddonAvailability()
+        if U.page == ADDON_PAGE then
+            U.RefreshAddonManager()
+        end
     end
     U.UpdateBadges()
     scheduleTimedRefresh()

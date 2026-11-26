@@ -88,7 +88,7 @@ function X.Contacted(row)
 end
 
 -- Whether the leader may be written to now: there is a name, the listing is up, and the last contact with
--- this leader is at least half an hour ago. Reasons: NO_LEADER, GONE, LOCKED.
+-- this leader (a sent message) is at least half an hour ago, or the chat box was opened more than ten minutes ago. Reasons: NO_LEADER, GONE, LOCKED.
 function X.CanContact(row)
     if not identity(row.leader) then
         return false, 'NO_LEADER'
@@ -97,7 +97,8 @@ function X.CanContact(row)
         return false, 'GONE'
     end
     local entry = find(row)
-    if entry and A.Now() - entry.at < LOCK then
+    -- Only a message that was sent locks for half an hour; an opened chat box locks for the watch time only.
+    if entry and A.Now() - entry.at < (entry.state == 'OPENED' and WATCH or LOCK) then
         return false, 'LOCKED'
     end
     return true
@@ -214,7 +215,7 @@ function X.OnEvent(event, ...)
         local key = identity(target)
         for _, entry in ipairs(contacts) do
             if key and entry.key == key and entry.state == 'OPENED' and now - entry.at <= WATCH then
-                entry.state, changed = 'SENT', true
+                entry.state, entry.at, changed = 'SENT', now, true
             end
         end
     elseif event == 'GROUP_ROSTER_UPDATE' then

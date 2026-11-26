@@ -199,6 +199,8 @@ local function createPicture(owner, glyphSize)
     function picture:Show(e, glyph, dimmed)
         local has = e ~= nil and Art.Apply(self.art, e, (self.width or 16) / math.max(1, self.height or 9))
         self.has = has and true or false
+        -- SetShown(false) hides the base too; showing the picture brings it back.
+        self.base:Show()
         self.art:SetShown(self.has)
         self.glyph:SetShown(not self.has)
         for _, line in ipairs(self.corners) do
@@ -1288,8 +1290,10 @@ local function ownFirst(rows)
 end
 local function ofCategory(rows, category)
     local out = {}
+    -- Source "Public": only the player's own rows of ZENIAL stay.
+    local publicOnly = U.FinderPublic and U.FinderPublic.Source() == 'PUBLIC'
     for _, r in ipairs(rows) do
-        if r.category == category then
+        if r.category == category and (r.own or not publicOnly) then
             out[#out + 1] = r
         end
     end
@@ -1504,23 +1508,32 @@ end
 
 local function renderGrid(snap, top, width, height)
     local kind = VIEW_KIND[F.view]
-    local query = string.lower(F.query or '')
+    -- PvP shows no filter row or search field, so hidden filters must not apply there.
+    local filtersOn = F.view ~= 'pvp'
+    local query = filtersOn and string.lower(F.query or '') or ''
     local level = myLevel()
-    local shownEntries, groups, seekers = {}, 0, 0
+    local shownEntries, groups, seekers, seen = {}, 0, 0, {}
     local all = C.List(kind)
     for _, e in ipairs(all) do
         local stats = snap.by[e.id]
         if stats then
-            groups, seekers = groups + stats.groups, seekers + stats.seekers
+            -- One player looking for up to three activities counts once.
+            groups = groups + stats.groups
+            for _, r in ipairs(stats.rows.seekers) do
+                if not seen[r] then
+                    seen[r] = true
+                    seekers = seekers + 1
+                end
+            end
         end
         local matches = query == '' or string.lower(activityName(e.id)):find(query, 1, true) or string.lower(e.id):find(query, 1, true)
-        if matches and F.filters.level and not C.Fits(e, level) then
+        if matches and filtersOn and F.filters.level and not C.Fits(e, level) then
             matches = false
         end
-        if matches and F.filters.groups and not (stats and stats.groups > 0) then
+        if matches and filtersOn and F.filters.groups and not (stats and stats.groups > 0) then
             matches = false
         end
-        if matches and F.filters.seekers and not (stats and stats.seekers > 0) then
+        if matches and filtersOn and F.filters.seekers and not (stats and stats.seekers > 0) then
             matches = false
         end
         if matches then
@@ -1603,7 +1616,7 @@ local function renderNow(snap, top, width, height)
     F.stream:ClearAllPoints()
     F.stream:SetPoint('TOPLEFT', 0, -top)
     renderStream(F.stream, width, height, items, width >= 760 and 2 or 1, { named = true, thumbs = true })
-    F.summary:SetText(paint('success', countText('groups', #snap.groups)) .. ' · ' .. paint('accentBlue', countText('seekers', #snap.seekers)) .. ' · ' .. countText('planned', #snap.planned))
+    F.summary:SetText(paint('success', countText('groups', snap.open)) .. ' · ' .. paint('accentBlue', countText('seekers', #snap.seekers)) .. ' · ' .. countText('planned', #snap.planned))
 end
 
 local function renderCategory(snap, top, width, height)
@@ -1627,7 +1640,7 @@ local function renderCategory(snap, top, width, height)
             items[#items + 1] = { type = 'card', partner = partner }
         end
         local help = {}
-        for _, r in ipairs(snap.other) do
+        for _, r in ipairs(ofCategory(snap.other, category)) do
             if r.kind == 'QUEST' then
                 help[#help + 1] = r
             end
@@ -1690,7 +1703,8 @@ local function renderDetail(snap, top, width, height)
     hero.counts:SetPoint('TOPLEFT', x, -64)
     -- With a list of the public group search the figures count both sources and say so.
     local groupCount, seekerCount, where = stats.groups, stats.seekers, tr('in the ZENIAL community')
-    local both = U.FinderPublic and U.FinderPublic.Totals(e.id, stats)
+    local groups, seekers = ownFirst(stats.rows.groups), ownFirst(stats.rows.seekers)
+    local both = U.FinderPublic and U.FinderPublic.Totals(e.id, stats, groups, seekers)
     if both then
         groupCount, seekerCount, where = both.groups, both.seekers, both.where
     end
@@ -1747,7 +1761,6 @@ local function renderDetail(snap, top, width, height)
     end
     -- Public group search: its field between the head and the lists, its rows behind the ZENIAL rows.
     local FP = U.FinderPublic
-    local groups, seekers = ownFirst(stats.rows.groups), ownFirst(stats.rows.seekers)
     if FP then
         y = y + FP.LayoutBar(top + y, width, true)
         groups, seekers = FP.Merge(groups, e.id, 'groups'), FP.Merge(seekers, e.id, 'seekers')
@@ -1789,7 +1802,7 @@ local function layoutTabRow(row, width, selected, snap)
     for _, view in ipairs(VIEWS) do
         local tab = row.tabs[view]
         local category = VIEW_CATEGORY[view]
-        local n = category and (snap.totals[category] and snap.totals[category].groups or 0) or #snap.groups
+        local n = category and (snap.totals[category] and snap.totals[category].groups or 0) or snap.open
         tab:SetText(tr(VIEW_LABEL[view]) .. (n > 0 and '  ' .. paint('success', tostring(n)) or ''))
         tab:ClearAllPoints()
         tab:SetPoint('TOPLEFT', x, 0)
@@ -2027,6 +2040,9 @@ function U.RefreshFinder()
     if U.FinderAssistant then
         U.FinderAssistant.Refresh()
     end
+    if FP then
+        FP.End()
+    end
 end
 function U.LayoutFinder()
     if F.frame and F.frame:IsShown() then
@@ -2057,7 +2073,6 @@ local function coverPage(page, keep, covered)
 end
 local function coverBoard(covered)
     coverPage(U.pages[10], F.frame, covered)
-    F.boardCovered = covered
 end
 -- view: now | dungeons | raids | pvp | quests | other | list. nil keeps the tab that was open.
 function U.SetFinderView(view, keepActivity)
@@ -2080,6 +2095,17 @@ function U.SetFinderView(view, keepActivity)
         F.activity, F.searchOpen = nil, false
     end
     F.applyKey, F.applyRole = nil, nil
+    -- Another view or instance starts at the top, not at the scroll position of the one before.
+    local place = tostring(F.view) .. '|' .. tostring(F.activity)
+    if F.scrollPlace ~= place then
+        F.scrollPlace = place
+        for _, scroll in ipairs({ F.grid, F.stream, F.detail and F.detail.left, F.detail and F.detail.right }) do
+            if scroll then
+                scroll.zenialOffset = 0
+                scroll:SetVerticalScroll(0)
+            end
+        end
+    end
     F.frame:Show()
     coverBoard(true)
     U.RefreshFinder()
@@ -2141,10 +2167,11 @@ function U.CreateFinder()
     -- The board's refresh shows and hides its own buttons; while the finder is up they stay hidden.
     local refreshBoard = U.RefreshActivityBoard
     U.RefreshActivityBoard = function(...)
-        refreshBoard(...)
+        -- While the finder is up the board stays hidden and is not rebuilt; leaving the finder refreshes it.
         if F.frame:IsShown() then
-            coverBoard(true)
+            return
         end
+        return refreshBoard(...)
     end
     frame.fill = frame:CreateTexture(nil, 'BACKGROUND')
     frame.fill:SetPoint('TOPLEFT', -8, 6)
@@ -2252,9 +2279,6 @@ function U.CreateFinder()
         T.TintEdges(self.edges, self.zenialOn and 'gold' or 'line')
         self.zenialTooltip = tr(self.zenialOn and 'You are notified about new ZENIAL groups for this instance. Click to stop.' or 'Notify me about new ZENIAL groups for this instance')
     end
-    function hero.follow:GetChecked()
-        return self.zenialOn == true
-    end
     hero.create = T.Button(hero, tr('Create group'), 160, 26, function()
         U.OpenFinderCreate(F.activity)
     end, 'secondary')
@@ -2328,6 +2352,6 @@ F.CreateEdit = createEdit
 F.ScriptFont = scriptFont
 F.DrawMembers = drawMembers
 -- Shared with the start page (UXStart.lua).
-F.CreateTile, F.UpdateTile, F.CoverPage = createTile, updateTile, coverPage
+F.CreateTile, F.UpdateTile = createTile, updateTile
 
 return F

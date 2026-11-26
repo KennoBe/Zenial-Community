@@ -464,7 +464,7 @@ local function onSearchCall(category, _, _, languages, _, _, ids)
         end
     end
     foreignCall = q and #q.activities > 0 and q or false
-    if state.phase == 'SEARCHING' then
+    if state.phase == 'SEARCHING' or state.phase == 'TIMEOUT' then
         state.superseded = true
     end
 end
@@ -549,7 +549,8 @@ end
 
 local function onResults()
     local ids, total = P.ReadList()
-    local own = state.phase == 'SEARCHING' and not state.superseded
+    -- The answer to our own search may arrive after the waiting time ran out (TIMEOUT): still ours.
+    local own = (state.phase == 'SEARCHING' or (state.phase == 'TIMEOUT' and state.query ~= nil)) and not state.superseded
     if own and ids and not hooked and not plausible(state.query, ids) then
         own = false
     end
@@ -632,11 +633,6 @@ function P.State()
         stale = state.stale == true, foreign = state.foreign == true, reason = state.reason, detail = state.detail,
         cooldownUntil = lastCall and lastCall + WAIT or nil,
     }
-end
-
--- Result ids of the current list, nil when there is none (for the result store).
-function P.ResultIds()
-    return state.phase == 'READY' and not state.stale and state.ids or nil
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -917,16 +913,6 @@ function P.Members(row)
         row.memberList = P.ReadMembers(row.resultId, row.members)
     end
     return row.memberList
-end
-
--- One row by its key, from any list that is still kept.
-function P.Row(key)
-    for _, set in pairs(sets) do
-        if set.byKey[key] then
-            return set.byKey[key]
-        end
-    end
-    return nil
 end
 
 -- Figures per catalogue activity for the tiles: { [activity] = { groups, seekers, capped, at } }.

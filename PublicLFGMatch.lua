@@ -83,7 +83,8 @@ function Q.SetOwnRoles(roles)
     Z.uiCharacter.finderRoles = any(roles) and { TANK = roles.TANK == true, HEALER = roles.HEALER == true, DAMAGER = roles.DAMAGER == true } or nil
 end
 
--- View of a ZENIAL group (live record of the activity board).
+-- View of a ZENIAL group (live record of the activity board). `started` is the negative age like in public
+-- views (older = smaller), so both sources sort by the same measure.
 function Q.FromBoard(r)
     local g = r.data or {}
     local wanted = { TANK = g.tank or 0, HEALER = g.healer or 0, DAMAGER = g.dd or 0 }
@@ -92,7 +93,7 @@ function Q.FromBoard(r)
     return {
         source = 'ZENIAL', key = r.key, own = r.own == true, zenial = true, size = size,
         members = size and math.max(1, size - open) or nil, wanted = wanted,
-        levelMin = g.min, levelMax = g.max, started = type(g.start) == 'number' and g.start or 0,
+        levelMin = g.min, levelMax = g.max, started = type(g.start) == 'number' and g.start - A.Now() or 0,
         contacted = type(r.application) == 'table', friends = 0, guildMates = 0,
     }
 end

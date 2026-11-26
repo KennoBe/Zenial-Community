@@ -161,6 +161,7 @@ local REFUSED = {
     NO_ACTIVITY = 'The group search of the game offers nothing here.',
     NO_LANGUAGE = 'Choose at least one language.',
     BLOCKED = 'The game refused the search.',
+    BUSY = 'Another search is still running. Click Refresh afterwards.',
 }
 
 -- Starts the public search for the open view. Runs from a click only.
@@ -193,8 +194,10 @@ function FP.OnOpen(activity)
     if info and info.complete and A.Clock() - info.receivedAt <= FRESH and languagePart(info.signature) == languagePart(P.Signature(query)) then
         return
     end
-    FP.refused = nil
-    P.Search(query)
+    local ok, reason = P.Search(query)
+    -- A running search refuses the new one: the status says so while it runs (a click on Refresh searches
+    -- this instance afterwards; the game takes a search only from a click, so nothing starts by itself).
+    FP.refused = not ok and { reason = reason, at = A.Clock() } or nil
 end
 
 -- How long ago a list arrived.
@@ -213,11 +216,15 @@ end
 -- The line beside the refresh button and whether a click may search.
 function FP.Status()
     local state, query = P.State(), FP.Query()
+    local refused = FP.refused
     if state.phase == 'SEARCHING' then
+        -- The running search belongs to another instance: the one that is shown was refused.
+        if refused and refused.reason == 'BUSY' and query and state.signature ~= P.Signature(query) then
+            return tr(REFUSED.BUSY), true
+        end
         return tr('Searching public groups …'), false
     end
-    local refused = FP.refused
-    if refused and A.Clock() - refused.at < 6 and REFUSED[refused.reason] then
+    if refused and REFUSED[refused.reason] and A.Clock() - refused.at < 6 then
         return tr(REFUSED[refused.reason]), true
     end
     local signature = query and P.Signature(query)
@@ -608,7 +615,8 @@ function FP.Location(row)
     end
     local text = paint('dim', Z.T(row.solo and 'Location: %s' or 'Group leader: %s', '')) .. paint('textSoft', area)
     local e = F.activity and C.Get(F.activity)
-    local zone = e and C.Zone(e)
+    -- Only with an area id of the activity is the comparison independent of the language of the names.
+    local zone = e and e.area and C.Zone(e)
     if zone and zone == area then
         return text, tr(e.kind == 'DUNGEON' and 'In the dungeon area' or 'In the area of the activity')
     end
@@ -762,7 +770,6 @@ function FP.Describe(row, context)
 end
 
 -- The member symbols of a party are drawn by the finder itself (ZENIAL cards have them too).
-FP.DrawMembers = F.DrawMembers
 
 -- Hover info of a public card: who is in the group, with level and class. The members are read from the
 -- client the moment the mouse is over the card, and only for a list the client still holds.
@@ -835,7 +842,10 @@ function FP.Mark(d, r)
     if not r or r.kind ~= 'LIVE' or not FP.Active() then
         return d
     end
-    d.source, d.sourceTone = 'ZENIAL', 'gold'
+    -- The source badge only tells ZENIAL from public where both stand side by side.
+    if FP.mixed then
+        d.source, d.sourceTone = 'ZENIAL', 'gold'
+    end
     local fit = FP.fits[r.key]
     if fit and not r.own and (d.badge == nil or d.badge == tr('New') or d.badge == tr('Full')) then
         d.badge, d.tone = nil, nil
@@ -860,6 +870,12 @@ end
 -- While the public search is off the board rows come back unchanged.
 -- Entries { row, view, fit, zenial } of one instance from both sources, in the order of the lists.
 local function collect(rows, activity, sort)
+    -- Within one refresh the entries are computed once per instance and sort (FP.Begin starts the cache,
+    -- FP.End drops it); the rows of one instance are the same set in every call of a refresh.
+    local cacheKey = tostring(activity) .. '|' .. tostring(sort)
+    if FP.cache and FP.cache[cacheKey] then
+        return FP.cache[cacheKey]
+    end
     local source = FP.Source()
     local e = C.Get(activity)
     local me = FP.Me()
@@ -878,12 +894,16 @@ local function collect(rows, activity, sort)
                 local view = Q.FromPublic(row, e and { levelMin = e.min })
                 view.zenial, view.contacted = key ~= nil, X.Contacted(row)
                 FP.marks[row.key] = { zenial = key ~= nil }
+                FP.mixed = true
                 entries[#entries + 1] = { row = row, view = view, fit = Q.Fit(view, me), zenial = false }
             end
         end
     end
     if sort == 'groups' then
         Q.Sort(entries)
+    end
+    if FP.cache then
+        FP.cache[cacheKey] = entries
     end
     return entries
 end
@@ -941,7 +961,13 @@ function FP.Begin()
     if FP.place ~= place then
         FP.place, FP.popup = place, nil
     end
-    FP.fits, FP.marks = {}, {}
+    FP.fits, FP.marks, FP.mixed = {}, {}, false
+    FP.cache = {}
+end
+
+-- Called at the end of every refresh: the merged entries of this refresh are dropped.
+function FP.End()
+    FP.cache = nil
 end
 
 -- Public rows of the open tab without tiles (questing, miscellaneous): rows, and whether a list was loaded.
@@ -957,6 +983,7 @@ function FP.CategoryRows()
             out[#out + 1] = row
         end
     end
+    FP.mixed = FP.mixed or #out > 0
     return out, info ~= nil
 end
 
@@ -1146,16 +1173,26 @@ end
 -- players looking of both sources (of the public one alone while only public groups are shown), and the words
 -- that say what was counted. nil without a list: the head then shows the figures of the community as before.
 -- The figures of the community themselves (tiles, tabs, catalogue) never include public groups.
-function FP.Totals(activity, stats)
+-- The figures count what the lists show (the merged entries, a group listed in both sources once), groups only
+-- while they have a free place. groupRows / seekerRows: the ZENIAL rows of the instance as the lists get them.
+function FP.Totals(activity, stats, groupRows, seekerRows)
     local figures = FP.Figures(activity)
     if not figures then
         return nil
     end
     local public = FP.Source() == 'PUBLIC'
-    return {
-        groups = figures.groups + (public and 0 or stats.groups), seekers = figures.seekers + (public and 0 or stats.seekers),
-        where = tr(public and 'in the group search of the game' or 'ZENIAL and public'),
-    }
+    local groups, seekers = 0, 0
+    for _, entry in ipairs(collect(groupRows or stats.rows.groups, activity, 'groups')) do
+        if entry.fit.tier ~= 'FULL' and not (public and entry.zenial) then
+            groups = groups + 1
+        end
+    end
+    for _, entry in ipairs(collect(seekerRows or stats.rows.seekers, activity, 'seekers')) do
+        if not entry.view.gone and not (public and entry.zenial) then
+            seekers = seekers + 1
+        end
+    end
+    return { groups = groups, seekers = seekers, where = tr(public and 'in the group search of the game' or 'ZENIAL and public') }
 end
 
 -- Caption of the public mark on a tile, nil when there is nothing to show.
@@ -1224,6 +1261,7 @@ local function no() return false end
 FP.Guard(FP, 'Active', no)
 FP.Guard(FP, 'Create', nothing)
 FP.Guard(FP, 'Begin', nothing)
+FP.Guard(FP, 'End', nothing)
 FP.Guard(FP, 'OnOpen', nothing)
 FP.Guard(FP, 'SyncListing', nothing)
 FP.Guard(FP, 'PresetRoles', nothing)
