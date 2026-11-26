@@ -67,7 +67,7 @@ function U.RefreshDiagnostics()
     U.diagnosticEdit:HighlightText()
 end
 
-local BACKUP_TITLE={foreverLiveBackup="Forever Live migration backup",migrationBackup="Character migration backup",characterBackup="Merged character profiles backup"}
+local BACKUP_TITLE={foreverLiveBackup="Forever Live migration backup",migrationBackup="Character migration backup",characterBackup="Merged character profiles backup",realmCorrectionBackup="Realm correction backup"}
 function U.RefreshBackups()
     if not U.backupPanel then return end
     local present={};for _,row in ipairs(Z.Diagnostics.Backups())do present[row.name]=row end
@@ -144,18 +144,12 @@ function U.ShowDiagnostics(mode)
         end
         U.backupCancel=T and T.Button(panel,Z.T("Cancel"),170,28,function()U.backupArmed=nil;U.RefreshBackups()end)or CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
         if not T then U.backupCancel:SetSize(170,28);U.backupCancel:SetText(Z.T("Cancel"));U.backupCancel:SetScript("OnClick",function()U.backupArmed=nil;U.RefreshBackups()end)end
-        U.backupCancel:SetPoint("TOPLEFT",600,-190)
+        U.backupCancel:SetPoint("TOPLEFT",600,-44-#Z.Diagnostics.BACKUPS*48)
         panel:SetScript("OnHide",function()U.backupArmed=nil end)
         f:HookScript("OnHide",function()panel:Hide()end)
         if UISpecialFrames then UISpecialFrames[#UISpecialFrames+1]="ZenialCommunityDiagnostics"end
     end
     U.diagnosticWindow:Show();U.RefreshDiagnostics()
-end
-
--- The shared ZENIAL icon (Launcher.lua) took over from Community's own button; ZenialUI still repositions it here.
-function U.PositionMinimapButton()
-    if not U.minimapButton then return false end
-    return U.minimapButton.Reposition()
 end
 
 function U.CreateMinimapButton()

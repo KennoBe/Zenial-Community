@@ -2,11 +2,10 @@ local Z = ZenialCommunity
 local U = Z.UI
 local L = Z.Logic
 local A = Z.Adapter
-local T = Z.Theme
 local S = U.Shared
 local tr = S.tr
-local NAV_ICONS, displayValue, rows, itemIcon, keys = S.NAV_ICONS, S.displayValue, S.rows, S.itemIcon, S.keys
-local peerOnline, faction = S.peerOnline, S.faction
+local NAV_ICONS, displayValue, rows, itemIcon = S.NAV_ICONS, S.displayValue, S.rows, S.itemIcon
+local peerOnline = S.peerOnline
 
 -- Visual weighting of list rows (item.display): first line bright, further lines receding; item.text stays the
 -- data contract. With priceTail the last ' · ' part of the final line (a price) is painted gold. The colour only
@@ -197,7 +196,9 @@ function U.EditOffer(o)
     U.offerFields.silver:SetText(tostring(o and math.floor(price % 10000 / 100) or draft and draft.silver or 0))
     U.offerFields.copper:SetText(tostring(o and price % 100 or draft and draft.copper or 0))
     U.offerFields.note:SetText(o and o.note or draft and draft.note or '')
-    U.offerDuration:SetText(tostring(draft and draft.duration or '1440'))
+    -- An active offer keeps its remaining time (rounded up to whole minutes) instead of a fresh 24 hours.
+    local remaining = o and tonumber(o.expires) and math.ceil((o.expires - A.Now()) / 60)
+    U.offerDuration:SetText(tostring(draft and draft.duration or remaining and math.max(1, math.min(1440, remaining)) or '1440'))
     S.restoringDraft = false
     U.CaptureOfferDraft()
 end

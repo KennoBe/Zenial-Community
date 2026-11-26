@@ -358,8 +358,8 @@ function S.createTradePage(f)
         if not r then
             return
         end
-        U.offerSearchItemID = r.itemID and r.itemID > 0 and r.itemID or nil
         U.offerSearch:SetText(r.query or '')
+        U.offerSearchItemID = r.itemID and r.itemID > 0 and r.itemID or nil
         U.tradeKindFilter:SetText(r.kind)
         U.tradeCategoryFilter:SetText(r.category)
         U.tradeMinPrice:SetText(r.minPrice and tostring(r.minPrice / 10000) or '')

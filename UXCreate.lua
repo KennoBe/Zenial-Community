@@ -41,7 +41,7 @@ function U.Create()
     U.resizeBounds = { 900, 610, maxWidth, maxHeight }
     f:EnableMouse(true)
     f:RegisterForDrag('LeftButton')
-    f:SetScale(Z.db.scale or 1)
+    -- No window scale setting exists: an old saved Z.db.scale must not make the window larger than the screen.
     local pos = Z.db.position or { x = 0, y = 0 }
     f:SetPoint('CENTER', UIParent, 'CENTER', pos.x, pos.y)
     if T then

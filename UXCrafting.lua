@@ -226,6 +226,7 @@ local function refreshProfessions()
             selected = token == U.professionSelection,
             icon = icon,
             text = text,
+            order = { own and 0 or 1, isOnline(key) and 0 or 1, string.lower(target or ''), string.lower(profession or ''), kind == 'profession' and 0 or 1, string.lower(recipe and recipe.name or '') },
             click = function()
                 U.craftDetailMaterialsOpen = false
                 U.professionSelection, U.professionKey, U.professionTarget, U.professionName, U.professionEntryKind, U.professionRecipe =
@@ -245,11 +246,10 @@ local function refreshProfessions()
         end
         for _, p in ipairs(s.professions or {}) do
             local profession = L.ProfessionName(p.name)
+            -- A profession only known from the presence has no rank yet: show the rank only with a real value.
+            local rank = (tonumber(p.rank) or 0) > 0 and (tonumber(p.max) or 0) > 0 and '  ' .. p.rank .. '/' .. p.max or ''
             local value = tr(profession)
-                .. '  '
-                .. p.rank
-                .. '/'
-                .. p.max
+                .. rank
                 .. '\n'
                 .. target
                 .. ((s.professionNote or '') ~= '' and ' · ' .. s.professionNote or '')
@@ -291,6 +291,15 @@ local function refreshProfessions()
                 or (q ~= '' and tr('Press Enter or Search to find community recipes.') or '')
         )
     end
+    -- Own entry first, then online before offline, then by name: the order must not jump with pairs().
+    table.sort(items, function(x, y)
+        for i = 1, #x.order do
+            if x.order[i] ~= y.order[i] then
+                return x.order[i] < y.order[i]
+            end
+        end
+        return false
+    end)
     weigh(items)
     rows(U.professionList, items, 55)
     if U.professionCount then
@@ -739,8 +748,8 @@ local function refreshCraftOrders()
         b:Hide()
     end
     local actions = selected.direction == 'incoming'
-            and (selected.state == 'REQUESTED' and { { 'Annehmen', 'ACCEPT' }, { tr('Ablehnen'), 'DECLINE' } } or selected.state == 'ACCEPTED' and {
-                { 'Als bereit markieren', 'READY' },
+            and (selected.state == 'REQUESTED' and { { tr('Accept'), 'ACCEPT' }, { tr('Ablehnen'), 'DECLINE' } } or selected.state == 'ACCEPTED' and {
+                { tr('Mark as ready'), 'READY' },
                 { tr('Abbrechen'), 'CANCEL' },
             } or selected.state == 'READY' and { { tr('Abbrechen'), 'CANCEL' } } or {})
         or (

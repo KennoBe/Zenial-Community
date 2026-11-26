@@ -141,7 +141,7 @@ local function ensureToast()
     if U.toast then
         return U.toast
     end
-    local f = U.NewNotice('ZenialCommunityNotice', 340, 96)
+    local f = U.NewNotice('ZenialCommunityNotice', 96)
     U.toast = f
     f.skipHistory = true
     f:SetScript('OnClick', function()
@@ -215,7 +215,7 @@ local function ensureFollowToast()
     if U.followToast then
         return U.followToast
     end
-    local f = U.NewNotice('ZenialCommunityFollowNotice', 340, 96)
+    local f = U.NewNotice('ZenialCommunityFollowNotice', 96)
     U.followToast = f
     f.skipHistory = true
     f.heading:SetText(tr('New group for a followed activity'))
@@ -248,16 +248,16 @@ function U.NotifyGroupFollow(key, id, activity)
     if f.pending == 1 then
         f.openKey, f.openID, f.openActivity = key, id, activity
     end
-    f.batchAt = GetTime() + 2
+    f.batchAt = A.Clock() + 2
 end
-local function noticeFrame(name, y, w, h)
-    return U.NewNotice(name, w, h)
+local function noticeFrame(name, y, h)
+    return U.NewNotice(name, h)
 end
 local function ensurePvpToast()
     if U.pvpToast then
         return U.pvpToast
     end
-    local f = noticeFrame('ZenialCommunityPvPNotice', -144, 340, 112)
+    local f = noticeFrame('ZenialCommunityPvPNotice', -144, 112)
     U.pvpToast = f
     f.heading:SetText(tr('PvP help needed'))
     f:RegisterForClicks('LeftButtonUp', 'RightButtonUp')
@@ -298,7 +298,7 @@ local function ensureDeathToast()
     if U.deathToast then
         return U.deathToast
     end
-    local f = noticeFrame('ZenialCommunityGankedNotice', -208, 300, 50)
+    local f = noticeFrame('ZenialCommunityGankedNotice', -208, 50)
     U.deathToast = f
     f.text:SetText(tr('Werde gegankt. HILFE!\nKlicken zum Prüfen'))
     f:SetScript('OnClick', function(self)
@@ -429,7 +429,7 @@ function U.OpenUpdate(entry)
 end
 function U.NotifyAddonVersion(version)
     if not U.addonVersionToast then
-        local f = noticeFrame('ZenialCommunityVersionNotice', -336, 400, 88)
+        local f = noticeFrame('ZenialCommunityVersionNotice', -336, 88)
         U.addonVersionToast = f
         f.text:SetHeight(64)
         f:SetScript('OnClick', function(self)
@@ -446,7 +446,7 @@ function U.NotifyAddonVersion(version)
 end
 function U.NotifyUpdate(entry)
     if not U.updateToast then
-        local f = noticeFrame('ZenialCommunityUpdateNotice', -270, 350, 62)
+        local f = noticeFrame('ZenialCommunityUpdateNotice', -270, 62)
         U.updateToast = f
         f.skipHistory = true
         f:SetScript('OnClick', function(self)

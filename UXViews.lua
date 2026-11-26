@@ -125,14 +125,8 @@ function U.SetProfileView(v)
     -- body is hidden (U.LayoutProfileCharacters) and the profile form sits below the tabs.
     U.profilePublicFrame:SetShown(U.profileView == 'public')
     U.profileCharactersFrame:Show()
-    U.profilePublicTab:Hide()
-    U.profileCharactersTab:Hide()
-    U.profileDisplayTab:Hide()
-    U.profileNetworkTab:Hide()
     U.profileCharactersFrame:ClearAllPoints()
     U.profileCharactersFrame:SetPoint('TOPLEFT', 0, 0)
-    selectNav(U.profilePublicTab, U.profileView == 'public')
-    selectNav(U.profileCharactersTab, U.profileView == 'characters')
     if Z.UIState then
         Z.UIState.Route('profile', U.profileView)
     end

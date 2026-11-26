@@ -4,25 +4,11 @@ local L = Z.Logic
 local S = U.Shared
 local tr = S.tr
 local HISTORY_PAGE, ADDON_PAGE, ROLE_OPTIONS, ADDON_CATALOG = S.HISTORY_PAGE, S.ADDON_PAGE, S.ROLE_OPTIONS, S.ADDON_CATALOG
-local label, button, navButton, edit, selector, checkbox = S.label, S.button, S.navButton, S.edit, S.selector, S.checkbox
+local label, button, edit, selector = S.label, S.button, S.edit, S.selector
 local list, faction = S.list, S.faction
 
 function S.createProfilePage(f)
     local p = U.pages[6]
-    U.profilePublicTab = navButton(p, tr('Charakterprofil'), 0, 0, 175, function()
-        U.SetProfileView('public')
-    end)
-    U.profileCharactersTab = navButton(p, tr('My characters'), 185, 0, 175, function()
-        U.SetProfileView('characters')
-    end)
-    U.profileDisplayTab = navButton(p, tr('Darstellung'), 370, 0, 155, function()
-        U.SetProfileView('display')
-    end)
-    U.profileNetworkTab = navButton(p, tr('Verbindung'), 535, 0, 155, function()
-        U.SetProfileView('network')
-    end)
-    U.profileDisplayTab:Hide()
-    U.profileNetworkTab:Hide()
     -- Public profile: the third tab of "My characters" (head and tabs belong to the characters frame).
     -- Form on the left plate, preview on the right plate.
     U.profilePublicFrame = CreateFrame('Frame', nil, p)

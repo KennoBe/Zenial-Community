@@ -403,9 +403,37 @@ local function edit(parent, caption, x, y, w, max, multi)
     e:SetSize(w, multi and 54 or 24)
     e:SetPoint('TOPLEFT', x, y - 17)
     e:SetMaxLetters(max or 64)
+    -- The checks (L.Text) count bytes: umlauts must not pass the field and fail the check.
+    if e.SetMaxBytes then
+        e:SetMaxBytes(max or 64)
+    end
     e:SetFontObject('GameFontHighlightSmall')
+    -- InputBoxTemplate selects all text on focus; the first key would replace a saved note.
+    e:SetScript('OnEditFocusGained', function(s)
+        s:HighlightText(0, 0)
+    end)
     if multi then
         e:SetMultiLine(true)
+        -- Enter would insert a line break, which the text checks reject: turn it into a space
+        -- before any OnTextChanged handler (autosave, form checks) sees it.
+        local setScript = e.SetScript
+        e.SetScript = function(self, name, fn)
+            if name == 'OnTextChanged' then
+                local handler = fn
+                fn = function(box, ...)
+                    local text = box:GetText() or ''
+                    if text:find('[\r\n]') then
+                        box:SetText((text:gsub('[\r\n]+', ' ')))
+                        return
+                    end
+                    if handler then
+                        return handler(box, ...)
+                    end
+                end
+            end
+            return setScript(self, name, fn)
+        end
+        e:SetScript('OnTextChanged', nil)
     end
     e:SetScript('OnEscapePressed', function(s)
         s:ClearFocus()
@@ -547,11 +575,6 @@ local function selector(parent, caption, x, y, w, options, changed, formatter)
     end
     function s:GetText()
         return self.value
-    end
-    function s:SetFormatter(fn)
-        formatter = fn
-        self:SetText(self.value)
-        rebuild()
     end
     function s:SetPopupWidth(width)
         popupWidth = width
@@ -1230,10 +1253,6 @@ function U.Toast(text)
     if U.statusToast and U.frame and U.frame:IsShown() then
         U.statusToast:Notify(tr(text or ''))
     end
-end
-function U.NotifyTradeAlerts(count)
-    U.Message((count or 1) .. tr(' neuer Handelstreffer'))
-    A.PlayApplicationSound()
 end
 function U.Publish()
     L.Touch(Z.db)

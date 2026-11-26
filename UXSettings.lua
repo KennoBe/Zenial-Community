@@ -83,12 +83,12 @@ function U.CreateSettings(helpers)
     heading(U.profileDisplayFrame, 'APPEARANCE', 16, -14, 400)
     label(U.profileDisplayFrame, tr('Fenster: 1060 × 690 Standard · mindestens 900 × 610'), 16, -40, 600, 'GameFontHighlight')
     button(U.profileDisplayFrame, tr('Standardgröße'), 16, -70, 170, function()
-        U.frame:SetSize(1060, 690)
+        local bounds = U.resizeBounds or { 900, 610, 1280, 860 }
+        U.frame:SetSize(math.max(bounds[1], math.min(1060, bounds[3])), math.max(bounds[2], math.min(690, bounds[4])))
         U.Layout()
     end)
     button(U.profileDisplayFrame, tr('Position zurücksetzen'), 198, -70, 190, function()
         Z.db.position = nil
-        Z.db.scale = 1
         U.frame:SetScale(1)
         U.frame:ClearAllPoints()
         U.frame:SetPoint('CENTER')
@@ -388,9 +388,7 @@ end
 function U.RefreshSettingsCompanionSummary()
     if not U.settingsCompanionSummary or not Z.Companion or not Z.Companion.Status then return end
     local status = Z.Companion.Status()
-    local states = { disabled = 'Disabled', blocked = 'Export stopped',
-        ['logging-required'] = 'Chat logging required', probing = 'Connection probe',
-        unverified = 'Export active' }
+    local states = { disabled = 'Disabled', blocked = 'Export stopped', unverified = 'Export active' }
     U.settingsCompanionSummary:SetText(tr('Status: ') .. tr(states[status.state] or status.state or '') .. ' · '
         .. tr('Account-wide export for all characters, including chat and private notes.'))
 end

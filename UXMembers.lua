@@ -287,21 +287,6 @@ function U.AutoSavePrivateNote()
     U.memberNoteError = not ok and err or nil
     return ok, err
 end
-function U.SavePrivateNote()
-    if not U.memberKey or U.memberNoteOwner ~= U.memberKey then
-        bindPrivateNote(U.memberKey)
-        return nil, "Select the note's member before saving."
-    end
-    local ok, err = Z.Social.Note(U.memberNoteOwner, U.memberPrivateNote:GetText())
-    if ok then
-        U.noteDrafts[U.memberNoteOwner] = nil
-    end
-    U.Message(ok and 'Private note saved.' or err)
-    if ok then
-        U.Toast('Private note saved.')
-    end
-    return ok, err
-end
 function U.RefreshCategoryPanel()
     local C = Z.SocialCategories
     local key = U.categoryKey
@@ -319,21 +304,6 @@ function U.RefreshCategoryPanel()
         b:SetEnabled(valid and not C.readOnly)
     end
 end
-function U.OpenPrivateCategories()
-    local peers = {}
-    U.categoryKey = U.memberKey
-    if #peers == 0 and U.categoryKey then
-        peers = { U.categoryKey }
-    end
-    -- Dropdowns use TOOLTIP strata; dismiss background popups before the dialog.
-    if S.openPopup then
-        S.openPopup:Hide()
-        S.openPopup = nil
-    end
-    U.categoryContact:SetOptions(peers, U.categoryKey)
-    U.RefreshCategoryPanel()
-    U.categoryPanel:Show()
-end
 -- Palette access for the member card (white when the shared theme is missing).
 local function paletteHex(key)
     return T and T.PaletteHex and T.PaletteHex(key) or 'ffffff'
@@ -343,23 +313,6 @@ local function dimText(value)
 end
 local function paint(key, value)
     return '|cff' .. paletteHex(key) .. value .. '|r'
-end
-local function stripColors(value)
-    return (tostring(value or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''))
-end
--- Plain text of the whole card (header lines and fact list) as shown to the player.
-function U.MemberCardText()
-    local card = U.memberCard
-    local parts = {}
-    if card then
-        for _, region in ipairs({ card.name, card.classLine, card.status }) do
-            if region:IsShown() and region:GetText() ~= '' then
-                parts[#parts + 1] = region:GetText()
-            end
-        end
-    end
-    parts[#parts + 1] = U.memberDetail:GetText()
-    return stripColors(table.concat(parts, '\n'))
 end
 -- Header of the member card: portrait, class-coloured name, class line and presence.
 local function updateMemberHeader(m, s)
@@ -580,9 +533,9 @@ end
 -- Character filter shared by both views; the status filter is applied per view.
 local function memberMatches(m, ctx)
     local s = m.data
-    local hay = m.hay .. ' ' .. string.lower(ctx.C.Text(m.key))
+    -- Cheap checks first: the category text is only built for contacts that are still in the list.
     return visibleMember(m, ctx.query, ctx.now)
-        and (ctx.query == '' or hay:find(ctx.query, 1, true))
+        and (ctx.query == '' or (m.hay .. ' ' .. string.lower(ctx.C.Text(m.key))):find(ctx.query, 1, true))
         and (ctx.class == 'ALL_CLASSES' or s and s.classFile == ctx.class)
         and (ctx.profession == 'ALL_PROFESSIONS' or m.prof:find(tr(ctx.profession), 1, true))
         and (not ctx.favoriteOnly or Z.Social.IsFavorite(m.key))
@@ -602,9 +555,9 @@ local function sortRecords(records, sort)
                 return a.seen > b.seen
             end
             if a.target ~= b.target then
-                return a.target > b.target
+                return a.target < b.target
             end
-            return a.key > b.key
+            return a.key < b.key
         end
         local av, bv = a.level, b.level
         if sort == 'LEVEL_ASC' and av ~= bv then

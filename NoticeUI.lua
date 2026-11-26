@@ -17,9 +17,9 @@ function U.LayoutNotices()
     end
     layingOut=false
 end
-function U.NewNotice(name,width,height)
+function U.NewNotice(name,height)
     local f=CreateFrame('Button',name,UIParent,BackdropTemplateMixin and'BackdropTemplate'or nil)
-    width=340;f.noticeMinHeight=math.max(96,height)
+    local width=340;f.noticeMinHeight=math.max(96,height)
     f:SetSize(width,f.noticeMinHeight);f:SetFrameStrata('DIALOG');f:SetClampedToScreen(true);f:RegisterForClicks('LeftButtonUp')
     -- Raised card with a shadow and a gold marker on the left (palette only).
     if T then T.Panel(f,'raised');if T.Shadow then T.Shadow(f,10,.5)end;if Z.Kit then Z.Kit.Accent(f,'gold')end elseif f.SetBackdrop then

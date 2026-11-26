@@ -272,24 +272,8 @@ function S.createMembersPage(f)
     end)
     U.categorySummary = label(U.categoryPanel, '', 16, -91, 585, 'GameFontHighlight')
     U.categorySummary:SetHeight(134)
+    -- The category chips live in the member card (CommunityHomeUI); this dialog only keeps the summary.
     U.categoryChecks = {}
-    for i, id in ipairs(C.ORDER) do
-        local tag = id
-        U.categoryChecks[id] = checkbox(
-            U.categoryPanel,
-            C.Label(id),
-            16 + ((i - 1) % 2) * 292,
-            -236 - math.floor((i - 1) / 2) * 34,
-            280,
-            function(self)
-                local ok, err = C.Set(U.categoryKey, tag, self:GetChecked() == true)
-                if not ok then
-                    U.Message(err)
-                end
-                refreshMembers()
-            end
-        )
-    end
     button(U.categoryPanel, tr('Close'), 454, -390, 146, function()
         U.categoryPanel:Hide()
     end)
