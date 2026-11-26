@@ -72,14 +72,22 @@ function U.InviteConfirmedParticipants(all)
     local keys={};if all then for key,p in pairs(e.participants)do if p.state=='CONFIRMED'then keys[#keys+1]={key=key,revision=p.revision}end end
     elseif U.activityParticipantKey then keys[1]={key=U.activityParticipantKey,revision=U.activityParticipantRevision}end
     table.sort(keys,function(a,b)return a.key<b.key end)
-    local sent,failed,last=0,0,nil
+    local sent,failed,skipped,last=0,0,0,nil
+    -- A group holds 5, a raid 40: more confirmed players than free places are not invited at all.
+    local state=A.GroupState();local raid=A.Call(IsInRaid)==true;local free=math.max(0,(raid and 40 or 5)-state.total)
     for _,item in ipairs(keys)do local p=e.participants[item.key]
         if canInviteParticipant(r,e,p,item.key,item.revision)then
-            local ok,why=A.Invite(Z.db.contacts[item.key].target)
-            if ok then pendingInvite(r,item.key);sent=sent+1 else failed=failed+1;last=why end
+            if all and sent>=free then skipped=skipped+1
+            else
+                local ok,why=A.Invite(Z.db.contacts[item.key].target)
+                if ok then pendingInvite(r,item.key);sent=sent+1 else failed=failed+1;last=why end
+            end
         end
     end
-    U.Message(all and Z.T('%d invitations sent; %d failed.',sent,failed)or sent>0 and tr('Invitation submitted; awaiting response.')or tr(last or'Inviting is temporarily unavailable.'))
+    local text=all and Z.T('%d invitations sent; %d failed.',sent,failed)or sent>0 and tr('Invitation submitted; awaiting response.')or tr(last or'Inviting is temporarily unavailable.')
+    if all and not state.canInvite then text=tr('You do not have permission to invite.')
+    elseif skipped>0 then text=text..' '..(raid and tr('The raid is full.')or Z.T('Only %d free places. Convert the group to a raid to invite more.',free))end
+    U.Message(text)
     U.RefreshActivityDetails()
 end
 function U.LayoutActivityDetails(r,infoHeight,peopleHeight)
@@ -120,7 +128,7 @@ function U.ActivityWhisper(key)
     if not A.Whisper(target)then U.Message(tr('Whisper is unavailable.'))end
 end
 function U.ActivityDiary(key)
-    local r=key and B.Get(key);local player,target=r and diaryPlayer(r)
+    local r=key and B.Get(key);local player,target;if r then player,target=diaryPlayer(r)end
     if player then U.OpenSocialDiary(player,target)end
 end
 local function actionRecord(key)

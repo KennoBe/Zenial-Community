@@ -1,7 +1,7 @@
 -- Scheduled groups are independent of the one-slot/24h live finder. Public
 -- announcements are claims; attendance is authoritative only on private routes.
 local Z,L,A,T=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter,ZenialCommunity.ScheduleTime
-local S={VERSION=1,MAX_EVENTS=100,MAX_PUBLIC=10,MAX_FOLLOWING=100,MAX_PARTICIPANTS=40,MAX_TEMPLATES=20,MAX_REMOTE=2048,HORIZON=90*86400};Z.ScheduledGroups=S
+local S={VERSION=1,MAX_EVENTS=100,MAX_PUBLIC=10,MAX_FOLLOWING=100,MAX_PARTICIPANTS=40,MAX_ENTRIES=120,MAX_TEMPLATES=20,MAX_REMOTE=2048,HORIZON=90*86400};Z.ScheduledGroups=S
 -- Carrying on: while the organizer of an event is offline, its participants (confirmed, waitlisted or with an
 -- open request) repeat the public announcement so the event stays visible. They repeat only what the organizer
 -- announced publicly, only for events that start within CARRY_HORIZON, and under a session that ranks below
@@ -35,7 +35,6 @@ local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
 local function id(v)return L.Text(v,32)and v:match('^%d+%.%d+$')~=nil end
 local function token(owner,eventID)return owner..':'..eventID end
 S.Token=token
-local function scalar(t)local out={};for k,v in pairs(t)do if type(v)~='table'then out[k]=v end end;return out end
 local function validRole(value)return value=='TANK'or value=='HEALER'or value=='DAMAGER'end
 local function roles(r)return type(r)=='table'and L.Int(r.TANK,0,40)and L.Int(r.HEALER,0,40)and L.Int(r.DAMAGER,0,40)and r.TANK+r.HEALER+r.DAMAGER>=1 and r.TANK+r.HEALER+r.DAMAGER<=40 end
 local function usedCounts(used,slots)
@@ -56,42 +55,75 @@ local function validApp(p)
         and id(p.lastNonce)and(p.lastAction=='APPLY'or p.lastAction=='WITHDRAW')and L.Int(p.lastContentRevision,1,MAX)
         and L.Int(p.ackEventRevision or 0,0,MAX)and L.Int(p.ackAppRevision or 0,0,MAX)
 end
+-- Loading drops only what is invalid, entry by entry; what was dropped stays in store.rejected (at most 20) instead of
+-- being overwritten. Only data that is not a table at all is replaced; a newer schema is left untouched (nil).
+local MAX_REJECTED=20
+local function activeApp(p)return p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST'end
+local function validOwned(key,e,owner)
+    return header(e)and key==e.id and e.ownerKey==owner and type(e.public)=='boolean'and not(e.public and e.status=='DRAFT')
+        and not(e.status=='OPEN'and not e.public)and L.Text(e.activity,64)and L.Int(e.createdAt,1,4102444799)and L.Int(e.updatedAt,e.createdAt,4102444799)
+        and(e.organizerRole==''or validRole(e.organizerRole))and(e.organizerRole==''or e.roleSlots[e.organizerRole]>=1)
+        and L.Text(e.templateID or'',32,true)and(e.templateID==''or id(e.templateID))and type(e.participants)=='table'
+end
+local function validParticipant(e,peer,p,owner)
+    return L.ValidIdentityKey(peer)and peer~=owner and validApp(p)and p.revision<=e.revision and p.lastContentRevision<=e.contentRevision
+        and(p.ackEventRevision or 0)<=e.revision and(p.ackAppRevision or 0)<=p.revision and not((e.status=='DRAFT'or e.status=='CANCELLED')and activeApp(p))
+end
+local function cleanParticipant(p)
+    return{state=p.state,role=p.role,seq=p.seq,revision=p.revision,lastNonce=p.lastNonce,lastAction=p.lastAction,lastContentRevision=p.lastContentRevision,ackEventRevision=p.ackEventRevision or 0,ackAppRevision=p.ackAppRevision or 0,reason=REASONS[p.reason]and p.reason or'OK',
+        target=L.Text(p.target,49)and L.Identity(p.target)and p.target or nil,via=L.ValidIdentityKey(p.via)and p.via or nil,relayedAt=L.Int(p.relayedAt,1,4102444799)and p.relayedAt or nil}
+end
+local function validFollow(key,r,owner)
+    return type(r)=='table'and header(r.snapshot)and L.ValidIdentityKey(r.ownerKey)and r.ownerKey~=owner and id(r.id)and key==token(r.ownerKey,r.id)
+        and r.snapshot.ownerKey==r.ownerKey and r.snapshot.id==r.id and APPS[r.state]and(r.role==''or validRole(r.role))
+        and L.Text(r.operationNonce or'',32,true)and(not r.operationNonce or r.operationNonce==''or id(r.operationNonce))and L.Int(r.seq,0,MAX)and L.Int(r.acceptedSeq or 0,0,r.seq)and L.Int(r.authorityRevision or 0,0,MAX)and L.Int(r.appRevision,0,MAX)and L.Int(r.updatedAt,1,4102444799)
+        and(r.pending==nil or type(r.pending)=='table'and(r.pending.action=='APPLY'or r.pending.action=='WITHDRAW')and validRole(r.pending.role)and L.Int(r.pending.seq,1,MAX)and r.pending.seq==r.seq and L.Int(r.pending.contentRevision,1,MAX)and id(r.pending.nonce))
+end
 function S.Normalize(raw,owner)
     if raw==nil then return empty()end
     if type(raw)~='table'then return empty(),'invalid'end
     if raw.version~=S.VERSION then return nil,'unsupported'end
-    if type(raw.owned)~='table'or type(raw.following)~='table'or type(raw.templates)~='table'or type(raw.reminded)~='table'or not L.Int(raw.reminderSeq,0,MAX)then return empty(),'invalid'end
-    local out=empty();out.reminderSeq=raw.reminderSeq
-    local n,published=0,0;for key,e in pairs(raw.owned)do
-        n=n+1;if n>S.MAX_EVENTS or not header(e)or key~=e.id or e.ownerKey~=owner or type(e.public)~='boolean'or e.public and e.status=='DRAFT'
-            or e.status=='OPEN'and not e.public or not L.Text(e.activity,64)or not L.Int(e.createdAt,1,4102444799)or not L.Int(e.updatedAt,e.createdAt,4102444799)
-            or(e.organizerRole~=''and not validRole(e.organizerRole))or e.organizerRole~=''and e.roleSlots[e.organizerRole]<1
-            or not L.Text(e.templateID or'',32,true)or e.templateID~=''and not id(e.templateID)or type(e.participants)~='table'then return empty(),'invalid'end
-        if e.public and e.status=='OPEN'then published=published+1;if published>S.MAX_PUBLIC then return empty(),'invalid'end end
-        local row=snapshot(e);row.public=e.public;row.createdAt=e.createdAt;row.updatedAt=e.updatedAt;row.organizerRole=e.organizerRole;row.templateID=e.templateID or'';row.participants={}
-        local m=0;for peer,p in pairs(e.participants)do m=m+1;if m>S.MAX_PARTICIPANTS or not L.ValidIdentityKey(peer)or peer==owner or not validApp(p)or p.revision>e.revision or p.lastContentRevision>e.contentRevision or(p.ackEventRevision or 0)>e.revision or(p.ackAppRevision or 0)>p.revision or(e.status=='DRAFT'or e.status=='CANCELLED')and(p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST')then return empty(),'invalid'end;row.participants[peer]={state=p.state,role=p.role,seq=p.seq,revision=p.revision,lastNonce=p.lastNonce,lastAction=p.lastAction,lastContentRevision=p.lastContentRevision,ackEventRevision=p.ackEventRevision or 0,ackAppRevision=p.ackAppRevision or 0,reason=REASONS[p.reason]and p.reason or'OK',
-            target=L.Text(p.target,49)and L.Identity(p.target)and p.target or nil,via=L.ValidIdentityKey(p.via)and p.via or nil,relayedAt=L.Int(p.relayedAt,1,4102444799)and p.relayedAt or nil}end
-        local used=S.Counts(row);for role,amount in pairs(used)do if amount>row.roleSlots[role]then return empty(),'invalid'end end
-        out.owned[key]=row
+    local out=empty();local bad,kept=false,0
+    local function reject(name,value)bad=true;if kept<MAX_REJECTED then out.rejected=out.rejected or{};out.rejected[name]=value;kept=kept+1 end end
+    if type(raw.rejected)=='table'then for name,value in pairs(raw.rejected)do if kept<MAX_REJECTED and type(name)=='string'and#name<=120 then out.rejected=out.rejected or{};out.rejected[name]=value;kept=kept+1 end end end
+    if L.Int(raw.reminderSeq,0,MAX)then out.reminderSeq=raw.reminderSeq else bad=true end
+    for _,section in ipairs({'owned','following','templates','reminded'})do if type(raw[section])~='table'then bad=true end end
+    local n,published=0,0;for key,e in pairs(type(raw.owned)=='table'and raw.owned or{})do
+        n=n+1
+        if n>S.MAX_EVENTS or not validOwned(key,e,owner)then reject('owned:'..tostring(key),e)
+        else
+            local row=snapshot(e);row.public=e.public;row.createdAt=e.createdAt;row.updatedAt=e.updatedAt;row.organizerRole=e.organizerRole;row.templateID=e.templateID or'';row.participants={}
+            local m=0;for peer,p in pairs(e.participants)do m=m+1
+                if m>S.MAX_ENTRIES or not validParticipant(e,peer,p,owner)then reject('owned:'..key..':'..tostring(peer),p)else row.participants[peer]=cleanParticipant(p)end
+            end
+            local over=false;for role,amount in pairs(S.Counts(row))do if amount>row.roleSlots[role]then over=true end end
+            if over or e.public and e.status=='OPEN'and published>=S.MAX_PUBLIC then reject('owned:'..key,e)
+            else if e.public and e.status=='OPEN'then published=published+1 end;out.owned[key]=row end
+        end
     end
-    n=0;for key,r in pairs(raw.following)do
-        n=n+1;if n>S.MAX_FOLLOWING or type(r)~='table'or not header(r.snapshot)or not L.ValidIdentityKey(r.ownerKey)or r.ownerKey==owner or not id(r.id)or key~=token(r.ownerKey,r.id)
-            or r.snapshot.ownerKey~=r.ownerKey or r.snapshot.id~=r.id or not APPS[r.state]or(r.role~=''and not validRole(r.role))
-            or not L.Text(r.operationNonce or'',32,true)or(r.operationNonce and r.operationNonce~=''and not id(r.operationNonce))or not L.Int(r.seq,0,MAX)or not L.Int(r.acceptedSeq or 0,0,r.seq)or not L.Int(r.authorityRevision or 0,0,MAX)or not L.Int(r.appRevision,0,MAX)or not L.Int(r.updatedAt,1,4102444799)then return empty(),'invalid'end
-        local row={ownerKey=r.ownerKey,id=r.id,snapshot=snapshot(r.snapshot),state=r.state,role=r.role,seq=r.seq,operationNonce=r.operationNonce or'',acceptedSeq=r.acceptedSeq or 0,authorityRevision=r.authorityRevision or 0,appRevision=r.appRevision,updatedAt=r.updatedAt,delivery='saved',
-            superseded=L.Int(r.superseded,1,MAX)and r.superseded or nil,
-            box=Z.ScheduledRelay and Z.ScheduledRelay.CleanBox(r.box)or nil,relayed=Z.ScheduledRelay and Z.ScheduledRelay.CleanRelayed(r.relayed)or nil,
-            announced=r.announced==true,ownerSession=type(r.ownerSession)=='string'and L.Text(r.ownerSession,32)and r.ownerSession:match('^%d+%.%d+%.%d+$')and r.ownerSession or nil}
-        if r.pending~=nil then local p=r.pending;if type(p)~='table'or(p.action~='APPLY'and p.action~='WITHDRAW')or not validRole(p.role)or not L.Int(p.seq,1,MAX)or p.seq~=r.seq or not L.Int(p.contentRevision,1,MAX)or not id(p.nonce)then return empty(),'invalid'end;row.pending={action=p.action,role=p.role,seq=p.seq,contentRevision=p.contentRevision,nonce=p.nonce,attempts=0,next=0,deposited=p.deposited==true or nil}end
-        out.following[key]=row
+    n=0;for key,r in pairs(type(raw.following)=='table'and raw.following or{})do
+        n=n+1
+        if n>S.MAX_FOLLOWING or not validFollow(key,r,owner)then reject('following:'..tostring(key),r)
+        else
+            local row={ownerKey=r.ownerKey,id=r.id,snapshot=snapshot(r.snapshot),state=r.state,role=r.role,seq=r.seq,operationNonce=r.operationNonce or'',acceptedSeq=r.acceptedSeq or 0,authorityRevision=r.authorityRevision or 0,appRevision=r.appRevision,updatedAt=r.updatedAt,delivery='saved',
+                superseded=L.Int(r.superseded,1,MAX)and r.superseded or nil,
+                box=Z.ScheduledRelay and Z.ScheduledRelay.CleanBox(r.box)or nil,relayed=Z.ScheduledRelay and Z.ScheduledRelay.CleanRelayed(r.relayed)or nil,
+                announced=r.announced==true,ownerSession=type(r.ownerSession)=='string'and L.Text(r.ownerSession,32)and r.ownerSession:match('^%d+%.%d+%.%d+$')and r.ownerSession or nil}
+            if r.pending~=nil then local p=r.pending;row.pending={action=p.action,role=p.role,seq=p.seq,contentRevision=p.contentRevision,nonce=p.nonce,attempts=0,next=0,deposited=p.deposited==true or nil}end
+            out.following[key]=row
+        end
     end
-    n=0;for key,p in pairs(raw.templates)do
-        n=n+1;if n>S.MAX_TEMPLATES or type(p)~='table'or not id(key)or p.id~=key or not header(p.base)or p.base.ownerKey~=owner or not T.Valid(p.localCivil)or not L.Int(p.nextIndex,1,520)
-            or(p.organizerRole~=''and not validRole(p.organizerRole))then return empty(),'invalid'end
-        out.templates[key]={id=key,base=snapshot(p.base),localCivil={year=p.localCivil.year,month=p.localCivil.month,day=p.localCivil.day,hour=p.localCivil.hour,min=p.localCivil.min,sec=p.localCivil.sec or 0},nextIndex=p.nextIndex,organizerRole=p.organizerRole}
+    n=0;for key,p in pairs(type(raw.templates)=='table'and raw.templates or{})do
+        n=n+1
+        if n>S.MAX_TEMPLATES or type(p)~='table'or not id(key)or p.id~=key or not header(p.base)or p.base.ownerKey~=owner or not T.Valid(p.localCivil)or not L.Int(p.nextIndex,1,520)
+            or(p.organizerRole~=''and not validRole(p.organizerRole))then reject('templates:'..tostring(key),p)
+        else out.templates[key]={id=key,base=snapshot(p.base),localCivil={year=p.localCivil.year,month=p.localCivil.month,day=p.localCivil.day,hour=p.localCivil.hour,min=p.localCivil.min,sec=p.localCivil.sec or 0},nextIndex=p.nextIndex,organizerRole=p.organizerRole}end
     end
-    n=0;for key,r in pairs(raw.reminded)do n=n+1;if n>200 or not L.Text(key,300)or type(r)~='table'or not L.Int(r.contentRevision,1,MAX)or not L.Int(r.stage,0,3)then return empty(),'invalid'end;out.reminded[key]={contentRevision=r.contentRevision,stage=r.stage}end
-    return out
+    n=0;for key,r in pairs(type(raw.reminded)=='table'and raw.reminded or{})do
+        n=n+1
+        if n>200 or not L.Text(key,300)or type(r)~='table'or not L.Int(r.contentRevision,1,MAX)or not L.Int(r.stage,0,3)then bad=true else out.reminded[key]={contentRevision=r.contentRevision,stage=r.stage}end
+    end
+    return out,bad and'invalid'or nil
 end
 function S.Initialize()
     S.store,S.loadError=S.Normalize(Z.db.scheduledGroups,Z.me.key);if S.store then Z.db.scheduledGroups=S.store end
@@ -99,7 +131,7 @@ function S.Initialize()
     for key,e in pairs(S.store and S.store.owned or{})do if e.status=='DRAFT'then
         if not next(e.participants)then S.store.owned[key]=nil else e.status='CANCELLED' end
     end end
-    S.announceAt,S.withdrawn,S.pushAt,S.pushAttempts,S.queryAt,S.queryNonce,S.rates,S.hellos={},{},{},{},{},{},{},{}
+    S.announceAt,S.pushAt,S.pushAttempts,S.queryAt,S.queryNonce,S.rates,S.hellos={},{},{},{},{},{},{}
     S.nextTick,S.nextPublish,S.nextPrune=0,0,0;S.syncedSessions={};S.decodePending={};S.querySentAt={}
 end
 local function changed()S.listCache=nil;if Z.MarkDirty then Z.MarkDirty('scheduled')end end
@@ -130,10 +162,11 @@ function S.Counts(e)
     for _,p in pairs(e.participants or{})do if p.state=='CONFIRMED'then used[p.role]=used[p.role]+1 end end;return used
 end
 function S.GetOwned(eventID)return S.store and S.store.owned[eventID]end
+function S.ActiveCount(e)local n=0;for _,p in pairs(e.participants or{})do if activeApp(p)then n=n+1 end end;return n end
 local function dropOwned(eventID)
     local e=S.store.owned[eventID];if not e then return end
     for peer in pairs(e.participants)do local tok=token(peer,eventID);S.pushAt[tok]=nil;S.pushAttempts[tok]=nil end
-    S.announceAt[eventID]=nil;S.withdrawn[eventID]=nil;S.store.reminded[token(e.ownerKey,eventID)]=nil;S.store.owned[eventID]=nil
+    S.announceAt[eventID]=nil;S.store.reminded[token(e.ownerKey,eventID)]=nil;S.store.owned[eventID]=nil
 end
 function S.Create(input)
     if not editable()then return nil,'Saved scheduled groups are unavailable. Data was preserved.'end
@@ -152,8 +185,9 @@ end
 local function invalidateApps(e,reason)
     for _,p in pairs(e.participants)do if p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST'then p.state='WITHDRAWN';p.revision=math.min(MAX,p.revision+1);p.reason=reason end end;pushAll(e)
 end
-function S.Edit(eventID,input,expectedRevision)
-    local e=S.GetOwned(eventID);if not e or not editable()or e.revision~=expectedRevision or(e.status~='DRAFT'and e.status~='OPEN')or A.Now()>=e.startsAt then return false,'Scheduled event changed or is no longer editable.'end
+-- byContent: the revision was read from contentRevision, so applications that arrived meanwhile do not block saving.
+function S.Edit(eventID,input,expectedRevision,byContent)
+    local e=S.GetOwned(eventID);if not e or not editable()or(byContent and e.contentRevision or e.revision)~=expectedRevision or(e.status~='DRAFT'and e.status~='OPEN')or A.Now()>=e.startsAt then return false,'Scheduled event changed or is no longer editable.'end
     -- Validate with the same creation rules before changing the existing record.
     if type(input)~='table'or not L.Text(input.activity,64)or not L.Text(input.note or'',192,true)or not roles(input.roleSlots)or not L.Int(input.startsAt,A.Now()+1,A.Now()+S.HORIZON)
         or not L.Int(input.duration,15,480)or input.startsAt+input.duration*60>4102444799 or(input.organizerRole~=''and not validRole(input.organizerRole))or input.organizerRole~=''and input.roleSlots[input.organizerRole]<1 then return false,'Scheduled event fields are invalid.'end
@@ -187,9 +221,12 @@ function S.Preview(templateID,amount)
     if not T.SameLocal(p.base.startsAt,p.localCivil)then return nil,'Client timezone changed. Create a new recurrence template.'end
     local out={};local index=p.nextIndex
     while#out<amount and index<=520 do
-        local at,why=T.Weekly(p.base.startsAt,index);if not at then return nil,why end
-        if at>A.Now()+S.HORIZON then return nil,'Events must start within ninety days.'end
-        if at>A.Now()then out[#out+1]={startsAt=at,index=index}end;index=index+1
+        local at,why,skip=T.Weekly(p.base.startsAt,index)
+        if at then
+            if at>A.Now()+S.HORIZON then return nil,'Events must start within ninety days.'end
+            if at>A.Now()then out[#out+1]={startsAt=at,index=index}end
+        elseif not skip then return nil,why end -- a week whose clock time does not exist or occurs twice (daylight saving) is skipped
+        index=index+1
     end
     if#out~=amount then return nil,'Choose one to four upcoming instances.'end;return out
 end
@@ -291,10 +328,11 @@ function S.Get(owner,eventID)
     for _,e in ipairs(S.List(true))do if e.ownerKey==owner and e.id==eventID then return e end end
 end
 function S.Follow(owner,eventID)return S.store and S.store.following[token(owner,eventID)]end
+local function dropFollow(key)S.store.following[key]=nil;S.store.reminded[key]=nil;S.queryAt[key]=nil;S.queryNonce[key]=nil;S.querySentAt[key]=nil end
 function S.Forget(owner,eventID)
     local r=S.Follow(owner,eventID)
     if not r or r.pending or(r.snapshot.status=='OPEN'and r.snapshot.endsAt>A.Now()and(r.state=='REQUESTED'or r.state=='CONFIRMED'or r.state=='WAITLIST'))then return false,'Withdraw and verify an active application before forgetting it.'end
-    local key=token(owner,eventID);S.store.following[key]=nil;S.store.reminded[key]=nil;S.queryAt[key]=nil;S.queryNonce[key]=nil;S.querySentAt[key]=nil;changed();return true
+    dropFollow(token(owner,eventID));changed();return true
 end
 function S.DeleteTemplate(templateID)
     if S.store and S.store.templates[templateID]then S.store.templates[templateID]=nil;changed();return true end;return false
@@ -302,7 +340,13 @@ end
 local function ensureFollow(e)
     if not S.store or e.ownerKey==Z.me.key then return nil end
     local key=token(e.ownerKey,e.id);local r=S.store.following[key]
-    if not r then if count(S.store.following)>=S.MAX_FOLLOWING then return nil end;r={ownerKey=e.ownerKey,id=e.id,snapshot=snapshot(e),state='NONE',role='',seq=0,operationNonce='',acceptedSeq=0,authorityRevision=0,appRevision=0,updatedAt=A.Now(),delivery='unknown'};S.store.following[key]=r end;return r
+    if not r then
+        if count(S.store.following)>=S.MAX_FOLLOWING then
+            -- Only looking at an event leaves an entry without an application: the oldest of those makes room first.
+            local oldest,at;for k,f in pairs(S.store.following)do if f.state=='NONE'and not f.pending and(not at or f.updatedAt<at)then oldest,at=k,f.updatedAt end end
+            if not oldest then return nil end;dropFollow(oldest)
+        end
+        r={ownerKey=e.ownerKey,id=e.id,snapshot=snapshot(e),state='NONE',role='',seq=0,operationNonce='',acceptedSeq=0,authorityRevision=0,appRevision=0,updatedAt=A.Now(),delivery='unknown'};S.store.following[key]=r end;return r
 end
 local function notify(e,code,peer,source,version)
     local c=source and Z.db.contacts[source]
@@ -407,7 +451,8 @@ local function receiveAction(key,f)
     end
     if content~=e.contentRevision then sendStatus(e,key,f[9],'STALE');return true end
     if e.status~='OPEN'or not e.public or not S.Enabled()or A.Now()>=e.endsAt or f[7]=='APPLY'and A.Now()>=e.startsAt then sendStatus(e,key,f[9],'CLOSED');return true end
-    if not p and count(e.participants)>=S.MAX_PARTICIPANTS then sendStatus(e,key,f[9],'FULL');return true end
+    -- 40 places for active applications; every entry, also a withdrawn or declined one, counts against a separate higher limit (the entries carry the protection against repeated requests).
+    if not p and count(e.participants)>=S.MAX_ENTRIES or f[7]=='APPLY'and not(p and activeApp(p))and S.ActiveCount(e)>=S.MAX_PARTICIPANTS then sendStatus(e,key,f[9],'FULL');return true end
     if not p and f[7]=='WITHDRAW'then sendStatus(e,key,f[9],'STALE');return true end
     local ok=bump(e,false);if not ok then return false end
     p=p or{revision=0,ackEventRevision=0,ackAppRevision=0};e.participants[key]=p
@@ -424,7 +469,8 @@ local function receiveStatus(key,route,f)
     local correlated=r.pending and nonce==r.pending.nonce or nonce~=''and nonce==S.queryNonce[tok]
     if nonce~=''and not correlated then return false end
     if r.pending and not correlated and seq<r.pending.seq then return false end
-    if seq<(r.acceptedSeq or 0)or seq>r.seq or state~='NONE'and seq==0 then return false end
+    -- Without an operation of its own open, the organizer's higher counter is taken over (the entry may have been removed and created again).
+    if seq<(r.acceptedSeq or 0)or r.pending and seq>r.seq or state~='NONE'and seq==0 then return false end
     if reason=='OK'and r.pending and nonce==r.pending.nonce and seq~=r.pending.seq then return false end
     if r.pending and seq==r.pending.seq and operationNonce~=r.pending.nonce then return false end
     if seq==r.acceptedSeq and seq>0 and operationNonce~=r.operationNonce then return false end
@@ -489,9 +535,12 @@ local function reminders()
         if eligible and e.status=='OPEN'then
             local tok=token(e.ownerKey,e.id);local mark=S.store.reminded[tok];if not mark or mark.contentRevision~=e.contentRevision then mark={contentRevision=e.contentRevision,stage=0};S.store.reminded[tok]=mark end
             local delta=e.startsAt-now;local stage=delta<=0 and 3 or delta<=600 and 2 or delta<=1800 and 1 or 0
-            if stage>mark.stage then mark.stage=stage
-                if now<e.endsAt and delta>=-600 and examined<4 then S.store.reminderSeq=math.min(MAX,S.store.reminderSeq+1)
-                    if Z.Notifications and Z.Notifications.store then Z.Notifications.Push('groups','scheduled','schedule-reminder:'..tok,S.store.reminderSeq,'SCHEDULE_REMINDER_'..stage,e.ownerKey,e.id,e.activity,nil)end;examined=examined+1 end
+            if stage>mark.stage then
+                if now<e.endsAt and delta>=-600 then
+                    -- More than four at once: the rest keeps its stage and follows on the next tick.
+                    if examined<4 then mark.stage=stage;S.store.reminderSeq=math.min(MAX,S.store.reminderSeq+1)
+                        if Z.Notifications and Z.Notifications.store then Z.Notifications.Push('groups','scheduled','schedule-reminder:'..tok,S.store.reminderSeq,'SCHEDULE_REMINDER_'..stage,e.ownerKey,e.id,e.activity,nil)end;examined=examined+1 end
+                else mark.stage=stage end
             end
         end
     end
@@ -539,8 +588,8 @@ function S.Tick()
     local now,clock=A.Now(),A.Clock();local sent=0
     for _,e in pairs(S.store.owned)do
         if(e.status=='OPEN'or e.status=='DRAFT')and now>=e.endsAt then e.status='FINISHED';bump(e,false);pushAll(e)end
-        if S.Enabled()and(e.public and(e.status=='OPEN'or now-e.updatedAt<=1800)or S.withdrawn[e.id])and clock>=(S.announceAt[e.id]or 0)and clock>=S.nextPublish then
-            if Z.ScheduledMesh.Publish('SE',S.Record(e))then S.announceAt[e.id]=clock+600;S.withdrawn[e.id]=nil;S.nextPublish=clock+1 end
+        if S.Enabled()and e.public and(e.status=='OPEN'or now-e.updatedAt<=1800)and clock>=(S.announceAt[e.id]or 0)and clock>=S.nextPublish then
+            if Z.ScheduledMesh.Publish('SE',S.Record(e))then S.announceAt[e.id]=clock+600;S.nextPublish=clock+1 end
         end
         for peer,p in pairs(e.participants)do local tok=token(peer,e.id)
             if not Z.db.blocked[peer]and S.pushAt[tok]and clock>=S.pushAt[tok]and(S.pushAttempts[tok]or 0)<3 and sent<4 and currentRoute(peer)then

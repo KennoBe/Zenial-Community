@@ -111,6 +111,10 @@ G.manner = { style = 0, beginners = false }
 function G.Have()
     return C.JoinHave(A.GroupRoles(), classList(), G.manner)
 end
+-- The wishes alone (preferred classes, play style, new players), as a template keeps them.
+function G.Wishes()
+    return C.JoinHave('', classList(), G.manner)
+end
 -- A click on one of the play styles (the chosen one again clears it) or on "new players welcome". The choice
 -- is remembered for the character and is the start of its next group.
 function U.SetGroupFormManner(style, beginners)
@@ -154,8 +158,8 @@ local function bump(key, delta, limit)
     local fields = U.groupFields
     local size = math.max(2, number(fields.size))
     local others = number(fields.tank) + number(fields.healer) + number(fields.dd) - number(fields[key])
-    local value = math.max(0, math.min(limit, size - others, number(fields[key]) + delta))
-    U.groupNeedsAuto = false
+    -- The players already in the group take their places first.
+    local value = math.max(0, math.min(limit, size - A.GroupState().total - others, number(fields[key]) + delta))
     U.groupAutofilling = true
     fields[key]:SetText(tostring(value))
     U.groupAutofilling = false
@@ -390,9 +394,10 @@ function U.RefreshGroupForm()
         s.value:SetText(tostring(value))
         T.Tint(s.value, 'SetTextColor', value > 0 and 'text' or 'muted')
     end
+    local present = A.GroupState().total -- the players already in the group take their places first
     for _, s in ipairs(G.steppers) do
         s.minus:SetEnabled(number(fields[s.key]) > 0)
-        s.plus:SetEnabled(wanted < size and number(fields[s.key]) < s.limit)
+        s.plus:SetEnabled(wanted < size - present and number(fields[s.key]) < s.limit)
     end
     -- What is there already: the group, or the player and the role they play.
     local here = A.GroupState().total
@@ -549,7 +554,8 @@ function U.StyleGroupForm()
         local draft = not g and Z.UIState and Z.UIState.ActivityInput('group')
         local classes = g and C.WantedClasses(g) or draft and select(2, C.SplitHave(draft.classes)) or {}
         -- The manner of the group: its own when it is edited, the draft's, else what the character chose last.
-        local manner = g and C.Manner(g) or draft and draft.classes and select(3, C.SplitHave(draft.classes))
+        -- A template saved before it kept the play style has none of its own: the character's last choice stands.
+        local manner = g and (g.have ~= nil or g.templateName == nil) and C.Manner(g) or draft and draft.classes and select(3, C.SplitHave(draft.classes))
         if not manner then
             manner = { style = Z.uiCharacter and Z.uiCharacter.finderPlaystyle or 0, beginners = Z.uiCharacter ~= nil and Z.uiCharacter.finderBeginners == true }
         end
@@ -560,6 +566,20 @@ function U.StyleGroupForm()
         end
         G.more = draft and draft.more == true or false
         openEditor(g, ...)
+        if g and g.templateName ~= nil then
+            -- A saved template may want more than the size leaves besides the players present: cut damage dealers first, then healers, then tanks.
+            local fields = U.groupFields
+            local over = number(fields.tank) + number(fields.healer) + number(fields.dd) - (number(fields.size) - A.GroupState().total)
+            for _, key in ipairs({ 'dd', 'healer', 'tank' }) do
+                if over > 0 then
+                    local cut = math.min(over, number(fields[key]))
+                    if cut > 0 then
+                        fields[key]:SetText(tostring(number(fields[key]) - cut))
+                        over = over - cut
+                    end
+                end
+            end
+        end
         if g then
             -- A template is opened to be changed and saved again: that action sits in the optional part.
             G.more = G.HasExtras() or g.templateName ~= nil

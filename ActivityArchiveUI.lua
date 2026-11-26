@@ -77,8 +77,10 @@ function U.RecreateActivity(key)
         U.OpenScheduledEditor()
         U.scheduledEditingID,U.scheduledEditingRevision=nil,nil
         U.scheduledActivity:SetText(e.activity);U.ConfigureScheduledActivity(nil,e.activity)
-        U.scheduledOrganizerRole:SetText(e.organizerRole and e.organizerRole~=''and e.organizerRole or'NONE')
-        for role,f in pairs(U.scheduledSlots)do f:SetText(tostring(math.max(0,e.roleSlots[role]-(e.organizerRole==role and 1 or 0))))end
+        -- Another organizer's event becomes the player's own: the player takes the place of the organizer with the profile role.
+        local ownRole=e.ownerKey and e.ownerKey~=Z.me.key and(L.Role(Z.db.roles)or'')or e.organizerRole or''
+        U.scheduledOrganizerRole:SetText(ownRole~=''and ownRole or'NONE')
+        for role,f in pairs(U.scheduledSlots)do f:SetText(tostring(math.max(0,e.roleSlots[role]-(ownRole==role and 1 or 0))))end
         U.scheduledDuration:SetText(tostring((e.endsAt-e.startsAt)/60));U.scheduledNote:SetText(e.note or'')
         U.scheduledDate:SetText('');U.scheduledEditorNotice:SetText(tr('Choose a new date and time, then create the activity.'))
     elseif r.kind=='QUEST'then

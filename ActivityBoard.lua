@@ -7,7 +7,6 @@ local function day(at)
     if not now or not other then now=T.UTC(A.Now());other=T.UTC(at)end
     return now and other and now.year==other.year and now.month==other.month and now.day==other.day or false
 end
-B.IsToday=day
 local function activeApplication(p)return p and p.state~='withdrawn'and p.state~='rejected'end
 local function app(kind,owner,id)
     if kind=='EVENT'then local p=Z.ScheduledGroups.Follow(owner,id);return p and(p.pending or p.state=='REQUESTED'or p.state=='CONFIRMED'or p.state=='WAITLIST')and p or nil end
@@ -42,7 +41,6 @@ local function build()
         end
     end end
     for _,e in ipairs(Z.ScheduledGroups.List(true))do
-        local application=app('EVENT',e.ownerKey,e.id)
         if e.endsAt>now and e.status=='OPEN'then
             local r=row('EVENT',e.ownerKey,e.id,e.activity,e.startsAt,e.endsAt,e);r.saved=not r.own and not e.announcement and not Z.ScheduledGroups.Verified(e.ownerKey,e.id);add(r)
         end

@@ -22,12 +22,12 @@ local function validTemplate(row)
         and(row.tank or 0)+(row.healer or 0)+(row.dd or 0)<=(row.size or 5)and L.Text(row.note or"",96,true)and L.Int(row.duration or 60,1,1440)
 end
 function G.Initialize()
-    local out={};local n=0;for name,row in pairs(type(Z.db.groupTemplates)=="table"and Z.db.groupTemplates or{})do if n<20 and L.Text(name,64)and validTemplate(row)then out[name]=row;n=n+1 end end;Z.db.groupTemplates=out
+    local out={};local n=0;for name,row in pairs(type(Z.db.groupTemplates)=="table"and Z.db.groupTemplates or{})do if n<20 and L.Text(name,64)and validTemplate(row)then if row.have~=nil and not(type(row.have)=="string"and L.Text(row.have,96,true))then row.have=nil end;out[name]=row;n=n+1 end end;Z.db.groupTemplates=out
 end
 function G.SaveTemplate(name,group,duration)
     if not L.Text(name,64)or type(group)~="table"then return nil,"Template is invalid."end
     if not Z.db.groupTemplates[name]and count(Z.db.groupTemplates)>=20 then return nil,"A maximum of 20 group templates is allowed."end
-    Z.db.groupTemplates[name]={mode=group.mode,activity=group.activity,min=group.min,max=group.max,size=group.size,tank=group.tank,healer=group.healer,dd=group.dd,note=group.note,duration=math.max(1,math.min(1440,tonumber(duration)or 60))};return true
+    Z.db.groupTemplates[name]={mode=group.mode,activity=group.activity,min=group.min,max=group.max,size=group.size,tank=group.tank,healer=group.healer,dd=group.dd,note=group.note,have=type(group.have)=="string"and group.have~=""and L.Text(group.have,96)and group.have or nil,duration=math.max(1,math.min(1440,tonumber(duration)or 60))};return true
 end
 function G.DeleteTemplate(name)
     if type(name)~="string"or not Z.db.groupTemplates[name]then return nil,"Choose a template first."end

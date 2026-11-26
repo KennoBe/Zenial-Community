@@ -12,6 +12,11 @@ local canonicalOption, selectNav, updateNavPath, rows, keys = S.canonicalOption,
 local peerOnline, roleName, activityName, activityCategory = S.peerOnline, S.roleName, S.activityName, S.activityCategory
 local groupCategory, stateName, groupHave, deliveryState = S.groupCategory, S.stateName, S.groupHave, S.deliveryState
 local peerLocationLine = S.peerLocationLine
+-- Raw values (the availability of a player, the category of an activity) never reach the screen.
+local function availabilityName(value)
+    return tr(value == 'GROUP' and 'In group' or value == 'AFK' and 'AFK' or value == 'BUSY' and 'Busy' or 'Available')
+end
+local CATEGORY_NAMES = { DUNGEON = 'Dungeon', RAID = 'Raid', PVP = 'PvP', QUEST = 'Questing', CUSTOM = 'Other' }
 
 -- Wanted roles of a group as text ("1 Tank, 3 Damage dealers").
 local function wanted(g)
@@ -151,7 +156,7 @@ S.refreshGroupBrowse = function()
                     .. '–'
                     .. g.max
                     .. ' · '
-                    .. availability
+                    .. availabilityName(availability)
                     .. '\n'
                     .. peerLocationLine(key, 'Leader location')
                     .. '\n'
@@ -356,39 +361,8 @@ function U.CaptureGroupDraft()
     if U.groupNoteCount then
         U.groupNoteCount:SetText(#(draft.note or '') .. ' / 96')
     end
-    if U.groupFormPreview then
-        local activity = draft.kind == 'CUSTOM' and draft.custom or draft.activity
-        U.groupFormPreview:SetText(
-            '|cffffd36b'
-                .. (I.isGerman and tr('VORSCHAU') or 'PREVIEW')
-                .. '|r\n'
-                .. (activity ~= '' and activityName(activity) or (I.isGerman and tr('Aktivität wählen') or 'Select activity'))
-                .. '\nLevel '
-                .. (draft.min or '')
-                .. '–'
-                .. (draft.max or '')
-                .. '\n'
-                .. (I.isGerman and tr('Zielgröße: ') or 'Target size: ')
-                .. (draft.size or '')
-                .. '\n'
-                .. (I.isGerman and 'Gesucht:' or 'Needed:')
-                .. '\n'
-                .. (draft.tank or '0')
-                .. ' '
-                .. roleName('TANK')
-                .. ' · '
-                .. (draft.healer or '0')
-                .. ' '
-                .. roleName('HEALER')
-                .. '\n'
-                .. (draft.dd or '0')
-                .. ' '
-                .. roleName('DAMAGER')
-                .. ((draft.note or '') ~= '' and '\n\n' .. draft.note or '')
-        )
-    end
 end
-function U.ValidateGroupForm()
+function U.ValidateGroupForm(forTemplate)
     local activity = U.groupKind:GetText() == 'CUSTOM' and U.groupCustom:GetText() or U.groupActivity:GetText()
     if not L.Text(activity, 64) then
         (U.groupKind:GetText() == 'CUSTOM' and U.groupCustom or U.groupFields.min):SetFocus()
@@ -418,7 +392,8 @@ function U.ValidateGroupForm()
         U.Message('Das maximale Level muss mindestens dem Mindestlevel entsprechen.')
         return false
     end
-    if values.tank + values.healer + values.dd > values.size then
+    local present = forTemplate and 0 or A.GroupState().total
+    if values.tank + values.healer + values.dd > values.size - present then
         U.groupFields.size:SetFocus()
         U.Message(tr('Die gesuchten Rollen überschreiten die Zielgröße.'))
         return false
@@ -435,7 +410,7 @@ function U.DiscardGroupDraft()
     U.Refresh()
 end
 function U.SaveGroupTemplate()
-    if not U.ValidateGroupForm() then
+    if not U.ValidateGroupForm(true) then
         return
     end
     local name = U.groupTemplateName and U.groupTemplateName:GetText() or ''
@@ -453,7 +428,7 @@ function U.SaveGroupTemplate()
     local group = {
         mode = 'LFM',
         activity = U.groupKind:GetText() == 'CUSTOM' and U.groupCustom:GetText() or U.groupActivity:GetText(),
-        have = A.GroupRoles(),
+        have = U.GroupForm and U.GroupForm.Wishes and U.GroupForm.Wishes() or '',
     }
     for key, field in pairs(U.groupFields) do
         group[key] = key == 'note' and field:GetText() or tonumber(field:GetText())
@@ -559,13 +534,13 @@ function U.AddGroupFollow()
     local activity = U.followActivity:GetText()
     if Z.SetGroupFollow(activity, true) then
         U.followSelected = activity
-        U.Message(tr('Du folgst jetzt ') .. activity .. '.')
+        U.Message(tr('Du folgst jetzt ') .. activityName(activity) .. '.')
         S.refreshGroupFollows()
     end
 end
 function U.RemoveGroupFollow()
     if U.followSelected and Z.SetGroupFollow(U.followSelected, false) then
-        U.Message(Z.T('You no longer follow %s.', U.followSelected))
+        U.Message(Z.T('You no longer follow %s.', activityName(U.followSelected)))
         U.followSelected = nil
         S.refreshGroupFollows()
     end
@@ -586,7 +561,7 @@ S.refreshGroupFollows = function()
         items[#items + 1] = {
             selected = selectedActivity == U.followSelected,
             icon = NAV_ICONS.groups,
-            text = '|cffffd36b' .. selectedActivity .. '|r\n' .. activityCategory(selectedActivity),
+            text = '|cffffd36b' .. activityName(selectedActivity) .. '|r\n' .. tr(CATEGORY_NAMES[activityCategory(selectedActivity)] or 'Other'),
             click = function()
                 U.followSelected = selectedActivity
                 S.refreshGroupFollows()
@@ -602,7 +577,7 @@ S.refreshGroupFollows = function()
     U.followCount:SetText(#followed .. tr(' Aktivitäten gefolgt'))
     U.followRemove:SetEnabled(U.followSelected ~= nil)
     U.followDetail:SetText(
-        U.followSelected and (tr('Du erhältst einen Hinweis, wenn eine neue Gruppe für ') .. U.followSelected .. tr(' empfangen wird.'))
+        U.followSelected and (tr('Du erhältst einen Hinweis, wenn eine neue Gruppe für ') .. activityName(U.followSelected) .. tr(' empfangen wird.'))
             or tr('Wähle links eine gefolgte Aktivität aus.')
     )
 end
@@ -642,7 +617,10 @@ function U.OpenPvPRequester()
 end
 function U.OpenPvpPreview()
     local P = Z.PvPHelp
-    local ok, err = P and P.CanCall()
+    local ok, err
+    if P then
+        ok, err = P.CanCall()
+    end
     if not ok then
         U.Message(err or tr('Hilferuf nicht verfügbar.'))
         return

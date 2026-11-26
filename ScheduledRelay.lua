@@ -23,7 +23,7 @@ if type(S) ~= 'table' or type(S.internal) ~= 'table' then
     return
 end
 local I = S.internal
-local R = { MAX_BOX = 40, MAX_DEPOSITS = 3, MAX_PROBES = 16, PROBE_EVERY = 120, MAX_HANDS = 3, MAX_TRIES = 20 }
+local R = { MAX_BOX = 40, MAX_DEPOSITS = 3, MAX_PROBES = 16, PROBE_EVERY = 120, MAX_HANDS = 3, MAX_TRIES = 20, MAX_VIA = 10 }
 Z.ScheduledRelay = R
 local MAX = I.MAX
 local ACTIVE = { REQUESTED = true, CONFIRMED = true, WAITLIST = true }
@@ -126,9 +126,6 @@ function R.Effective(r)
     end
     return r.state, r.role, false
 end
-function R.EffectiveState(owner, eventID)
-    return R.Effective(S.Follow(owner, eventID))
-end
 
 -- Applying and signing off while the organizer cannot be reached -------------------------------------------
 function R.CanApply(owner, eventID)
@@ -226,6 +223,16 @@ local function receiveYes(key, f)
     local ownerKey = keyOf(f[5])
     local tok = ownerKey and S.Token(ownerKey, f[6])
     local r = tok and S.store.following[tok]
+    -- Only an answer to the own question counts: the one asked a moment ago (P) is remembered as a source of decisions.
+    local asked = R.asked[tok or '']
+    if r and asked and asked[key] and A.Clock() - asked[key] <= 120 and ownerOffline(ownerKey) then
+        local yes = R.yes[tok]
+        if not yes then
+            yes = {}
+            R.yes[tok] = yes
+        end
+        yes[key] = A.Clock()
+    end
     if not r or not r.pending or not ownerOffline(ownerKey) then
         return true
     end
@@ -262,8 +269,21 @@ local function receiveStatement(key, f)
             receipt(key, f[5], f[6], f[7], m.seq, 'N') -- refused for good: the carrier stops handing it over
             return true
         end
+        if not e.participants[memberKey] then
+            -- New members through one carrier are limited to those not yet settled directly with the organizer.
+            local carried = 0
+            for _, p in pairs(e.participants) do
+                if p.via == key then
+                    carried = carried + 1
+                end
+            end
+            if carried >= R.MAX_VIA then
+                receipt(key, f[5], f[6], f[7], m.seq, 'N')
+                return true
+            end
+        end
         if not e.participants[memberKey] and m.action == 'WITHDRAW' and e.status == 'OPEN' and e.public and A.Now() < e.endsAt and m.content == e.contentRevision
-            and count(e.participants) < S.MAX_PARTICIPANTS then
+            and count(e.participants) < S.MAX_ENTRIES then
             -- A sign-off that arrives before the application it follows: remember it, so the older application
             -- that arrives later through another carrier changes nothing (the direct way would answer STALE).
             e.participants[memberKey] = { state = 'WITHDRAWN', role = m.role, seq = m.seq, revision = 1, lastNonce = m.nonce, lastAction = 'WITHDRAW',
@@ -314,7 +334,25 @@ local function receiveDecision(key, f)
         return false
     end
     if memberKey == Z.me.key then
-        -- The member: a carried decision stands beside the verified state until the organizer confirms it.
+        -- The member: a carried decision stands beside the verified state until the organizer confirms it. It is
+        -- taken from those who answered the question for confirmed participants of this event (Y) only.
+        local tok = S.Token(ownerKey, f[6])
+        local yes = R.yes[tok]
+        if not yes or not yes[key] then
+            -- Not taken. A sender on a confirmed route is asked at once (P), at most once a minute per event and sender;
+            -- its Y then opens the way for the decision it keeps handing over.
+            local clock = A.Clock()
+            local mark = tok .. ':' .. key
+            local ownerTarget = ownerTargetOf(ownerKey, f[6])
+            if ownerTarget and ownerOffline(ownerKey) and clock >= (R.nudgeAt[mark] or 0) and count(R.nudgeAt) < 256 then
+                if send(key, { 'P', ownerTarget, f[6], math.max(r.appRevision or 0, r.relayed and r.relayed.appRevision or 0) }, 60, 'SCHEDULERELAYP:' .. mark) then
+                    R.nudgeAt[mark] = clock + 60
+                    R.asked[tok] = R.asked[tok] or {}
+                    R.asked[tok][key] = clock
+                end
+            end
+            return false
+        end
         if d.ackSeq > r.seq or d.appRevision <= (r.appRevision or 0) or r.relayed and d.appRevision <= r.relayed.appRevision then
             receipt(key, f[5], f[6], f[7], d.appRevision, 'A')
             return true
@@ -407,7 +445,7 @@ end
 
 -- Periodic work ----------------------------------------------------------------------------------------------
 R.probeAt, R.deposits, R.pushed, R.handAt = {}, {}, {}, {}
-R.probeFrom, R.tried = {}, {}
+R.probeFrom, R.tried, R.yes, R.asked, R.nudgeAt = {}, {}, {}, {}, {}
 local function probe(tok, r, clock)
     local ownerTarget = ownerTargetOf(r.ownerKey, r.id)
     if not ownerTarget then
@@ -433,6 +471,8 @@ local function probe(tok, r, clock)
         used = i + 1
         if send(key, { 'P', ownerTarget, r.id, math.max(r.appRevision or 0, r.relayed and r.relayed.appRevision or 0) }, 60, 'SCHEDULERELAYP:' .. tok .. ':' .. key) then
             sent = sent + 1
+            R.asked[tok] = R.asked[tok] or {}
+            R.asked[tok][key] = clock
         end
     end
     R.probeFrom[tok] = start + used -- the next round starts with the contacts this one did not reach
@@ -467,7 +507,12 @@ local function sweep(now, clock)
             end
         end
     end
-    for _, t in ipairs({ R.probeAt, R.deposits, R.probeFrom }) do
+    for mark, at in pairs(R.nudgeAt) do
+        if at < clock then
+            R.nudgeAt[mark] = nil
+        end
+    end
+    for _, t in ipairs({ R.probeAt, R.deposits, R.probeFrom, R.yes, R.asked }) do
         for tok in pairs(t) do
             if not tokens[tok] then
                 t[tok] = nil

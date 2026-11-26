@@ -11,7 +11,7 @@ function U.AutofillGroupNeeds()
     -- played with one tank (the flag carrier), whatever the size.
     local pvp=U.groupKind and U.groupKind:GetText()=='PVP'
     local needTank=pvp and 1 or size>=40 and 4 or size>=10 and 2 or 1;local needHeal=size>=40 and 8 or size>=20 and 4 or size>=10 and 2 or 1
-    local unknown=math.max(0,state.total-tank-heal-dd);local remaining=math.max(0,size-state.total);local wantedTank=math.min(remaining,math.max(0,needTank-tank));local wantedHeal=math.min(remaining-wantedTank,math.max(0,needHeal-heal));U.groupAutofilling=true;U.groupNeedsAuto=true
+    local unknown=math.max(0,state.total-tank-heal-dd);local remaining=math.max(0,size-state.total);local wantedTank=math.min(remaining,math.max(0,needTank-tank));local wantedHeal=math.min(remaining-wantedTank,math.max(0,needHeal-heal));U.groupAutofilling=true
     U.groupFields.tank:SetText(tostring(wantedTank));U.groupFields.healer:SetText(tostring(wantedHeal))
     U.groupFields.dd:SetText(tostring(math.max(0,remaining-wantedTank-wantedHeal)));U.groupAutofilling=false
     U.groupHave:SetText(state.total==1 and tr('Solo')or Z.T('%d players in your group',state.total));if unknown>0 then U.groupHave:SetText(U.groupHave:GetText()..'\n'..Z.T('%d group roles unknown; check the needed roles.',unknown))end
@@ -20,10 +20,10 @@ end
 function U.CreateSchedulePickers(H)
     local openGroup=U.OpenGroupEditor
     U.OpenGroupEditor=function(g)
-        U.groupLoading=true;U.groupNeedsAuto=not g and not Z.UIState.Draft('group');openGroup(g);U.groupLoading=false
+        U.groupLoading=true;openGroup(g);U.groupLoading=false
     end
     for _,key in ipairs({'tank','healer','dd'})do U.groupFields[key]:SetScript('OnTextChanged',function()
-        if not U.groupLoading and not U.groupAutofilling then U.groupNeedsAuto=false end;U.CaptureGroupDraft()
+        U.CaptureGroupDraft()
     end)end
     U.groupFields.size:SetScript('OnTextChanged',function()
         if not U.groupLoading and not U.groupAutofilling then U.AutofillGroupNeeds()end;U.CaptureGroupDraft()

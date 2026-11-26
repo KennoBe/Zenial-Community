@@ -33,17 +33,18 @@ function T.Local(epoch)
     local out={year=c.year,month=c.month,day=c.day,hour=c.hour,min=c.min,sec=c.sec or 0}
     out.offset=offset;out.wday=T.UTC(T.Epoch(out)).wday;return out
 end
+local GAP,TWICE='Local time conversion is unavailable or this clock time does not exist. Use an explicit UTC time.','This local clock time occurs twice. Choose an explicit UTC time.'
 function T.FromLocal(c)
     if not T.Valid(c)then return nil,'Date or time is invalid.'end
     local at=A.Call(time,{year=c.year,month=c.month,day=c.day,hour=c.hour,min=c.min,sec=c.sec or 0})
     if not L.Int(at,0,4102444799)or not same(c,T.Local(at))then
         at=T.Epoch(c)
         for i=1,3 do local observed=T.Local(at);if not observed then break end;at=T.Epoch(c)-observed.offset;if same(c,T.Local(at))then break end end
-        if not same(c,T.Local(at))then return nil,'Local time conversion is unavailable or this clock time does not exist. Use an explicit UTC time.'end
+        if not same(c,T.Local(at))then return nil,GAP end
     end
     -- Reject common repeated clock hours instead of silently choosing DST/standard.
     for _,delta in ipairs({-86400,-7200,-3600,-1800,1800,3600,7200,86400})do
-        if same(c,T.Local(at+delta))then return nil,'This local clock time occurs twice. Choose an explicit UTC time.'end
+        if same(c,T.Local(at+delta))then return nil,TWICE end
     end
     return at
 end
@@ -72,26 +73,15 @@ function T.Format(at)
     if not L.Text(clock,64)then clock=string.format('%02d:%02d',c.hour,c.min)end
     return Z.T('%s at %s',full,clock)..(localTime and''or' UTC')
 end
--- A calendar day is measured through native local date conversion, including
--- short/long DST days. UTC is used consistently only if local dates are absent.
-function T.DayKey(at,basis)
-    local c;if basis=="LOCAL"then c=T.Local(at)elseif basis=="UTC"then c=T.UTC(at)else c=T.Local(at)or T.UTC(at)end;return c and string.format('%04d-%02d-%02d',c.year,c.month,c.day)
-end
-function T.DayBounds(at)
-    if not L.Int(at,1,4102315199)then return nil end
-    local localDate=T.Local(at);local read=localDate and T.Local or T.UTC
-    local function key(epoch)local c=read(epoch);return c and string.format('%04d-%02d-%02d',c.year,c.month,c.day)end
-    local today=key(at);local low,high=at,at+36*3600
-    if not today or not key(high)or key(high)==today then return nil end
-    while high-low>1 do local middle=math.floor((low+high)/2);local k=key(middle);if not k then return nil end;if k==today then low=middle else high=middle end end
-    return today,high,localDate~=nil
-end
 function T.SameLocal(a,b)return same(T.Local(a),b)end
 function T.Weekly(base,index)
     local c=T.Local(base);if not c or not L.Int(index,1,520)then return nil,'Local time conversion is unavailable.'end
     -- Advance a calendar date, then convert that local civil time anew. This
     -- intentionally does not advance the absolute epoch by seven days.
     local next=T.UTC(T.Epoch(c)+index*7*86400);if not next then return nil,'Date or time is invalid.'end
-    return T.FromLocal(next)
+    local at,why=T.FromLocal(next)
+    -- Third value: that week has no usable local time (it does not exist or occurs twice); a series skips it.
+    if not at and(why==GAP or why==TWICE)then return nil,why,true end
+    return at,why
 end
 return T

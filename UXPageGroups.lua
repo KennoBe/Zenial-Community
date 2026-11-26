@@ -5,7 +5,7 @@ local A = Z.Adapter
 local S = U.Shared
 local tr = S.tr
 local DUNGEONS, PVP, label, button, navButton, edit, selector = S.DUNGEONS, S.PVP, S.label, S.button, S.navButton, S.edit, S.selector
-local checkbox, list, rows, peerOnline, activityName, panel = S.checkbox, S.list, S.rows, S.peerOnline, S.activityName, S.panel
+local checkbox, list, rows, peerOnline, panel = S.checkbox, S.list, S.rows, S.peerOnline, S.panel
 local panelContent, selectedPvpCall, decideGroup, showControl = S.panelContent, S.selectedPvpCall, S.decideGroup, S.showControl
 local makeModal = S.makeModal
 
@@ -162,17 +162,6 @@ function S.createGroupsPage(f)
             U.Publish()
         end
     end)
-    U.groupOwnTemplate = button(U.groupMineSummary, tr('Als Vorlage speichern'), 270, -78, 190, function()
-        local g = Z.db.lfg[1]
-        if not g then
-            return
-        end
-        U.OpenGroupEditor(g)
-        U.groupTemplateName:SetText(activityName(g.activity))
-        U.groupTemplateDuration:SetText(tostring(math.max(1, math.ceil((g.expires - A.Now()) / 60))))
-        U.Message('Check the template name and save it below.')
-    end)
-    U.groupOwnTemplate:Hide()
     U.groupActiveTemplate = selector(U.groupMineSummary, 'Manage templates', 12, -111, 275, { 'Choose template' }, function(value)
         U.groupActiveTemplateDelete:SetEnabled(Z.db.groupTemplates[value] ~= nil)
     end)
@@ -240,14 +229,6 @@ function S.createGroupsPage(f)
     U.groupFields.note = edit(U.groupForm, 'Note (optional)', 12, -118, 590, 96, true)
     U.groupNoteCount = label(U.groupForm, '0 / 96', 520, -187, 82)
     U.groupNoteCount:SetJustifyH('RIGHT')
-    U.groupFormPreview = label(U.groupForm, '|cffffd36bPREVIEW|r', 627, -118, 217, 'GameFontHighlight')
-    U.groupFormPreview:SetHeight(150)
-    if U.groupFormPreview.SetWordWrap then
-        U.groupFormPreview:SetWordWrap(true)
-    end
-    if U.groupFormPreview.SetNonSpaceWrap then
-        U.groupFormPreview:SetNonSpaceWrap(true)
-    end
     U.groupSave = button(U.groupForm, 'Publish group', 12, -225, 190, function()
         local now = A.Now()
         if not U.ValidateGroupForm() then
@@ -304,7 +285,6 @@ function S.createGroupsPage(f)
     U.groupTemplateDuration:SetScript('OnTextChanged', U.CaptureGroupDraft)
     U.groupTemplateName:SetScript('OnTextChanged', U.CaptureGroupDraft)
     U.groupTemplateSave = button(U.groupForm, 'Save template', 377, -292, 180, U.SaveGroupTemplate)
-    U.groupTemplateHint = label(U.groupForm, 'Saves locally without publishing the group.', 572, -292, 272)
     for _, field in pairs(U.groupFields) do
         field:SetScript('OnTextChanged', U.CaptureGroupDraft)
     end

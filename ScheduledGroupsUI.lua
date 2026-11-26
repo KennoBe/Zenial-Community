@@ -20,7 +20,7 @@ function U.ForgetScheduledActivity(key)
     U.RefreshActivityBoard();U.Refresh()
 end
 function U.OpenScheduledEditor(e)
-    U.scheduledEditingID=e and e.id;U.scheduledEditingRevision=e and e.revision
+    U.scheduledEditingID=e and e.id;U.scheduledEditingRevision=e and e.contentRevision -- the content revision: applications that arrive while editing do not block saving
     U.scheduledActivity:SetText(e and e.activity or'Blackrock Depths')
     local draft=not e and Z.UIState.ActivityInput('scheduled')
     local at=e and e.startsAt or math.floor((A.Now()+3600)/60)*60
@@ -40,17 +40,22 @@ function U.OpenScheduledEditor(e)
 end
 function U.SaveScheduledEditor()
     local starts,why=T.Parse(U.scheduledDate:GetText(),U.scheduledClock:GetText());if not starts then U.Message(tr(U.scheduledClock:GetText()=='LOCAL'and'Local date or time is invalid or ambiguous. Choose another time.'or why));return end
-    if not L.Text(U.scheduledNote:GetText(),96,true)then U.Message(tr('Comment must be no more than 96 bytes.'));return end
+    if not L.Text(U.scheduledNote:GetText(),96,true)then if U.SetScheduledFormMore then U.SetScheduledFormMore(true)end;U.Message(tr('Comment must be no more than 96 bytes.'));return end
+    if starts<=A.Now()then U.Message(tr('The start time has already passed.'));return end
+    local minutes=tonumber(U.scheduledDuration:GetText())
+    if not L.Int(minutes,15,480)then if U.SetScheduledFormMore then U.SetScheduledFormMore(true)end;U.Message(tr('The duration must be between 15 and 480 minutes.'));return end
     if not S.Enabled()then U.Message(tr('Publishing scheduled groups is unavailable.'));return end
     local owned=U.scheduledEditingID and S.GetOwned(U.scheduledEditingID);local public=0;for _,e in pairs(S.store.owned)do if e.status=='OPEN'and e.public then public=public+1 end end
     if not(owned and owned.public)and public>=S.MAX_PUBLIC then U.Message(tr('Publish no more than ten upcoming events.'));return end
     local input={activity=U.scheduledActivity:GetText(),startsAt=starts,duration=tonumber(U.scheduledDuration:GetText()),roleSlots={},note=U.scheduledNote:GetText(),organizerRole=U.scheduledOrganizerRole:GetText()}
     if input.organizerRole=='NONE'then input.organizerRole=''end
     if input.organizerRole~=''and input.organizerRole~='TANK'and input.organizerRole~='HEALER'and input.organizerRole~='DAMAGER'then U.Message(tr('Scheduled event fields are invalid.'));return end
-    for role,field in pairs(U.scheduledSlots)do local n=tonumber(field:GetText());if not L.Int(n,0,40)then U.Message(tr("Scheduled event fields are invalid."));return end;input.roleSlots[role]=n end
-    if input.organizerRole~=""then input.roleSlots[input.organizerRole]=input.roleSlots[input.organizerRole]+1 end
+    local places=0
+    for role,field in pairs(U.scheduledSlots)do local n=tonumber(field:GetText());if not L.Int(n,0,40)then U.Message(tr("Scheduled event fields are invalid."));return end;input.roleSlots[role]=n;places=places+n end
+    if input.organizerRole~=""then input.roleSlots[input.organizerRole]=input.roleSlots[input.organizerRole]+1;places=places+1 end
+    if places>40 then U.Message(tr('No more than 40 places in total.'));return end
     local key,err
-    if U.scheduledEditingID then local ok;ok,err=S.Edit(U.scheduledEditingID,input,U.scheduledEditingRevision);if ok then key=U.scheduledEditingID end
+    if U.scheduledEditingID then local ok;ok,err=S.Edit(U.scheduledEditingID,input,U.scheduledEditingRevision,true);if ok then key=U.scheduledEditingID end
     else key,err=S.Create(input)end
     if key then local published,why=S.Publish(key);if not published then if not U.scheduledEditingID then S.DeleteDraft(key)end;U.Message(tr(why));return end;U.scheduledOwner,U.scheduledID=Z.me.key,key;U.scheduledEditor:Hide();Z.UIState.ActivityInput('scheduled',false);U.RefreshScheduledGroups();U.Refresh()else U.Message(tr(err))end
 end
@@ -87,6 +92,8 @@ function U.RefreshScheduledGroups()
     local first=(U.scheduledPage-1)*25+1;local items={}
     for i=first,math.min(first+24,#data)do local e=data[i];local own=e.ownerKey==Z.me.key;local c=Z.db.contacts[e.ownerKey];local name=own and Z.me.target or c and c.target or e.ownerTarget or e.ownerKey
         items[#items+1]={selected=e.ownerKey==U.scheduledOwner and e.id==U.scheduledID,text=U.ActivityName(e.activity)..' · '..S.StateLabel(e.status)..'\n'..T.Format(e.startsAt)..'\n'..name..' · '..S.Participation(e.ownerKey,e.id),height=82,click=function()
+            -- The role of the application starts with the role of the profile, for each event chosen anew.
+            if not own and(U.scheduledOwner~=e.ownerKey or U.scheduledID~=e.id)then U.scheduledRole:SetText(L.Role(Z.db.roles)or'DAMAGER')end
             U.scheduledOwner,U.scheduledID=e.ownerKey,e.id;U.scheduledParticipant=nil
             if not own then S.Query(e.ownerKey,e.id)end;U.RefreshScheduledGroups()
         end}
@@ -186,7 +193,7 @@ function U.CreateScheduledGroups(parent,helpers)
     U.scheduledClock=selector(form,'Input timezone',338,-116,280,{'LOCAL','UTC'},nil,function(v)return tr(v=='LOCAL'and'Client local time'or'UTC')end)
     U.scheduledDuration=edit(form,'Duration (minutes)',16,-176,180,3);U.scheduledOrganizerRole=selector(form,'Organizer role',216,-176,402,{'NONE','TANK','HEALER','DAMAGER'})
     U.scheduledSlots={};for i,role in ipairs({'TANK','HEALER','DAMAGER'})do U.scheduledSlots[role]=edit(form,Z.Locale.Role(role)..' '..tr('slots'),16+(i-1)*208,-238,194,2)end
-    U.scheduledNote=edit(form,'Note',16,-300,618,192,true);U.scheduledNote:SetHeight(54)
+    U.scheduledNote=edit(form,'Note',16,-300,618,96,true);U.scheduledNote:SetHeight(54)
     U.scheduledEditorNotice=label(form,'',16,-388,618);U.scheduledEditorNotice:SetHeight(62)
     U.scheduledSave=button(form,tr('Save event'),16,-464,294,U.SaveScheduledEditor,'primary')
     U.scheduledBack=button(form,tr('Back'),324,-464,140,function()U.BackActivityStep()end);U.scheduledEditorCancel=button(form,tr('Cancel'),478,-464,140,function()form:Hide()end);H.makeModal(form);form:Hide()

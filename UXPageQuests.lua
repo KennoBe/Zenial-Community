@@ -272,8 +272,6 @@ function S.createQuestsPage(f)
     U.questFields.note = edit(U.questFormContent, tr('Notiz (optional)'), 0, -118, 640, 96, true)
     U.questNoteCount = label(U.questFormContent, '0 / 96', 558, -187, 82)
     U.questNoteCount:SetJustifyH('RIGHT')
-    U.questFormPreview = label(U.questFormContent, Z.Kit.Paint('goldText', 'VORSCHAU'), 665, -60, 167, 'GameFontHighlight')
-    U.questFormPreview:SetHeight(125)
     U.questSave = button(U.questFormContent, 'Erstellen', 0, -225, 190, function()
         local now = A.Now()
         if not U.ValidateQuestForm() then

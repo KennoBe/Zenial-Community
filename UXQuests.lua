@@ -616,19 +616,6 @@ function U.CaptureQuestDraft()
     if U.questNoteCount then
         U.questNoteCount:SetText(#(draft.note or '') .. ' / 96')
     end
-    if U.questFormPreview then
-        U.questFormPreview:SetText(
-            paint('goldText', 'VORSCHAU')
-                .. '\n'
-                .. (draft.title ~= '' and draft.title or 'Titel eingeben')
-                .. ((draft.zone or '') ~= '' and '\n' .. draft.zone or '')
-                .. '\nLevel '
-                .. (draft.min or '')
-                .. '–'
-                .. (draft.max or '')
-                .. ((draft.note or '') ~= '' and '\n\n' .. draft.note or '')
-        )
-    end
 end
 function U.ValidateQuestForm()
     if not L.Text(U.questFields.title:GetText(), 96) then
