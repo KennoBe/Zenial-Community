@@ -8,9 +8,6 @@ local german=locale=="deDE"
 local DE={
     ["My guild"]="Meine Gilde",
     ["My guild only"]="Nur meine Gilde",
-    ["Same guild"]="Gleiche Gilde",
-    ["Member filter"]="Mitgliederfilter",
-    ["Forget locally"]="Lokal vergessen",
     ["Withdraw and verify an active application before forgetting it."]="Zieh zuerst die aktive Anmeldung zurück und warte auf Bestätigung. Danach kannst du den Termin entfernen.",
     ["This role has no scheduled slot."]="Für diese Rolle ist kein Platz vorgesehen.",
     ["Saved event starts in 30 minutes"]="Gespeicherter Termin beginnt in 30 Minuten",
@@ -58,7 +55,6 @@ local DE={
     ["Saved scheduled groups are unavailable. Data was preserved."]="Gespeicherte Termine können nicht gelesen werden. Deine Daten bleiben erhalten.",
     ["Scheduled event fields are invalid."]="Terminfelder sind ungültig.",
     ["Organizer role needs a slot."]="Die Veranstalterrolle benötigt einen Platz.",
-    ["Scheduled storage is full (100 events). Archive or delete old drafts."]="Terminspeicher ist voll (100 Termine). Alte Entwürfe löschen oder Archivbereinigung abwarten.",
     ["Scheduled event changed or is no longer editable."]="Termin wurde geändert oder ist nicht mehr bearbeitbar.",
     ["Publishing scheduled groups is unavailable."]="Terminveröffentlichung ist nicht verfügbar.",
     ["Publish no more than ten upcoming events."]="Höchstens zehn kommende Termine veröffentlichen.",
@@ -77,16 +73,13 @@ local DE={
     ["Application changed or event is closed."]="Anmeldung wurde geändert oder Termin ist geschlossen.",
     ["This role is already full. Use the waitlist."]="Diese Rolle ist bereits voll. Bitte Ersatzbank verwenden.",
     ["No application"]="Keine Anmeldung",
-    ["Withdrawal pending"]="Rückzug ausstehend",
     ["Application pending"]="Anmeldung ausstehend",
     ["Saved state; verification pending"]="Rückmeldung zur Anmeldung ausstehend",
     ["Scheduled change saved."]="Terminänderung gespeichert.",
     ["Editing a published event invalidates existing applications. Participants must apply again."]="Änderungen entwerten bestehende Anmeldungen. Teilnehmer müssen sich neu anmelden.",
-    ["Save a private draft, then publish it explicitly. Times are stored as UTC."]="Speichere zuerst einen privaten Entwurf und veröffentliche ihn danach. Zeiten werden intern in UTC gespeichert.",
     ["%d events · page %d/%d"]="%d Termine · Seite %d/%d",
     ["Invalid scheduled data was rejected."]="Ungültige Termindaten wurden abgelehnt.",
     ["Select a scheduled event."]="Wähle einen Termin.",
-    ["Public announcements do not confirm attendance. Participant names are visible only to the organizer."]="Öffentliche Ankündigungen bestätigen keine Teilnahme. Teilnehmernamen sieht nur der Veranstalter.",
     ["Delivery: "]="Zustellung: ",
     ["Previous"]="Zurück",
     ["Next"]="Weiter",
@@ -102,10 +95,8 @@ local DE={
     ["Date and time: YYYY-MM-DD HH:MM"]="Datum und Uhrzeit: YYYY-MM-DD HH:MM",
     ["Save event"]="Termin speichern",
     ["Weekly instances: same organizer local time"]="Wöchentlich zur gleichen Ortszeit des Veranstalters",
-    ["Preview one to four future dates. New instances are private drafts with empty participant lists. No background recurrence."]="Prüfe ein bis vier kommende Termine. Sie bleiben private Entwürfe ohne Teilnehmer und werden nicht automatisch wiederholt.",
     ["Number of instances"]="Anzahl der Termine",
     ["Preview dates"]="Termine vorab prüfen",
-    ["Create reviewed instances"]="Geprüfte Termine anlegen",
     ["Scheduled application changed"]="Terminanmeldung geändert",
     ["Scheduled participation updated"]="Terminteilnahme aktualisiert",
     ["Scheduled event changed; apply again"]="Termin geändert; erneut anmelden",
@@ -117,18 +108,14 @@ local DE={
     ["Material planning"]="Materialplanung",
     ["Crafts for material planning"]="Herstellungsvorgänge",
     ["Show materials"]="Materialien anzeigen",
-    ["Hide materials"]="Rezepte anzeigen",
     ["Save list"]="Liste speichern",
     ["Offers"]="Angebotsliste",
     ["Need %d · Available %s · Missing %s"]="Benötigt %d · Verfügbar %s · Fehlt %s",
     ["Bag quantity unknown."]="Taschenbestand unbekannt.",
     ["In bags: %s"]="In Taschen: %s",
     ["Reserved for other lists: %s"]="Für andere Listen reserviert: %s",
-    ["Available %s for this list"]="Für diese Liste vorgemerkt: %s",
     ["Crafts to plan"]="Herstellungen",
     ["Set craft count explicitly; recipe yield is unknown."]="Lege die Zahl der Herstellungen selbst fest; die Rezeptausbeute ist unbekannt.",
-    ["Need %d · Bags %s · Allocated %s · Missing %s"]="Benötigt %d · In Taschen %s · Für diese Liste reserviert %s · Fehlt %s",
-    ["Marked %d · Still unconfirmed %d · Reserved elsewhere %s"]="Beschafft %d · Offen %d · Für andere Listen reserviert %s",
     ["Save shopping list"]="Einkaufsliste speichern",
     ["Open shopping lists"]="Einkaufslisten öffnen",
     ["Private shopping list saved."]="Private Einkaufsliste gespeichert.",
@@ -143,7 +130,6 @@ local DE={
     ["Shopping list storage is full (100 lists)."]="Du kannst höchstens 100 Einkaufslisten speichern.",
     ["This material plan is closed or its order is unavailable."]="Dieser Materialplan ist geschlossen oder sein Auftrag nicht verfügbar.",
     ["Manual amount is invalid."]="Manuelle Menge ist ungültig.",
-    ["Old orders use your exact local recipe, if available."]="Für ältere Aufträge wird, falls vorhanden, dein gespeichertes Rezept verwendet.",
     ["%d crafts · %s"]="%d Vorgänge · %s",
     ["Private list"]="Private Liste",
     ["Order unavailable"]="Auftrag nicht verfügbar",
@@ -167,49 +153,12 @@ local DE={
     ["Ingredient list completeness is unverified."]="Die Zutatenliste wurde nicht auf Vollständigkeit geprüft.",
 
     ["Today"]="Heute",
-    ["What shall we do today?"]="Was machen wir heute?",
-    ["No wish"]="Kein Wunsch",
     ["Questing"]="Quests erledigen",
     ["Dungeon"]="Dungeon",["Raid"]="Raid",
-    ["Farm materials"]="Materialien farmen",
     ["Level together"]="Zusammen leveln",
-    ["Any shared quests"]="Beliebige gemeinsame Quests",
-    ["Quest #%d"]="Quest #%d",
-    ["Priority %d"]="Priorität %d",
     ["Goal"]="Ziel",
-    ["Activity / material (private)"]="Aktivität / Material (privat)",
     ["Duration (minutes)"]="Laufzeit (Minuten)",
-    ["End session"]="Sitzung beenden",
-    ["Open offer"]="Angebot öffnen",
-    ["Session wishes are invalid."]="Sitzungswünsche sind ungültig.",
-    ["Choose no more than three wishes."]="Wähle höchstens drei Wünsche.",
-    ["Session wish type is invalid."]="Die Wunschkategorie ist ungültig.",
-    ["Wish priorities must be distinct: 1 to 3."]="Prioritäten müssen verschieden sein: 1 bis 3.",
-    ["Private wish text is too long."]="Der private Wunschtext ist zu lang. Bitte kürzen.",
-    ["Quest ID is invalid."]="Die Quest-ID ist ungültig.",
-    ["Choose a known activity or use a custom wish."]="Wähle eine bekannte Aktivität oder einen eigenen Wunsch.",
-    ["Enter a private activity or material name."]="Gib eine private Aktivität oder einen Materialnamen ein.",
-    ["Duplicate wishes are not allowed."]="Identische Wünsche sind nicht erlaubt.",
-    ["Saved session wishes use an unsupported version. Data was preserved."]="Die gespeicherten Wünsche haben eine unbekannte Version. Die Daten bleiben erhalten.",
-    ["Session duration must be 15 to 480 minutes."]="Die Laufzeit muss 15 bis 480 Minuten betragen.",
     ["Server time is unavailable."]="Die Serverzeit ist nicht verfügbar.",
-    ["Shared quest: %s"]="Gemeinsame Quest: %s",
-    ["Published group offer: %s"]="Veröffentlichtes Gruppenangebot: %s",
-    ["Wish %d: %s"]="Wunsch %d: %s",
-    ["Reported available"]="Als verfügbar gemeldet",
-    ["Already in your group"]="Bereits in deiner Gruppe",
-    ["Session match no longer available."]="Der Sitzungstreffer ist nicht mehr verfügbar.",
-    ["Player availability is unknown."]="Der Status des Spielers ist unbekannt.",
-    ["Whisper input is unavailable."]="Die Flüstereingabe ist nicht verfügbar.",
-    ["Unsaved changes. Save to update the matches."]="Speichere deine Änderungen, um die Treffer zu aktualisieren.",
-    ["Private wishes saved."]="Private Wünsche gespeichert.",
-    ["%d private wishes · %d min remaining"]="%d private Wünsche · noch %d Min.",
-    ["Session expired. Save explicitly to start again."]="Sitzung abgelaufen. Zum Neustart ausdrücklich speichern.",
-    ["No session wishes saved."]="Keine Sitzungswünsche gespeichert.",
-    ["Saved session wishes were invalid and could not be restored."]="Ungültige gespeicherte Wünsche konnten nicht wiederhergestellt werden.",
-    ["Matching requires addon exchange. Wishes stay private."]="Die Suche braucht den Addon-Austausch. Deine Wünsche bleiben privat.",
-    ["%d matching members"]="%d passende Mitglieder",
-    ["%d matches · %d contacts left to check"]="%d Treffer · noch %d Kontakte werden geprüft",
     ["No members match your filters. Reset the filters or press Refresh."]="Keine Mitglieder passen zu den Filtern. Setze die Filter zurück oder drücke Aktualisieren.",
     ["No community members found yet. Press Refresh to search again."]="Noch keine Community-Mitglieder gefunden. Drücke Aktualisieren, um erneut zu suchen.",
     ["No open groups match. Change the filters or create your own group under My Group."]="Keine offene Gruppe passt. Ändere die Filter oder erstelle unter Meine Gruppe eine eigene Gruppe.",
@@ -227,11 +176,7 @@ local DE={
     ["No updates yet. A saved search alerts you here when a matching offer appears."]="Noch keine Hinweise. Eine gespeicherte Suche meldet sich hier, sobald ein passendes Angebot erscheint.",
     ["Nothing stored locally. Drafts, templates and finished offers appear after you create an offer."]="Noch keine Einträge. Deine Entwürfe, Vorlagen und beendeten Angebote findest du hier.",
     ["No events in this period. Widen the period or reset the filters."]="Keine Ereignisse in diesem Zeitraum. Erweitere den Zeitraum oder setze die Filter zurück.",
-    ["No matching members. Save a session wish above so players can be matched."]="Keine passenden Mitglieder. Speichere oben einen Sitzungswunsch, um Mitspieler zu finden.",
     ["Drag to resize the window."]="Ziehen, um die Fenstergröße zu ändern.",
-    ["No verified matches in the considered candidates."]="Unter den bisher geprüften Spielern gibt es keine passenden Treffer.",
-    ["Select a member to see the evidence."]="Wähle ein Mitglied, um zu sehen, warum es passt.",
-    ["Matching uses existing shared quests."]="Bei der Suche zählen gemeinsame Quests.",
     ["ZenialCommunity %s or newer reported by two players. Update for new features and bug fixes. Click to dismiss."]="Zwei Spieler melden ZenialCommunity %s oder neuer. Aktualisiere für neue Funktionen und Fehlerbehebungen. Klicken zum Schließen.",
     ["Quest Groups"]="Questgruppen",
     ["%d quests covered; %d shared by everyone."]="%d Quests abgedeckt; %d von allen geteilt.",
@@ -288,9 +233,7 @@ local DE={
     ["Help commitment withdrawn"]="Hilfszusage zurückgezogen",
     ["New group for a followed activity"]="Neue Gruppe für eine gefolgte Aktivität",
     ["%d unread updates"]="%d ungelesene Meldungen",
-    ["%d new updates"]="%d neue Meldungen",
     ["New update"]="Neue Meldung",
-    ["Recent trade updates"]="Letzte Handelsmeldungen",
     ["\nClick to open"]="\nKlicken zum Öffnen",
     ["Welcome to ZENIAL Community"]="Willkommen bei ZENIAL Community",
     ["To see members, groups and offers, join ZENIAL Community once."]="Damit du Mitglieder, Gruppen und Angebote siehst, musst du der ZENIAL Community einmalig beitreten.",
@@ -302,7 +245,6 @@ local DE={
     ["Not joined yet"]="Noch nicht beigetreten",
     ["You are not in ZENIAL Community yet. Join to find members and offers."]="Du bist noch nicht in der ZENIAL Community. Tritt bei, damit du Mitglieder und Angebote findest.",
     ["Join now"]="Jetzt beitreten",
-    ["Copy invitation"]="Einladung kopieren",
     ["Select link"]="Link markieren",
     ["Click the link field and press Ctrl+C."]="Linkfeld anklicken und Strg+C drücken.",
     ["Press Ctrl+C. Then open the join window and press Ctrl+V."]="Strg+C drücken. Dann Beitrittsfenster öffnen und Strg+V drücken.",
@@ -315,9 +257,7 @@ local DE={
     ["The client's lounge API is unavailable."]="Die Lounge-API des Clients ist nicht verfügbar.",
     ["This client does not allow Battle.net lounges. Copy diagnostics."]="Dieser Client erlaubt keine Battle.net-Lounges. Bitte Diagnose kopieren.",
     ["Addon exchange or character identity is unavailable."]="Austausch ist deaktiviert oder Charakterdaten fehlen.",
-    ["The client's region is unavailable. Copy diagnostics."]="Die Region des Clients ist nicht verfügbar. Bitte Diagnose kopieren.",
     ["WoW project data is unavailable. Copy diagnostics."]="Die WoW-Projektkennung fehlt. Bitte Diagnose kopieren.",
-    ["Set up Battle.net network"]="Battle.net-Netzwerk einrichten",
     ["Directly reachable"]="Direkt erreichbar",
     ["Reported in network"]="Im Netzwerk gemeldet",
     ["Assigned lounges: %d/%d joined"]="Zugewiesene Lounges: %d/%d beigetreten",
@@ -329,8 +269,6 @@ local DE={
     ["Group catalog: copy this text or paste the operator's catalog."]="Gruppenkatalog: Text kopieren oder den Betreiberkatalog einfügen.",
     ["Import catalog"]="Katalog importieren",
     ["Group catalog saved."]="Gruppenkatalog gespeichert.",
-    ["Copy the invitation links. Confirm the lounge join in Battle.net or WoW."]="Einladungslinks kopieren. Lounge-Beitritt in Battle.net oder WoW bestätigen.",
-    ["Ask the operator for an invitation link."]="Betreiber nach einem Einladungslink fragen.",
     ["Battle.net network · 4.0"]="Battle.net-Netzwerk · 4.0",
     ["Community connection"]="Community-Verbindung",
     ["Community exchange is disabled."]="Der Community-Austausch ist deaktiviert.",
@@ -366,7 +304,6 @@ local DE={
     ["Scanning group members"]="Gruppenmitglieder werden geprüft",
     ["Group roster ready"]="Mitgliederliste geladen",
     ["No eligible game accounts found yet."]="Noch keine passenden Spielkonten gefunden.",
-    ["Character or Battle.net metadata is unavailable."]="Charakter- oder Battle.net-Daten noch nicht verfügbar.",
     ["Enter a full character name."]="Vollständigen Vor- und Nachnamen eingeben.",
     ["A connection test is already pending."]="Ein Verbindungstest läuft bereits.",
     ["Choose another character."]="Anderen Charakter auswählen.",
@@ -378,47 +315,43 @@ local DE={
     ["Group catalog is full."]="Gruppenkatalog voll.",
     ["Invalid group catalog."]="Ungültiger Gruppenkatalog.",
     ["At least one group is required."]="Mindestens eine Gruppe ist erforderlich.",
-    ["Network records"]="Netzwerkeinträge",
     ["Battle.net network connected"]="Battle.net-Netzwerk verbunden",
     ["Waiting for lounge membership"]="Warte auf Lounge-Beitritt",
     ["No matching players in lounge"]="Keine passenden Spieler in der Lounge",
     ["Excluded accounts: %s"]="Ausgefilterte Spielkonten: %s",
     ["Sent: %d · received: %d · rejected: %d · timeouts: %d"]="Gesendet: %d · empfangen: %d · verworfen: %d · abgelaufen: %d",
     ["Diagnostic report"]="Diagnosebericht",["Copy diagnostics"]="Diagnose kopieren",["Select all"]="Alles markieren",
-    ["Select all, then Ctrl+C. Refresh updates this snapshot. Escape closes the window."]="Alles markieren und Strg+C drücken. Mit Aktualisieren den Bericht erneuern; mit Escape das Fenster schließen.",
     ["Members"]="Mitglieder",["Crafting"]="Handwerk",["Groups"]="Gruppen",["Quest Help"]="Questhilfe",["Trade"]="Handel",["Profile"]="Profil",["History"]="Historie",["Addon Manager"]="Addon Manager",
-    ["Search"]="Suche",["Status"]="Status",["Class"]="Klasse",["Profession"]="Beruf",["Sort"]="Sortierung",["All"]="Alle",["Online"]="Online",["All classes"]="Alle Klassen",["All professions"]="Alle Berufe",["With profile"]="Mit Profil",["Name A–Z"]="Name A–Z",["Level ascending"]="Level aufsteigend",["Level descending"]="Level absteigend",["Last seen"]="Zuletzt gesehen",["Alliance"]="Allianz",["Unknown"]="Unbekannt",["never"]="nie",["just now"]="gerade eben",["You"]="Du",["member"]="Mitglied",["members"]="Mitglieder",["Guild"]="Gilde",["Professions"]="Berufe",["Role"]="Rolle",["Display name"]="Anzeigename",["Level"]="Level",["Version"]="Version",["Current"]="Vorhanden",["Needed"]="Gesucht",["Price"]="Preis",["PREVIEW"]="VORSCHAU",["YOUR CHARACTER"]="DEIN CHARAKTER",
+    ["Status"]="Status",["Class"]="Klasse",["Profession"]="Beruf",["Sort"]="Sortierung",["All"]="Alle",["Online"]="Online",["All classes"]="Alle Klassen",["All professions"]="Alle Berufe",["Name A–Z"]="Name A–Z",["Level ascending"]="Level aufsteigend",["Level descending"]="Level absteigend",["Last seen"]="Zuletzt gesehen",["Alliance"]="Allianz",["Unknown"]="Unbekannt",["never"]="nie",["just now"]="gerade eben",["You"]="Du",["member"]="Mitglied",["members"]="Mitglieder",["Guild"]="Gilde",["Professions"]="Berufe",["Role"]="Rolle",["Display name"]="Anzeigename",["Level"]="Level",["Version"]="Version",["Current"]="Vorhanden",["Needed"]="Gesucht",["Price"]="Preis",["PREVIEW"]="VORSCHAU",["YOUR CHARACTER"]="DEIN CHARAKTER",
     ["Group Search"]="Gruppe suchen",["My Group"]="Meine Gruppe",["My Applications"]="Meine Bewerbungen",["Follow Activities"]="Aktivitäten folgen",["PvP Help"]="PvP-Hilfe",["Quest Requests"]="Questanfragen",["My Quest Request"]="Meine Questanfrage",["My Help Offers"]="Meine Hilfsangebote",
-    ["Browse Offers"]="Angebote finden",["My Offers"]="Meine Angebote",["Character Profile"]="Charakterprofil",["Main & Alts"]="Main & Twinks",["Appearance"]="Darstellung",
+    ["My Offers"]="Meine Angebote",["Character Profile"]="Charakterprofil",["Appearance"]="Darstellung",
     ["Select"]="Auswählen",["Refresh"]="Aktualisieren",["Reset"]="Zurücksetzen",["Reset filters"]="Filter zurücksetzen",["Back"]="Zurück",["← Back to list"]="← Zurück zur Liste",["Cancel"]="Abbrechen",["Delete"]="Löschen",["Edit"]="Bearbeiten",["Whisper"]="Anflüstern",["Invite to group"]="In Gruppe einladen",
     ["Apply"]="Bewerbung senden",["Withdraw"]="Zurückziehen",["Withdraw application"]="Bewerbung zurückziehen",["Accept & invite"]="Annehmen & einladen",["Reject"]="Ablehnen",["Offer help"]="Hilfe anbieten",["Withdraw help offer"]="Hilfsangebot zurückziehen",["Show full history"]="Gesamten Verlauf anzeigen",
-    ["Create group"]="Gruppe erstellen",["Publish group"]="Gruppe veröffentlichen",["Create quest request"]="Questanfrage erstellen",["Publish quest request"]="Questanfrage veröffentlichen",["Publish offer"]="Angebot veröffentlichen",["Done / Delete"]="Erledigt / Löschen",["Discard draft"]="Entwurf verwerfen",["Save changes"]="Änderungen speichern",
+    ["Create group"]="Gruppe erstellen",["Publish group"]="Gruppe veröffentlichen",["Create quest request"]="Questanfrage erstellen",["Publish quest request"]="Questanfrage veröffentlichen",["Publish offer"]="Angebot veröffentlichen",["Discard draft"]="Entwurf verwerfen",["Save changes"]="Änderungen speichern",
     ["Category"]="Kategorie",["Activity"]="Aktivität",["Search activity"]="Aktivität suchen",["All categories"]="Alle Kategorien",["All activities"]="Alle Aktivitäten",["Custom activity"]="Eigene Aktivität",["Dungeons"]="Dungeons",["Raids"]="Raids",
     ["Level from"]="Level von",["Level to"]="Level bis",["Target size"]="Zielgröße",["Tank needed"]="Tank gesucht",["Healer needed"]="Heiler gesucht",["Damage needed"]="DD gesucht",["Current group"]="Vorhandene Gruppe",["Note (optional)"]="Notiz (optional)",["Search notes"]="Notiz durchsuchen",["My role"]="Meine Rolle",["Application note (optional)"]="Bewerbungsnotiz (optional)",
     ["No preference"]="Keine Angabe",["Tank"]="Tank",["Healer"]="Heiler",["Damage"]="DD",["Role not assigned"]="Rollen nicht zugewiesen",["Solo"]="Solo",
     ["Applied"]="Beworben",["Invited"]="Eingeladen",["Rejected"]="Abgelehnt",["Joined"]="Beigetreten",["Withdrawn"]="Zurückgezogen",
     ["Select a member."]="Wähle ein Mitglied aus.",["Select a group."]="Wähle eine Gruppe aus.",["Select an application."]="Wähle eine Bewerbung aus.",["Select a quest request."]="Wähle eine Questanfrage aus.",["Select a help offer."]="Wähle ein Hilfsangebot aus.",["Select an offer."]="Wähle ein Angebot aus.",["Select an active PvP help request."]="Wähle einen aktiven PvP-Hilferuf aus.",["Select an entry to view the request timeline."]="Wähle einen Eintrag aus, um den Verlauf der Anfrage zu sehen.",["Select a followed activity on the left."]="Wähle links eine gefolgte Aktivität aus.",
-    ["No active group."]="Du hast keine aktive Gruppe.",["No active quest request."]="Du hast keine aktive Questanfrage.",["No active offers."]="Keine aktiven Angebote vorhanden.",["No offers match the filter."]="Keine Angebote entsprechen dem Filter.",["No matching crafters or recipes found."]="Keine passenden Handwerker oder Rezepte gefunden.",["No own professions found."]="Keine eigenen Berufe gefunden.",["Profile not received yet"]="Profil noch nicht empfangen",
+    ["No active group."]="Du hast keine aktive Gruppe.",["No active quest request."]="Du hast keine aktive Questanfrage.",["No offers match the filter."]="Keine Angebote entsprechen dem Filter.",["No matching crafters or recipes found."]="Keine passenden Handwerker oder Rezepte gefunden.",["Profile not received yet"]="Profil noch nicht empfangen",
     ["Current location"]="Aufenthaltsort",["Current location:"]="Aufenthaltsort:",["Location"]="Ort",["Location:"]="Ort:",["Location unknown"]="Ort unbekannt",["Last known location"]="Letzter bekannter Ort",["Leader location"]="Leader-Ort",["Applicant location"]="Aufenthaltsort des Bewerbers",["Helper location"]="Aufenthaltsort des Helfers",["Leader current location"]="Aufenthaltsort des Leaders",["Quest area"]="Questgebiet",
     ["Incoming applicants"]="Eigene Bewerber",["My helpers"]="Eigene Helfer",["Previous contacts"]="Bisherige Kontakte",["Choose an applicant."]="Wähle einen Bewerber aus.",["Choose a helper."]="Wähle einen Helfer aus.",["No previous contacts stored."]="Noch keine früheren Kontakte gespeichert.",
-    ["Remove character"]="Charakter entfernen",["The logged-in character cannot be removed."]="Der eingeloggte Charakter kann nicht entfernt werden.",["Select a character on your server and faction."]="Wähle einen Charakter deines Servers und deiner Fraktion.",
-    ["Remove %s from the addon? Its saved profile, professions, recipes and drafts will be removed. History is kept. If it is your main, the logged-in character becomes main."]="%s aus dem Addon entfernen? Gespeichertes Profil, Berufe, Rezepte und Entwürfe werden entfernt. Die Historie bleibt erhalten. Ist dieser Charakter dein Main, wird der eingeloggte Charakter zum Main.",
+    ["The logged-in character cannot be removed."]="Der eingeloggte Charakter kann nicht entfernt werden.",["Select a character on your server and faction."]="Wähle einen Charakter deines Servers und deiner Fraktion.",
     ["Profession data is not ready yet."]="Die Berufsdaten sind noch nicht vollständig verfügbar.",["This profession is no longer learned."]="Dieser Beruf ist nicht mehr erlernt.",
     ["Main character"]="Hauptcharakter",["Recorded deaths in the last 60 minutes: %d / 2"]="Erfasste Tode in den letzten 60 Minuten: %d / 2",
-    ["The first character is selected as main automatically. Log in with your other characters in the same game world and faction. Other members see your main next to your alt in Members."]="Der erste Charakter wird automatisch als Main festgelegt. Logge dich mit deinen weiteren Charakteren in derselben Spielwelt und Fraktion ein. Andere Mitglieder sehen deinen Main neben deinem Twink unter Mitglieder.",
     ["Player, title or note"]="Spieler, Titel oder Notiz",["Zone"]="Zone",["Level"]="Level",["From quest log"]="Aus dem Questlog",["Manual / level group"]="Manuell / Levelgruppe",["Search quests"]="Quest suchen",["Title / level group"]="Titel / Levelgruppe",["Zone (optional)"]="Zone (optional)",["Duration in minutes"]="Ablauf in Minuten",["Message (optional)"]="Nachricht (optional)",
     ["Item, service or player"]="Gegenstand, Dienstleistung oder Spieler",["Type"]="Art",["Sell"]="Verkaufen",["Buy"]="Kaufen",["Service"]="Dienstleistung",["Wanted"]="Suche",["For sale"]="Verkaufe",["Item or service"]="Gegenstand oder Dienstleistung",["Quantity"]="Menge",["Total price gold"]="Gesamtpreis Gold",["Silver"]="Silber",["Copper"]="Kupfer",["Duration in minutes (max. 1440)"]="Ablauf in Minuten (max. 1440)",["offer"]="Angebot",["offers"]="Angebote",
     ["All item categories"]="Alle Gegenstandskategorien",["Weapons"]="Waffen",["Armor"]="Rüstung",["Bags"]="Taschen",["Consumables"]="Verbrauchsgüter",["Materials"]="Materialien",["Ammunition"]="Munition",["Recipes"]="Rezepte",["Quest items"]="Questgegenstände",["Miscellaneous"]="Sonstiges",["Unclassified"]="Nicht zugeordnet",["Unit price"]="Stückpreis",["Total price"]="Gesamtpreis",["Minimum unit price (gold)"]="Stückpreis min. (Gold)",["Maximum unit price (gold)"]="Stückpreis max. (Gold)",["Name"]="Name",["Unit price ascending"]="Stückpreis aufsteigend",["Unit price descending"]="Stückpreis absteigend",["Ending soon"]="Endet bald",["Invalid price filter"]="Ungültiger Preisfilter",
     ["Display name (optional)"]="Anzeigename (optional)",["Preferred role"]="Bevorzugte Rolle",["Save profile"]="Profil speichern",["Show profile in Members"]="Profil bei Mitglieder zeigen",["Set as main character"]="Als Hauptcharakter festlegen",["Default size"]="Standardgröße",["Reset position"]="Position zurücksetzen",
     ["Period"]="Zeitraum",["Last 7 days"]="Letzte 7 Tage",["Last 30 days"]="Letzte 30 Tage",["Last 90 days"]="Letzte 90 Tage",["Area"]="Bereich",["All areas"]="Alle Bereiche",["Own character"]="Eigener Charakter",["All characters"]="Alle Charaktere",["Player or content"]="Spieler oder Inhalt",["Delete player history"]="Spieler-Historie löschen",["Delete history"]="Historie löschen",
     ["Choose activities you want to be notified about when a new group is published."]="Wähle Aktivitäten aus, bei deren neu veröffentlichten Gruppen du benachrichtigt werden möchtest.",["Follow"]="Folgen",["Stop following"]="Nicht mehr folgen",
-    ["Receive PvP help requests"]="PvP-Hilferufe empfangen",["Area filter"]="Gebietsfilter",["All zones"]="Alle Gebiete",["Only my current zone"]="Nur meine aktuelle Zone",["I'm coming"]="Ich komme",["Show on map"]="Auf Karte zeigen",["Set waypoint"]="Wegpunkt setzen",["Block"]="Blockieren",["I'm being ganked. HELP!"]="Werde gegankt. HILFE!",["Update location"]="Standort aktualisieren",["Done"]="Erledigt",["Helpers committed"]="Helfer zugesagt",["Invite"]="Einladen",["Who is attacking you? Number and level (optional, e.g. 3 × level 60)"]="Wer greift dich an? Anzahl und Level (optional, z. B. 3× Level 60)",["Share targeted enemy details"]="Angaben zum anvisierten Gegner mitsenden",["I am being attacked by players"]="Ich werde von Spielern angegriffen",["Call for help"]="Hilfe rufen",
-    ["My professions"]="Meine Berufe",["MY PROFESSIONS"]="MEINE BERUFE",["MAIN AND ALTS"]="MAIN UND TWINKS",["APPEARANCE"]="DARSTELLUNG",["Scan professions"]="Berufe scannen",["Scan recipes"]="Rezepte scannen",["Recipe, item or profession"]="Rezept, Gegenstand oder Beruf",["Search for a profession, recipe or item."]="Suche nach einem Beruf, Rezept oder Gegenstand.",
-    ["Community tools for Azeroth"]="Community-Werkzeuge für Azeroth",["WoW Forever Discord"]="WoW Forever Discord",
+    ["Receive PvP help requests"]="PvP-Hilferufe empfangen",["Area filter"]="Gebietsfilter",["All zones"]="Alle Gebiete",["Only my current zone"]="Nur meine aktuelle Zone",["I'm coming"]="Ich komme",["Show on map"]="Auf Karte zeigen",["Set waypoint"]="Wegpunkt setzen",["Block"]="Blockieren",["I'm being ganked. HELP!"]="Werde gegankt. HILFE!",["Update location"]="Standort aktualisieren",["Done"]="Erledigt",["Helpers committed"]="Helfer zugesagt",["Invite"]="Einladen",["Who is attacking you? Number and level (optional, e.g. 3 × level 60)"]="Wer greift dich an? Anzahl und Level (optional, z. B. 3× Level 60)",["I am being attacked by players"]="Ich werde von Spielern angegriffen",["Call for help"]="Hilfe rufen",
+    ["My professions"]="Meine Berufe",["MY PROFESSIONS"]="MEINE BERUFE",["APPEARANCE"]="DARSTELLUNG",["Scan professions"]="Berufe scannen",["Recipe, item or profession"]="Rezept, Gegenstand oder Beruf",
+    ["WoW Forever Discord"]="WoW Forever Discord",
     ["Crit and last-hit effects with graphics, sound and a freely selectable position."]="Krit- und Last-Hit-Effekte mit Grafik, Klang und frei wählbarer Position.",["Local gunfire and reload sounds with random or fixed selection."]="Lokale Gewehr- und Nachladeklänge mit Zufalls- oder Festwahl.",["Local event and API capture for addon development."]="Lokaler Event- und API-Mitschnitt für die Addon-Entwicklung.",["Embedded interface could not be created."]="Eingebettete Oberfläche konnte nicht erstellt werden.",
     ["Installed and loaded"]="Installiert und geladen",["Not installed"]="Nicht installiert",["Installed but disabled"]="Installiert, aber deaktiviert",["Loading"]="Wird geladen",["Not loadable"]="Nicht ladbar",["Installed · available after /reload"]="Installiert · nach /reload verfügbar",["Installed · embedding update required"]="Installiert · Update für Einbettung erforderlich",["Open addon window"]="Addonfenster öffnen",["Open settings"]="Einstellungen öffnen",["Messenger with conversations and a shared local history."]="Messenger mit Gesprächen und gemeinsamem lokalen Verlauf.",["Unit frames, action bars, nameplates and cast bars with a layout editor."]="Einheitenframes, Aktionsleisten, Namensplaketten und Castbars mit Layout-Editor.",["Enable in AddOns menu"]="Im Addonmenü aktivieren",["/reload required"]="/reload erforderlich",
-    ["Application sent."]="Bewerbung gesendet.",["Application withdrawn."]="Bewerbung zurückgezogen.",["Help offer sent."]="Hilfeangebot gesendet.",["Help offer withdrawn."]="Hilfeangebot zurückgezogen.",["Invitation sent."]="Einladung gesendet.",["Invite sent."]="Einladung versendet.",["Profile saved."]="Profil gespeichert.",["Offer saved."]="Angebot gespeichert.",["Location updated."]="Standort aktualisiert.",["Help request ended."]="Hilferuf beendet.",["Help request is being sent."]="Hilferuf wird versendet.",["Commitment sent."]="Zusage gesendet.",["Commitment withdrawn."]="Zusage zurückgezogen.",["Waypoint set."]="Wegpunkt gesetzt.",
-    ["The group is no longer active."]="Die Gruppe ist nicht mehr aktiv.",["The quest request is no longer active."]="Die Questanfrage ist nicht mehr aktiv.",["You already applied."]="Du hast dich bereits beworben.",["You already offered help."]="Du hast bereits Hilfe angeboten.",["No active application."]="Keine aktive Bewerbung.",["No active help offer."]="Kein aktives Hilfeangebot.",["Application is no longer active."]="Bewerbung nicht mehr aktiv.",["Help offer is no longer active."]="Hilfsangebot nicht mehr aktiv.",["Invalid role."]="Ungültige Rolle.",["Exchange unavailable."]="Austausch nicht verfügbar.",["Same realm only."]="Nur derselbe Realm.",["Queue full."]="Warteschlange voll.",["Data is invalid or too large."]="Daten sind ungültig oder zu groß.",
+    ["Application sent."]="Bewerbung gesendet.",["Application withdrawn."]="Bewerbung zurückgezogen.",["Help offer sent."]="Hilfeangebot gesendet.",["Invitation sent."]="Einladung gesendet.",["Profile saved."]="Profil gespeichert.",["Offer saved."]="Angebot gespeichert.",["Location updated."]="Standort aktualisiert.",["Help request ended."]="Hilferuf beendet.",["Help request is being sent."]="Hilferuf wird versendet.",["Commitment sent."]="Zusage gesendet.",["Commitment withdrawn."]="Zusage zurückgezogen.",["Waypoint set."]="Wegpunkt gesetzt.",
+    ["The group is no longer active."]="Die Gruppe ist nicht mehr aktiv.",["The quest request is no longer active."]="Die Questanfrage ist nicht mehr aktiv.",["You already applied."]="Du hast dich bereits beworben.",["You already offered help."]="Du hast bereits Hilfe angeboten.",["No active application."]="Keine aktive Bewerbung.",["No active help offer."]="Kein aktives Hilfeangebot.",["Application is no longer active."]="Bewerbung nicht mehr aktiv.",["Help offer is no longer active."]="Hilfsangebot nicht mehr aktiv.",["Invalid role."]="Ungültige Rolle.",["Exchange unavailable."]="Austausch nicht verfügbar.",["Queue full."]="Warteschlange voll.",["Data is invalid or too large."]="Daten sind ungültig oder zu groß.",
     ["Please enter a valid activity."]="Bitte eine gültige Aktivität angeben.",["Please enter a title or level group."]="Bitte einen Titel oder eine Levelgruppe angeben.",["Please enter an item or service."]="Bitte einen Gegenstand oder eine Dienstleistung angeben.",["Input is too long."]="Eingabe ist zu lang.",["Item not found."]="Gegenstand nicht gefunden.",["The target size has already been reached."]="Die Zielgröße ist bereits erreicht.",["Confirm first that players are attacking you."]="Bestätige zuerst, dass Spieler dich angreifen.",
     ["Group published"]="Gruppe veröffentlicht",["Group updated"]="Gruppe aktualisiert",["Group closed"]="Gruppe geschlossen",["Group expired"]="Gruppe abgelaufen",["Quest request created"]="Questanfrage erstellt",["Quest request updated"]="Questanfrage geändert",["Quest request closed"]="Questanfrage geschlossen",["Quest request expired"]="Questanfrage abgelaufen",
     ["Application received"]="Bewerbung erhalten",["Application queued"]="Versand vorgemerkt",["Application delivered"]="Versand bestätigt",["Application failed"]="Versand fehlgeschlagen",["Application withdrawn"]="Bewerbung zurückgezogen",["Withdrawal received"]="Rücknahme erhalten",["Invitation sent"]="Einladung gesendet",["Invitation received"]="Einladung erhalten",["Rejection sent"]="Ablehnung gesendet",["Rejection received"]="Ablehnung erhalten",["Observed together in group"]="Gemeinsam in Gruppe beobachtet",["Delivery pending"]="Versand vorgemerkt",["Transport confirmed"]="Übertragung bestätigt",["Delivery failed"]="Versand fehlgeschlagen",["Status transfer unknown"]="Zustellung nicht bestätigt",["Area unknown"]="Gebiet unbekannt",
@@ -435,19 +368,17 @@ local ACTIVITY_DE={
 
 local EXTRA_DE={
     ["Favorites"]="Favoriten",["Craft orders"]="Herstellungsaufträge",["Connection"]="Verbindung",["Management"]="Verwaltung",["Search alerts"]="Suchalarme",
-    ["Save search"]="Suche speichern",["Pause"]="Pausieren",["Duplicate"]="Duplizieren",["Completed"]="Erledigt",["Open / relist"]="Öffnen / erneut anbieten",
-    ["Save as template"]="Als Vorlage speichern",["Delete locally"]="Lokal löschen",["Save as local draft"]="Als lokalen Entwurf speichern",
+    ["Pause"]="Pausieren",["Duplicate"]="Duplizieren",["Completed"]="Erledigt",["Open / relist"]="Öffnen / erneut anbieten",
+    ["Save as template"]="Als Vorlage speichern",["Save as local draft"]="Als lokalen Entwurf speichern",
     ["My level matches"]="Mein Level passt",["My role is needed"]="Meine Rolle wird gesucht",["Available leaders only"]="Nur verfügbare Leiter",["Choose a preferred role in your profile to use the role filter."]="Wähle im Profil eine bevorzugte Rolle, um den Rollenfilter zu verwenden.",
     ["Template"]="Vorlage",["Use template"]="Vorlage verwenden",["Request crafting"]="Herstellung anfragen",["Check again now"]="Jetzt erneut prüfen",
     ["Create group or template"]="Gruppe oder Vorlage erstellen",["Manage templates"]="Vorlagen verwalten",["Choose template"]="Vorlage wählen",["Delete template"]="Vorlage löschen",
-    ["New templates are created in the group form. Templates remain local and do not publish a group."]="Neue Vorlagen legst du im Gruppenformular an. Sie bleiben privat und veröffentlichen keine Gruppe.",
-    ["Template name"]="Vorlagenname",["Duration (min.)"]="Laufzeit (Min.)",["Save template"]="Vorlage speichern",["Saves locally without publishing the group."]="Nur auf diesem Gerät gespeichert; die Gruppe wird nicht veröffentlicht.",
-    ["Choose a template first."]="Wähle zuerst eine Vorlage.",["Group template deleted."]="Gruppenvorlage gelöscht.",["Check the template name and save it below."]="Vorlagenname prüfen und unten speichern.",
+    ["Template name"]="Vorlagenname",["Duration (min.)"]="Laufzeit (Min.)",["Save template"]="Vorlage speichern",
+    ["Choose a template first."]="Wähle zuerst eine Vorlage.",["Group template deleted."]="Gruppenvorlage gelöscht.",
     ["Please enter a template name."]="Bitte einen Vorlagennamen angeben.",["The duration must be between 1 and 1440 minutes."]="Die Laufzeit muss zwischen 1 und 1440 Minuten liegen.",["Group template saved. It was not published."]="Gruppenvorlage gespeichert. Sie wurde nicht veröffentlicht.",
     ["Template is invalid."]="Vorlage ist ungültig.",["A maximum of 20 group templates is allowed."]="Maximal 20 Gruppenvorlagen.",
-    ["Private note"]="Private Notiz",["Save note"]="Notiz speichern",["Favorite"]="Favorit",["Search"]="Suchen",
-    ["Connected – no other players confirmed yet"]="Verbunden – noch keine anderen Spieler bestätigt",
-    ["Loading data"]="Daten werden nachgeladen",["Transmission throttled"]="Übertragung gedrosselt",["Older addon version detected"]="Ältere Addonversion erkannt",["Connected"]="Verbunden",
+    ["Private note"]="Private Notiz",["Favorite"]="Favorit",["Search"]="Suchen",
+    ["Transmission throttled"]="Übertragung gedrosselt",["Connected"]="Verbunden",
     ["Channel"]="Kanal",["participants"]="Teilnehmer",["Confirmed reachable"]="Bestätigt erreichbar",["older version"]="alte Version",["Queue"]="Warteschlange",["Inbound"]="Eingang",["fragments"]="Fragmente",["Last received"]="Letzter Empfang",["Last error"]="Letzter Fehler",["Recipe search"]="Rezeptsuche",["checked"]="geprüft",["matches"]="Treffer",
 }
 for english,deutsch in pairs(EXTRA_DE)do DE[english]=deutsch end
@@ -467,21 +398,21 @@ DE["Fishing"]="Angeln"
 DE["Skinning"]="Kürschnerei"
 DE["Jewelcrafting"]="Juwelenschleifen"
 DE["Inscription"]="Inschriftenkunde"
-DE["Enable community connection"]="Community-Verbindung aktivieren"
-DE["Automatic member discovery"]="Mitglieder automatisch erkennen"
+
+
 DE["Visible profile"]="Profil sichtbar machen"
 DE["Share professions and recipes"]="Berufe und Rezepte teilen"
-DE["Share guild"]="Gilde teilen"
+
 DE["Request from %s: %s"]="Anfrage an %s: %s"
-DE["Select the note's member before saving."]="Wähle den Charakter der Notiz vor dem Speichern aus."
+
 DE["Private note saved."]="Private Notiz gespeichert."
 DE["Broadcast queued"]="Versand vorgemerkt"
 DE["Broadcast sent"]="Hilferuf gesendet"
 DE["Broadcast failed"]="Versand fehlgeschlagen"
 DE["Waiting to broadcast"]="Warte auf Versand"
 DE["ACTIVE PVP HELP REQUEST"]="AKTIVER PVP-HILFERUF"
-DE["%d minutes remaining · %s · %d volunteers"]="Noch %d Minuten · %s · %d Zusagen"
-DE["Delivery to individual helpers is unknown until they respond."]="Der Empfang einzelner Helfer ist erst durch ihre Antwort bekannt."
+
+
 DE[" followed activities"]=" Aktivitäten gefolgt"
 DE[" orders"]=" Aufträge"
 DE[" professions"]=" Berufen"
@@ -493,8 +424,8 @@ DE[" recipes"]=" Rezepte"
 DE[" recipes from "]=" Rezepte aus "
 DE[" items\nStatus: "]=" Stück\nStatus: "
 DE[" matches"]=" Treffer"
-DE[" needs PvP help\n"]=" braucht PvP-Hilfe\n"
-DE[" needs PvP help|r"]=" braucht PvP-Hilfe|r"
+
+
 DE[" is received."]=" empfangen wird."
 DE[" checked · "]=" geprüft · "
 DE[" saved searches"]=" gespeicherte Suchen"
@@ -502,12 +433,12 @@ DE[" is invalid."]=" ist ungültig."
 DE[" local entries"]=" lokale Einträge"
 DE[" new groups for followed activities\nClick to open"]=" neue Gruppen für gefolgte Aktivitäten\nKlicken zum Öffnen"
 DE[" new PvP help requests\nClick to open"]=" neue PvP-Hilferufe\nKlicken zum Öffnen"
-DE[" new trade match"]=" neuer Handelstreffer"
+
 DE[" open groups"]=" offene Gruppen"
 DE[" no response"]=" ohne Antwort"
 DE[" really delete?"]=" wirklich löschen?"
 DE[" · Click to open"]=" · Klicken zum Öffnen"
-DE[" · Materials: "]=" · Materialien: "
+
 DE[" · Tip: "]=" · Trinkgeld: "
 DE[" · complete"]=" · abgeschlossen"
 DE[" · running"]=" · läuft"
@@ -522,19 +453,19 @@ DE["0 open groups"]="0 offene Gruppen"
 DE["1 event"]="1 Ereignis"
 DE["1 result"]="1 Ergebnis"
 DE["1 open group"]="1 offene Gruppe"
-DE["Choose an activity"]="Aktivität wählen"
+
 DE["All history entries for "]="Alle Historieneinträge zu "
 DE["Send request"]="Anfrage senden"
 DE["Offer template saved."]="Angebotsvorlage gespeichert."
 DE["Accepted"]="Angenommen"
-DE["Only characters in your current game world and faction are shown and linked."]="Angezeigt und verknüpft werden nur Charaktere deiner aktuellen Spielwelt und Fraktion."
+
 DE["Location\nSelect an applicant."]="Aufenthaltsort\nWähle einen Bewerber aus."
 DE["Location\nSelect a helper."]="Aufenthaltsort\nWähle einen Helfer aus."
 DE["Order updated."]="Auftrag aktualisiert."
 DE["Outgoing"]="Ausgang"
 DE["Incoming"]="Eingang"
-DE["Targeted enemy at death: "]="Beim Tod anvisierter Gegner: "
-DE["No readable enemy player was targeted when you died."]="Beim Tod war kein lesbarer gegnerischer Spieler anvisiert."
+
+
 DE["Ready"]="Bereit"
 DE["Previous contacts\nNo previous contacts saved."]="Bisherige Kontakte\nNoch keine früheren Kontakte gespeichert."
 DE["Previous contacts\nSelect an applicant."]="Bisherige Kontakte\nWähle einen Bewerber aus."
@@ -548,9 +479,9 @@ DE["You will be notified when a new group for "]="Du erhältst einen Hinweis, we
 DE["You follow "]="Du folgst "
 DE["You now follow "]="Du folgst jetzt "
 DE["You can now prepare a PvP help request."]="Du kannst jetzt einen PvP-Hilferuf vorbereiten."
-DE["Invitation sent; addon status could not be delivered."]="Einladung gesendet; Addon-Status konnte nicht übertragen werden."
+
 DE["Recorded professions: "]="Erfasste Berufe: "
-DE["Window size and the last section are saved per installation. Your existing position and scale settings are retained."]="Fenstergröße und letzter Bereich werden pro Installation gespeichert. Die Position und Skalierung bleiben mit deinen bisherigen Einstellungen kompatibel."
+
 DE["Yesterday, "]="Gestern, "
 DE["Requested quantity"]="Gewünschte Stückzahl"
 DE["Group"]="Gruppe"
@@ -566,7 +497,7 @@ DE["Materials provided"]="Materialien werden gestellt"
 DE["New group: "]="Neue Gruppe: "
 DE["Group no longer available"]="Nicht mehr verfügbare Gruppe"
 DE["Quest request no longer available"]="Nicht mehr verfügbare Questanfrage"
-DE["REQUEST PVP HELP"]="PVP-HILFE RUFEN"
+
 DE["Price filter is invalid."]="Preisfilter ist ungültig."
 DE["PvP help active"]="PvP-Hilfe aktiv"
 DE["Requesting recipes …"]="Rezepte werden angefragt …"
@@ -583,9 +514,9 @@ DE["Select a crafting order."]="Wähle einen Herstellungsauftrag aus."
 DE["Target size: "]="Zielgröße: "
 DE["Volunteer offer withdrawn"]="Zusage zurückgezogen"
 DE["Withdraw offer to help"]="Zusage zurückziehen"
-DE["\nTargeted enemy at death: "]="\nBeim Tod anvisierter Gegner: "
-DE["\nYour offer to help was sent."]="\nDeine Zusage wurde gesendet."
-DE["\nRequesting details from the sender …"]="\nDetails werden beim Absender angefragt …"
+
+
+
 DE["\nThis player can craft the requested recipe."]="\nDieser Spieler kann das gesuchte Rezept herstellen."
 DE["\nClick to open"]="\nKlicken zum Öffnen"
 DE["\nLast recipe scan: "]="\nLetzter Rezeptscan: "
@@ -593,22 +524,22 @@ DE["\nTime remaining: "]="\nLäuft noch "
 DE["\nMaterials: "]="\nMaterialien: "
 DE["\nRecipe catalog: "]="\nRezeptkatalog: "
 DE["\nSelect a recipe on the right."]="\nWähle rechts ein Rezept aus."
-DE["\nremaining "]="\nnoch "
-DE["new applications and offers to help"]="neue Bewerbungen und Hilfsangebote"
-DE["new group application"]="neue Gruppenbewerbung"
-DE["new group applications"]="neue Gruppenbewerbungen"
-DE["new offers to help"]="neue Hilfsangebote"
-DE["new offer to help"]="neues Hilfsangebot"
+
+
+
+
+
+
 DE["not run yet"]="noch nicht ausgeführt"
 DE["provided"]="werden gestellt"
 DE["not provided"]="nicht gestellt"
 DE["|cffff5555SCAN NOT RUN|r\n"]="|cffff5555SCAN NICHT AUSGEFÜHRT|r\n"
 DE["|cffff5555IMPORTANT: OPEN THE CORRECT PROFESSION WINDOW|r"]="|cffff5555WICHTIG: DAS PASSENDE BERUFSFENSTER MUSS GEÖFFNET SEIN|r"
 DE["|cffffd36bREQUEST CRAFTING|r"]="|cffffd36bHERSTELLUNG ANFRAGEN|r"
-DE["|cffffd36bMAIN AND ALTS|r"]="|cffffd36bMAIN UND TWINKS|r"
+
 DE["|r\nNew matching offers, changes and closures trigger a local alert. Existing results after login remain quiet."]="|r\nNeue passende Angebote, Änderungen und Schließungen erzeugen einen lokalen Hinweis. Bestehende Treffer nach Login bleiben still."
 DE["|r\nRecipe in the catalog of "]="|r\nRezept im Katalog von "
-DE["|r\nStatus: "]="|r\nStatus: "
+
 DE["Open your own profession window and keep the recipe list visible. ZenialCommunity scans automatically. If a complete unfiltered list is not safely available, found recipes are only added and the previous complete catalog is preserved."]="Öffne dein eigenes WoW-Berufsfenster und lasse die Rezeptliste sichtbar. ZenialCommunity scannt dann automatisch. Ist die vollständige ungefilterte Liste nicht sicher verfügbar, werden erkannte Rezepte nur ergänzt und nichts aus dem letzten vollständigen Stand gelöscht."
 DE["Confirm handoff"]="Übergabe bestätigen"
 DE["Handoff confirmed"]="Übergabe bestätigt"
@@ -642,11 +573,11 @@ DE[" · your own entry"]=" · dein eigener Eintrag"
 DE["Saved search"]="Gespeicherte Suche"
 DE["All offers"]="Alle Angebote"
 DE["Required safety APIs are unavailable."]="Erforderliche Sicherheits-APIs sind nicht verfügbar."
-DE["Good tank"]="Guter Tank"
-DE["Good healer"]="Guter Heiler"
+
+
 DE["Enchanter"]="Verzauberer"
 DE["Leveling partner"]="Levelpartner"
-DE["Reliable player"]="Zuverlässiger Mitspieler"
+
 DE["Private categories"]="Private Kategorien"
 DE["Private category"]="Private Kategorie"
 DE["Contact"]="Kontakt"
@@ -660,8 +591,8 @@ DE["Planned"]="Geplant"
 DE["Any time"]="Jeder Zeitpunkt"
 DE["Organized by me"]="Von mir organisiert"
 DE["My applications"]="Meine Anmeldungen"
-DE["Matches your wish: %s"]="Passt zu deinem Wunsch: %s"
-DE["Outside your session time budget"]="Außerhalb deines Zeitbudgets"
+
+
 DE["Saved activity"]="Gespeicherte Aktivität"
 DE["Saved application"]="Gespeicherte Anmeldung"
 DE["This activity is no longer available."]="Diese Aktivität ist nicht mehr verfügbar."
@@ -669,31 +600,30 @@ DE["%d activities · page %d/%d"]="%d Aktivitäten · Seite %d/%d"
 DE["All details"]="Alle Details"
 DE["Manage applicants"]="Bewerber verwalten"
 DE["Select an activity to see its details and actions."]="Wähle eine Aktivität, um Details und Aktionen zu sehen."
-DE["No matching activities received."]="Keine passenden Aktivitäten empfangen."
-DE["Now for you"]="Jetzt passend"
-DE["Planned today"]="Heute geplant"
-DE["Your activities today"]="Deine Aktivitäten heute"
-DE["Matching fellow players"]="Passende Mitspieler"
-DE["Open own tasks"]="Eigene offene Aufgaben"
-DE["No open tasks today."]="Heute keine offenen Aufgaben."
-DE["Now relevant"]="Jetzt relevant"
-DE["Matching player"]="Passender Mitspieler"
+
+
+
+
+
+
+
+
+
 DE["Next appointments"]="Nächste Termine"
-DE["No upcoming appointments today."]="Heute keine anstehenden Termine."
+
 DE["Creates a live request that you review before it is published."]="Erstellt eine Live-Anfrage, die du vor der Veröffentlichung prüfst."
 DE["Creates a scheduled event that others can apply to after you publish it."]="Erstellt einen Termin, auf den sich andere nach der Veröffentlichung bewerben können."
-DE["Choose what you want to do; your wishes stay private."]="Wähle, worauf du Lust hast. Deine Wünsche bleiben privat."
-DE["Edit private wishes"]="Private Wünsche bearbeiten"
+
+
 DE["Create activity"]="Aktivität erstellen"
 DE["Open activity"]="Aktivität öffnen"
 DE["Enter an activity."]="Gib eine Aktivität ein."
-DE["Choose now or planned. Review the details before publishing."]="Wähle jetzt oder geplant. Prüfe die Details vor dem Veröffentlichen."
-DE["Back to activities"]="Zurück zu Aktivitäten"
+
+
 DE["Back to today"]="Zurück zu Heute"
 DE["Character profile"]="Charakterprofil"
-DE["Main & alts"]="Main und Twinks"
+
 DE["Display settings"]="Darstellung"
-DE["Connection and privacy"]="Verbindung und Datenschutz"
 DE["Contact history"]="Kontaktverlauf"
 DE["All shopping lists"]="Alle Materiallisten"
 DE["All requests"]="Alle"
@@ -709,28 +639,28 @@ DE["Follow activities"]="Gemerkte Aktivitäten"
 DE["Continue"]="Weiter"
 DE["Archive"]="Archiv"
 DE["Group details"]="Gruppendetails"
-DE["More matches are available under Activities."]="Weitere Treffer findest du unter Aktivitäten."
+
 DE["All private categories"]="Alle privaten Kategorien"
 DE["Recontact suggestions"]="Wiederkontakt-Vorschläge"
 DE["Your private categories:"]="Deine privaten Kategorien:"
 DE["Previously observed together in a group."]="Bereits gemeinsam in einer Gruppe beobachtet."
 DE["Last together %d days ago."]="Zuletzt gemeinsam vor %d Tagen."
 DE["Select a contact to mark. Categories stay private."]="Wähle einen Kontakt zum Markieren. Kategorien bleiben privat."
-DE["Offer marking after observed groups"]="Markierung nach beobachteten Gruppen anbieten"
+
 DE["Private categories use a newer format."]="Private Kategorien verwenden ein neueres Format."
 DE["Invalid private category."]="Ungültige private Kategorie."
 DE["Select an unblocked contact."]="Wähle einen nicht blockierten Kontakt."
 DE["Maximum 1,000 categorized contacts."]="Maximal 1.000 kategorisierte Kontakte."
 DE["Contact storage is full."]="Kontaktspeicher ist voll."
-DE["Matches wish %d"]="Passend zu Wunsch %d"
-DE["Wish %d · %s"]="Wunsch %d · %s"
-DE["No wishes chosen"]="Noch keine Wünsche"
-DE["No active wishes"]="Keine aktiven Wünsche"
-DE["Your wishes for today · private"]="Deine Wünsche für heute · privat"
-DE["Choose up to three private wishes. Matching activities and players appear below."]="Wähle bis zu drei private Wünsche. Passende Aktivitäten und Mitspieler erscheinen darunter."
-DE["%d private wishes for today"]="%d private Wünsche für heute"
-DE["Save wishes"]="Wünsche speichern"
-DE["Clear wishes"]="Wünsche löschen"
+
+
+
+
+
+
+
+
+
 DE["Show Addon Manager in the left navigation"]="Addon Manager in der linken Navigation anzeigen"
 DE["Whisper is unavailable."]="Anflüstern ist momentan nicht verfügbar."
 DE["Organizer: %s"]="Ersteller: %s"
@@ -782,16 +712,16 @@ DE["Details"]="Details"
 DE["Quest assistance"]="Questhilfe"
 DE["Date (YYYY-MM-DD)"]="Datum (JJJJ-MM-TT)"
 DE["Time (HH:MM)"]="Uhrzeit (HH:MM)"
-DE["Review the dates. Each date is saved as a private draft."]="Termine prüfen. Jeder Termin wird als privater Entwurf gespeichert."
+
 DE["Craft count is the number of crafting operations."]="Anzahl der Herstellungsvorgänge, unabhängig von der gewünschten Stückzahl."
 DE["Offer expires (minutes)"]="Laufzeit (Minuten)"
 DE["Min. unit price (gold)"]="Stückpreis ab (Gold)"
 DE["Max. unit price (gold)"]="Stückpreis bis (Gold)"
-DE["Continues tomorrow"]="Endet am nächsten Tag"
-DE["Unsaved changes"]="Ungespeicherte Änderungen"
+
+
 DE["Message (optional)"]="Nachricht (optional)"
 DE["Save"]="Speichern"
-DE["Favorites / categories"]="Favoriten / Kategorien"
+
 DE["Private contact categories"]="Private Kontaktkategorien"
 DE["Category name"]="Kategoriename"
 DE["Rename"]="Umbenennen"
@@ -846,7 +776,7 @@ DE["%s was cancelled."]="%s wurde abgesagt."
 DE["Archive this event? It will be cancelled and participants will be notified."]="Diesen Termin archivieren? Er wird abgesagt und die Teilnehmer werden benachrichtigt."
 DE["Archive this activity? The public offer will end. Its details remain in the archive."]="Diese Aktivität archivieren? Das öffentliche Angebot endet. Die Details bleiben im Archiv erhalten."
 DE["The activity changed. Reopen it before archiving."]="Die Aktivität hat sich geändert. Öffne sie vor dem Archivieren erneut."
-DE["Private drafts are visible only to you until published."]="Private Entwürfe sind bis zur Veröffentlichung nur für dich sichtbar."
+
 DE["Create again"]="Erneut erstellen"
 DE["New activity"]="Neue Aktivität"
 DE["Choose a new date and time, then create the activity."]="Wähle ein neues Datum und eine neue Uhrzeit und erstelle die Aktivität."
@@ -944,14 +874,67 @@ DE["Use the bell in the window header for notifications. PvP receiving is contro
 DE["Map, minimap and slash command entry points remain available."]="Karten-, Minimap- und Slash-Befehl-Einstiege bleiben verfügbar."
 DE["Technical details"]="Technische Details"
 DE["Hide technical details"]="Technische Details ausblenden"
-DE["Status and account-wide export; includes all characters, chat, and private notes."]="Status und Export fürs ganze Konto; enthält alle Charaktere, Chat und private Notizen."
+
 
 DE["Disabled"]="Ausgeschaltet"
 DE["Export stopped"]="Export angehalten"
-DE["Chat logging required"]="Chatlogging erforderlich"
-DE["Connection probe"]="Verbindungsprobe"
+
+
 DE["Export active"]="Export aktiv"
 DE["Account-wide export for all characters, including chat and private notes."]="Accountweiter Export für alle Charaktere, einschließlich Chat und privater Notizen."
+
+-- Translations added with the review fixes
+DE["Helpers reached: %d"]="Helfer erreicht: %d"
+DE["The start time has already passed."]="Die Startzeit liegt bereits in der Vergangenheit."
+DE["The duration must be between 15 and 480 minutes."]="Die Dauer muss zwischen 15 und 480 Minuten liegen."
+DE["No more than 40 places in total."]="Insgesamt sind höchstens 40 Plätze möglich."
+DE["Only %d free places. Convert the group to a raid to invite more."]="Nur %d freie Plätze. Wandle die Gruppe in einen Schlachtzug um, um mehr einzuladen."
+DE["Pixel packets: %d · data lines: %d · timer-origin: %d"]="Pixelpakete: %d · Datenzeilen: %d · davon zeitgesteuert: %d"
+DE["Quest areas: "]="Questflächen: "
+DE["Pixel strip transmitting."]="Pixelstreifen sendet."
+DE["Set up once. Your data appears in your browser or on an external device."]="Einmal einrichten. Deine Daten erscheinen im Browser oder auf einem externen Gerät."
+DE["Enable companion export · all data"]="Companion-Export aktivieren · alle Daten"
+DE["Export applies to your whole account and every character, including chat and private notes. Categories cannot be enabled separately."]="Export gilt accountweit für alle Charaktere, einschließlich Chat und privater Notizen. Die Kategorien lassen sich nicht einzeln freigeben."
+DE["Show quest objective areas · paused in combat"]="Quest-Zielflächen anzeigen · im Kampf pausiert"
+DE["Choose events"]="Ereignisse auswählen"
+DE["Read only: the browser and external devices execute nothing in the game. Pixels must be visibly rendered. The companion marks data as stale when minimized or reception stops."]="Nur lesend: Browser und externe Geräte führen nichts im Spiel aus. Pixel müssen sichtbar gerendert werden. Bei Minimierung oder fehlendem Empfang zeigt der Companion die Daten als veraltet."
+DE["Download companion:"]="Companion herunterladen:"
+DE["New in 5.x: your WoW in a browser and on external devices. The companion is optional."]="Neu in 5.x: Dein WoW im Browser und auf externen Geräten. Der Companion ist optional."
+DE["Events go to the companion, where they can trigger actions."]="Ereignisse gehen an den Companion und können dort Aktionen auslösen."
+DE["Send events"]="Ereignisse übertragen"
+DE["ZENIAL Companion · optional"]="ZENIAL Companion · optional"
+DE["Read only. Export applies to your whole account, including chat and private notes."]="Nur lesend. Der Export gilt accountweit und umfasst auch Chat und private Notizen."
+DE["Enable companion export"]="Companion-Export aktivieren"
+DE["Set up companion"]="Companion einrichten"
+DE["Death"]="Tod"
+DE["Level up"]="Stufenaufstieg"
+DE["PvP call for help"]="PvP-Hilferuf"
+DE["Enemy defeated"]="Gegner besiegt"
+DE["Defeated by enemy"]="Von Gegner besiegt"
+DE["Enemy is targeting you"]="Gegner hat dich im Ziel"
+DE["Stealthed enemy spotted"]="Getarnter Gegner entdeckt"
+DE["Rival nearby"]="Rivale in der Nähe"
+DE["Kill"]="Kill"
+DE["Killing streak"]="Kill-Serie"
+DE["Critical hit"]="Kritischer Treffer"
+DE["Proc"]="Proc"
+DE["Accept"]="Annehmen"
+DE["Mark as ready"]="Als bereit markieren"
+DE["Realm correction backup"]="Backup der Realm-Korrektur"
+DE["Another search is still running. Click Refresh afterwards."]="Es läuft noch eine andere Suche. Danach auf „Aktualisieren“ klicken."
+DE["This order cannot be abandoned locally."]="Dieser Auftrag kann nicht lokal aufgegeben werden."
+DE["Give up order"]="Auftrag aufgeben"
+DE["Select activity"]="Aktivität auswählen"
+DE["Slot %d"]="Slot %d"
+DE["Bank"]="Bank"
+DE["Material"]="Material"
+DE["Kills %d"]="Kills %d"
+DE["Watch"]="Watch"
+DE["Offer"]="Unbenanntes Angebot"
+DE["Right now"]="Gerade jetzt"
+DE["Online: %s"]="Online: %s"
+DE["ZENIAL Addon"]="ZENIAL-Addon"
+DE["Zenial Deck"]="Zenial Deck"
 
 local reverse={}
 DE["Find"]="Finden"
@@ -1005,17 +988,17 @@ addReverseTranslations(ACTIVITY_DE)
 -- Keep the tooltip label concise without adding a second reverse translation for "Gilde".
 DE["Same guild"]="Gilde"
 
-DE["Quest Helper"]="Questhelfer"
+
 DE["Shared Quests"]="Gemeinsame Quests"
 DE["Help Requests"]="Hilfegesuche"
 DE["My Help Request"]="Mein Hilfegesuch"
-DE["Share my quests with the community"]="Meine Quests mit der Community teilen"
+
 DE["Your group"]="Deine Gruppe"
 DE["In group"]="In Gruppe"
 DE["Busy"]="Beschäftigt"
 DE["Available"]="Verfügbar"
 DE["Find help for this quest"]="Hilfe für diese Quest suchen"
-DE["Your existing request or draft is open for editing."]="Deine vorhandene Anfrage oder dein Entwurf ist zur Bearbeitung geöffnet."
+
 DE["Quests"]="Quests"
 DE["Other quests"]="Sonstige Quests"
 DE["Fellow players"]="Mitspieler"
@@ -1059,7 +1042,7 @@ DE["Merged character profiles backup"]="Backup zusammengeführter Charakterprofi
 -- Social diary
 DE["Social diary"]="Begegnungstagebuch"
 DE["Private and local. Never shared."]="Privat gespeichert; wird nicht geteilt."
-DE["Record encounters automatically"]="Begegnungen automatisch erfassen"
+
 DE["Target"]="Ziel"
 DE["Mouseover"]="Mouseover"
 DE["Nameplates"]="Namensplaketten"
@@ -1075,33 +1058,33 @@ DE["Players"]="Spieler"
 DE["%d encounters"]="%d Begegnungen"
 DE["The social diary uses a newer format."]="Das Begegnungstagebuch nutzt ein neueres Format."
 DE["Select a player."]="Wähle einen Spieler."
-DE["Automatic recording is off. Known players, favorites and notes are still listed."]="Automatische Erfassung ist aus. Bekannte Spieler, Favoriten und Notizen werden weiterhin angezeigt."
+
 DE["First contact"]="Erstkontakt"
 DE["No recorded encounters."]="Keine erfassten Begegnungen."
 DE["Remove known mark"]="Nicht mehr bekannt"
 DE["Mark as known"]="Als bekannt markieren"
 DE["Remove favorite"]="Favorit entfernen"
-DE["Add favorite"]="Als Favorit"
-DE["Note saved."]="Notiz gespeichert."
+
+
 DE["Remove from diary"]="Aus Tagebuch entfernen"
 DE["Diary entries removed."]="Tagebucheinträge entfernt."
 DE["Targeted"]="Als Ziel erfasst"
-DE["Seen nearby"]="In der Nähe gesehen"
+
 DE["Dungeon together"]="Gemeinsam im Dungeon"
-DE["Invalid source."]="Ungültige Quelle."
+
 DE["The social diary is full."]="Das Begegnungstagebuch ist voll."
 
 -- Account overview
 DE["Account overview"]="Accountübersicht"
 DE["My characters"]="Meine Charaktere"
-DE["MY CHARACTERS"]="MEINE CHARAKTERE"
+
 DE["Record own characters at login"]="Eigene Charaktere beim Login erfassen"
 DE["Record bags and opened bank"]="Taschen und geöffnete Bank erfassen"
 DE["Faction"]="Fraktion"
 DE["Item search"]="Gegenstandssuche"
 DE["Characters"]="Charaktere"
-DE["Total gold"]="Gesamtgold"
-DE["Gold unknown"]="Gold unbekannt"
+
+
 DE["Logged in"]="Eingeloggt"
 DE["as of %s"]="Stand %s"
 DE["Last login"]="Letzter Login"
@@ -1112,7 +1095,7 @@ DE["Maximum level"]="Höchststufe"
 DE["%d%% of a level"]="%d%% einer Stufe"
 DE["Resting"]="Erholt sich"
 DE["Played time"]="Spielzeit"
-DE["Type /played on this character."]="Mit diesem Charakter /played eingeben."
+
 DE["%dd %dh"]="%d T %d Std."
 DE["%dh %dm"]="%d Std. %d Min."
 DE["None recorded"]="Keine erfasst"
@@ -1121,18 +1104,18 @@ DE["Not recorded"]="Nicht erfasst"
 DE["Bank never opened while recording."]="Bankdaten fehlen. Öffne die Bank bei aktiver Erfassung, um sie aufzunehmen."
 DE["No matching items in recorded bags and banks."]="Keine passenden Gegenstände in erfassten Taschen und Banken."
 DE["%d item names are still loading. Search again in a moment."]="%d Gegenstandsnamen werden noch geladen. Gleich erneut suchen."
-DE["Select a character."]="Wähle einen Charakter."
-DE["Recording is off. Turn it on to update each character at login."]="Erfassung aus. Aktiviere sie, um Charakterdaten bei jedem Login zu aktualisieren."
+
+
 DE["The account overview uses a newer format."]="Die Accountübersicht nutzt ein neueres Format."
 
 -- My characters
 DE["Neutral"]="Neutral"
 DE["Alt"]="Twink"
 -- ZENIAL Utility takeover
-DE["Take over data from ZENIAL Utility"]="Daten aus ZENIAL Utility übernehmen"
-DE["ZENIAL Utility is not loaded."]="ZENIAL Utility ist nicht geladen."
-DE["%d characters taken over from ZENIAL Utility."]="%d Charaktere aus ZENIAL Utility übernommen."
-DE["%d characters taken over from ZENIAL Utility, %d not assignable."]="%d Charaktere aus ZENIAL Utility übernommen, %d ohne sichere Zuordnung."
+
+
+
+
 DE["ZENIAL Utility data taken over %s"]="ZENIAL-Utility-Daten übernommen %s"
 DE["%d not assignable"]="%d ohne sichere Zuordnung"
 DE["taken over %s"]="übernommen %s"
@@ -1144,16 +1127,16 @@ DE["no gold recorded for %d"]="ohne Goldstand: %d"
 DE["oldest value %s"]="ältester Stand %s"
 DE["%d with professions"]="%d mit Berufen"
 DE["Recording is off."]="Erfassung ist aus."
-DE["updated %s"]="aktualisiert %s"
-DE["Holds matching items"]="Hat passende Gegenstände"
+
+
 DE["hidden"]="ausgeblendet"
 DE["Main and alts are set in the game world and faction you are logged in to. Log in there to change this character."]="Main und Twinks werden in der Spielwelt und Fraktion festgelegt, in der du eingeloggt bist. Melde dich dort an, um diesen Charakter zu ändern."
 DE["Main of this game world and faction. Without your own choice the first character saved with ZENIAL becomes main; you can change it on any alt."]="Main dieser Spielwelt und Fraktion. Ohne eigene Wahl wird der erste mit ZENIAL gespeicherte Charakter Main; du kannst das an jedem Twink ändern."
 DE["Alt of %s. Other members see this link only while your profile is visible."]="Twink von %s. Andere Mitglieder sehen diese Verknüpfung nur, solange dein Profil sichtbar ist."
 DE["Hidden from this overview. Its data is kept; show hidden characters to see it again."]="In dieser Übersicht ausgeblendet. Die Daten bleiben erhalten; mit „Ausgeblendete anzeigen“ wieder sichtbar."
-DE["Items matching \"%s\""]="Gegenstände zu „%s“"
+
 DE["Bags and bank are only searched once their recording is on."]="Taschen und Bank werden erst durchsucht, wenn ihre Erfassung eingeschaltet ist."
-DE["No character or recorded item matches this search."]="Kein Charakter und kein erfasster Gegenstand passt zu dieser Suche."
+
 DE["All matching characters are hidden. Turn on \"Show hidden\" to see them."]="Alle passenden Charaktere sind ausgeblendet. „Ausgeblendete anzeigen“ einschalten, um sie zu sehen."
 DE["No character for this realm and faction."]="Kein Charakter für diesen Realm und diese Fraktion."
 DE["No characters recorded yet."]="Noch keine Charaktere erfasst."
@@ -1163,10 +1146,10 @@ DE["The logged-in character always stays visible and cannot be deleted."]="Der e
 DE["The logged-in character always stays visible."]="Der eingeloggte Charakter bleibt immer sichtbar."
 DE["Data can only be deleted for characters of the game world and faction you are logged in to."]="Daten lassen sich nur für Charaktere der Spielwelt und Fraktion löschen, in der du eingeloggt bist."
 DE["Delete all data of %s? This removes its saved profile, professions, recipes, drafts and private overview data (gold, rested XP, bags, bank) as well as notes, favorites and categories stored for it. History is kept. If it is your main, the logged-in character becomes main. This cannot be undone."]="Alle Daten von %s löschen? Entfernt werden das gespeicherte Profil, Berufe, Rezepte, Entwürfe und private Übersichtsdaten (Gold, Erholungsbonus, Taschen, Bank) sowie dazu gespeicherte Notizen, Favoriten und Kategorien. Die Historie bleibt erhalten. War er dein Main, wird der eingeloggte Charakter Main. Das lässt sich nicht rückgängig machen."
-DE["Character or item"]="Charakter oder Gegenstand"
+
 DE["Show hidden"]="Ausgeblendete anzeigen"
 DE["Last updated"]="Zuletzt aktualisiert"
-DE["More actions"]="Weitere Aktionen"
+
 DE["%s is now your main."]="%s ist jetzt dein Main."
 DE["Delete character data…"]="Charakterdaten löschen …"
 DE["Delete character data"]="Charakterdaten löschen"
@@ -1186,8 +1169,8 @@ DE["Contact: %s"]="Kontakt: %s"
 DE["Invitation submitted to %s; awaiting response."]="Einladung an %s angefordert; warte auf Antwort."
 DE["Known characters"]="Bekannte Charaktere"
 DE["+%d more characters"]="+%d weitere Charaktere"
-DE["%d player identity"]="%d Spieleridentität"
-DE["%d player identities"]="%d Spieleridentitäten"
+
+
 DE["%d player"]="%d Spieler"
 DE["%d players"]="%d Spieler"
 DE["%d character"]="%d Charakter"
@@ -1195,12 +1178,12 @@ DE["%d characters"]="%d Charaktere"
 DE["Match"]="Treffer"
 DE["%s has not been seen with ZENIAL yet."]="ZENIAL hat %s noch nicht erfasst."
 DE["Main and alts as declared by their addon; not verified."]="Hauptcharakter und Twinks laut Addon; nicht geprüft."
-DE["Click again to collapse the characters."]="Erneut klicken, um die Charaktere einzuklappen."
-DE["Click to show the characters."]="Klicken, um die Charaktere anzuzeigen."
+
+
 
 -- My characters: sheet layout, tabs, saved items and recording options
 DE["Stored privately"]="Privat gespeichert"
-DE["Stored only on this computer and never shared with other players. The optional Companion export is a separate setting. Your public profile is separate from this data."]="Nur auf diesem Computer gespeichert und nie mit anderen Spielern geteilt. Der optionale Companion-Export ist eine eigene Einstellung. Dein öffentliches Profil ist von diesen Daten getrennt."
+
 DE["Overview"]="Übersicht"
 DE["Inventory search"]="Inventarsuche"
 DE["Search the recorded bags and bank compartments of your characters."]="Durchsuche aufgezeichnete Taschen und Bankfächer deiner Charaktere."
@@ -1209,15 +1192,15 @@ DE["%d characters · Bags %d · Bank %d"]="%d Charaktere · Taschen %d · Bank %
 DE["Private for %s"]="Privat für %s"
 DE["Advanced"]="Erweitert"
 DE["Quick filter"]="Schnellfilter"
-DE["A private note draft is open in the members page. Save it there first."]="Auf der Mitspielerseite ist ein Entwurf der privaten Notiz geöffnet. Speichere ihn zuerst dort."
+
 DE["Public profile: current character"]="Öffentliches Profil: aktueller Charakter"
 DE["Search character"]="Charakter suchen"
 DE["Back to results"]="Zurück zu Ergebnissen"
 DE["More"]="Mehr"
 DE["Recording options"]="Aufnahmeoptionen"
 DE["GOLD"]="GOLD"
-DE["RESTED XP"]="ERHOLUNGS-EP"
-DE["PLAYED TIME"]="SPIELZEIT"
+
+
 DE["PROFESSIONS"]="BERUFE"
 DE["BAGS"]="TASCHEN"
 DE["BANK"]="BANK"
@@ -1257,7 +1240,7 @@ DE["Offers, requests and search alerts"]="Angebote, Gesuche und Suchalarme"
 DE["Your characters, public profile and item search"]="Deine Charaktere, dein öffentliches Profil und die Gegenstandssuche"
 DE["Past contacts and requests"]="Vergangene Kontakte und Anfragen"
 DE["Settings of your installed ZENIAL addons"]="Einstellungen deiner installierten ZENIAL-Addons"
-DE["Your wishes, open tasks and next appointments"]="Deine Wünsche, offenen Aufgaben und nächsten Termine"
+
 DE["Display, privacy, tools and data"]="Darstellung, Privatsphäre, Werkzeuge und Daten"
 DE["Players you were in a group with appear here automatically."]="Spieler, mit denen du in einer Gruppe warst, erscheinen hier automatisch."
 -- English display copy is separate from stable source keys and stored values.
@@ -1291,7 +1274,7 @@ DE["Planned groups"]="Geplante Gruppen"
 DE["Requests waiting for you"]="Anfragen an dich"
 DE["Your open requests"]="Deine offenen Anfragen"
 DE["In demand right now"]="Gerade gefragt"
-DE["Open for"]="Offen für"
+
 DE["Stays open until you go offline."]="Bleibt offen, bis du offline gehst."
 DE["Wanted roles"]="Gesuchte Rollen"
 DE["%d of %d places wanted"]="%d von %d Plätzen gesucht"
@@ -1332,7 +1315,7 @@ DE["Confirmed"]="Bestätigt"
 DE["Looking for: %s"]="Sucht: %s"
 DE["Roles"]="Rollen"
 DE["Stop search"]="Suche beenden"
-DE["Group of %s"]="Gruppe von %s"
+
 DE["%d/%d players"]="%d/%d Spieler"
 DE["Requests (%d)"]="Anfragen (%d)"
 DE["Full"]="Voll"
@@ -1365,11 +1348,11 @@ DE["Manage my group"]="Meine Gruppe verwalten"
 DE["I am looking for a group"]="Ich suche eine Gruppe"
 DE["No group is open for this instance. Create one, or look for a group and let others find you."]="Für diese Instanz ist keine Gruppe offen. Erstelle eine oder suche eine Gruppe, damit andere dich finden."
 DE["Nobody is looking for this instance right now."]="Gerade sucht niemand für diese Instanz."
-DE["1 open request"]="1 offene Anfrage"
-DE["%d open requests"]="%d offene Anfragen"
+
+
 DE["Close group"]="Gruppe schließen"
 DE["My search"]="Meine Suche"
-DE["You are looking for a group for %s."]="Du suchst eine Gruppe für %s."
+
 DE["Show instance"]="Instanz anzeigen"
 DE["My requests"]="Meine Anfragen"
 DE["1 request is waiting for an answer."]="1 Anfrage wartet auf Antwort."
@@ -1380,11 +1363,11 @@ DE["Players looking"]="Suchende"
 DE["Search instance"]="Instanz suchen"
 DE["Open PvP Help"]="PvP-Hilfe öffnen"
 DE["Back to overview"]="Zur Übersicht"
-DE["Notify me about new groups"]="Bei neuer Gruppe benachrichtigen"
+
 DE["Open Dungeon Journal"]="Dungeon Journal öffnen"
 DE["My roles"]="Meine Rollen"
 DE["Start search"]="Suche starten"
-DE["Plan a group"]="Gruppe planen"
+
 DE["List view"]="Listenansicht"
 DE["Tile view"]="Kachelansicht"
 DE["Close your group before you look for one."]="Schließe zuerst deine Gruppe, bevor du eine suchst."
@@ -1518,7 +1501,7 @@ DE["Fitting: there is a place for one of your roles."]="Passend: Für eine deine
 DE["Role unknown: the game does not tell which roles are missing."]="Rolle unbekannt: Das Spiel nennt nicht, welche Rollen fehlen."
 DE["Groups without a place for you and full groups are hidden."]="Gruppen ohne Platz für dich und volle Gruppen werden ausgeblendet."
 DE["Goes through the groups that fit you, one at a time. You confirm every contact with a click."]="Geht die passenden Gruppen einzeln durch. Jeden Kontakt bestätigst du mit einem Klick."
-DE["Group finder notices"]="Gruppenhinweise"
+
 DE["Notices for new groups of followed activities are on."]="Hinweise auf neue Gruppen beobachteter Aktivitäten sind an."
 DE["Notices for new groups of followed activities are off. They stay in the bell."]="Hinweise auf neue Gruppen beobachteter Aktivitäten sind aus. In der Glocke bleiben sie sichtbar."
 DE["Tirisfal Glades"]="Tirisfal"
@@ -1540,12 +1523,9 @@ DE["Mount Hyjal"]="Hyjal"
 DE["Arathi Highlands"]="Arathihochland"
 
 local EN={
-    ["%d characters taken over from ZENIAL Utility, %d not assignable."]="%d characters imported from ZENIAL Utility; %d could not be matched safely.",
-    ["%d matches · %d contacts left to check"]="%d matches · %d contacts not checked yet",
     ["%d not assignable"]="%d could not be matched safely",
     ["%s has not been seen with ZENIAL yet."]="ZENIAL has not recorded %s yet.",
     ["%s is offline; no current snapshot."]="%s is offline. Offer data may be out of date.",
-    ["Available %s for this list"]="Set aside for this list: %s",
     ["Bag and bank recording must be on. Bank contents exist only after you opened the bank while recording. Saved amounts can be older than your current inventory."]="Turn on bag and bank recording. Bank data is saved only when you open the bank while recording. Saved amounts may be out of date.",
     ["Bag contents could not be read. Unknown is not zero."]="Bag contents could not be read, so the quantity is unknown—not zero.",
     ["Bags only; oldest active list reserves first."]="Bag stock is shared between lists; older lists take priority.",
@@ -1555,46 +1535,28 @@ local EN={
     ["Choose one to four upcoming instances."]="Choose 1 to 4 upcoming dates.",
     ["Crafts for material planning"]="Number of crafts",
     ["Crafts to plan"]="Number of crafts",
-    ["Create reviewed instances"]="Create the reviewed events",
     ["Ingredient list completeness is unverified."]="This ingredient list may be incomplete.",
     ["Local time conversion is unavailable or this clock time does not exist. Use an explicit UTC time."]="That local time is invalid or unavailable. Enter a UTC time instead.",
     ["Local time conversion is unavailable."]="This local time cannot be converted.",
     ["Main and alts as declared by their addon; not verified."]="Main and alt links are reported by the addon and have not been verified.",
     ["Manual marks do not confirm inventory or handoff."]="Checked items are not proof of ownership or delivery.",
-    ["Marked %d · Still unconfirmed %d · Reserved elsewhere %s"]="Marked %d · Not yet confirmed %d · Reserved for other lists %s",
-    ["Matching requires addon exchange. Wishes stay private."]="Finding matches requires addon exchange. Your wishes stay private.",
-    ["Matching uses existing shared quests."]="Matches use quests players have already shared.",
-    ["Need %d · Bags %s · Allocated %s · Missing %s"]="Needed %d · In bags %s · For this list %s · Missing %s",
-    ["New templates are created in the group form. Templates remain local and do not publish a group."]="Create templates in the group form. They stay private and do not publish a group.",
-    ["No matching members. Save a session wish above so players can be matched."]="No players match your wishes yet. Save a session wish above to find players.",
-    ["No verified matches in the considered candidates."]="No matches among the players checked so far.",
     ["Nothing stored locally. Drafts, templates and finished offers appear after you create an offer."]="No offers saved yet. Drafts, templates, and completed offers will appear here.",
     ["Number of instances"]="Number of dates",
     ["Offer is no longer in the latest snapshot of %s."]="This offer is no longer listed in %s's latest data.",
-    ["Old orders use your exact local recipe, if available."]="Older orders use your saved recipe, if available.",
     ["Only known from the data taken over from ZENIAL Utility. Log in with this character to record more."]="This character's data was imported from ZENIAL Utility. Log in as this character to record more.",
     ["Organizer offline or not directly reachable"]="The organizer is offline or cannot be contacted right now.",
-    ["Player availability is unknown."]="We do not know whether this player is available.",
-    ["Preview one to four future dates. New instances are private drafts with empty participant lists. No background recurrence."]="Preview 1 to 4 dates. They become private drafts with no participants and will not repeat automatically.",
     ["Private and local. Never shared."]="Stored on this computer. Never shared.",
     ["Queued operation"]="Action queued",
-    ["Recording is off. Turn it on to update each character at login."]="Recording is off. Turn it on to update each character when you log in.",
     ["Reported online; not directly reachable"]="Reported online, but no direct connection is available.",
     ["Same guild"]="Guild",
-    ["Save a private draft, then publish it explicitly. Times are stored as UTC."]="Save a private draft, then publish it. Times are stored in UTC.",
     ["Saved confirmation; organizer verification is pending."]="Your response is saved, but the organizer has not confirmed it yet.",
     ["Saved material plans use an unsupported version. Data was preserved."]="These shopping lists use an unsupported version. They were kept unchanged.",
     ["Saved scheduled groups are unavailable. Data was preserved."]="Saved events could not be read. Your data was kept.",
     ["Saved state; verification pending"]="Saved status; not checked with the organizer yet.",
-    ["Saves locally without publishing the group."]="This template is saved on this computer and does not publish a group.",
     ["Scheduled revision limit reached."]="Too many changes to this event.",
-    ["Select a member to see the evidence."]="Choose a player to see why they match.",
-    ["Select all, then Ctrl+C. Refresh updates this snapshot. Escape closes the window."]="Select all, then press Ctrl+C. Refresh to update the report. Press Escape to close the window.",
     ["Set craft count explicitly; recipe yield is unknown."]="Enter how many crafts you want. Recipe yield is unknown.",
     ["Shopping list storage is full (100 lists)."]="You can save up to 100 shopping lists.",
-    ["Status and account-wide export; includes all characters, chat, and private notes."]="This account-wide export includes status, every character, chat, and private notes.",
     ["Status transfer unknown"]="Delivery status unknown",
-    ["Unsaved changes. Save to update the matches."]="Save your changes to refresh the matches.",
     ["Verification in progress"]="Checking with the organizer…",
     ["Weekly instances: same organizer local time"]="Weekly, at the organizer's local time.",
     ["Withdraw and verify an active application before forgetting it."]="Withdraw your active application and check its status before removing it.",
