@@ -212,10 +212,17 @@ function A.NetworkStatus()
         "queue3="..tostring(Z.Network3 and#Z.Network3.jobs or 0).." legacyQueue="..tostring(Z.engine and#Z.engine.out or 0).." pending="..tostring(Z.engine and L.Count(Z.engine.pending)or 0).." engine="..(Z.engine and Z.engine.blocked and"blocked"or"ready")..(Z.engine and Z.engine.status~=""and" ("..Z.engine.status..")"or""),
     }
 end
+-- Group and roster events come in bursts (raid set-up): they are merged into one directory scan and one presence.
+-- It runs at least 1 s after the first event and at the earliest 5 s after the last presence sent.
 function A.DiscoveryTick(force)
-    if not Z.db or not Z.db.consent or not Z.db.autoDiscovery then return false end
-    if force and Z.CommunityDirectory then Z.CommunityDirectory.RequestScan()end
-    if force and Z.Network3 then Z.Network3.nextPresence=0 end
+    if not Z.db or not Z.db.consent or not Z.db.autoDiscovery then A.discoveryDue=nil;return false end
+    local clock=A.Clock()
+    if force and not A.discoveryDue then A.discoveryDue=math.max(clock+1,(Z.Network3 and Z.Network3.lastPresence or-100)+5,(A.discoveryLast or-100)+5)end
+    if A.discoveryDue and clock>=A.discoveryDue then
+        A.discoveryDue=nil;A.discoveryLast=clock
+        if Z.CommunityDirectory then Z.CommunityDirectory.RequestScan()end
+        if Z.Network3 then Z.Network3.nextPresence=0 end
+    end
     return true
 end
 function A.Receive(prefix,payload,channel,sender,target,zoneChannelID,localID,channelName)
@@ -449,13 +456,6 @@ function A.PvpLocation(corpse)
     end
     local x,y=vectorXY(point)
     return {mapID=mapID,area=area,subzone=subzone,hasPos=x~=nil,x=x or 0,y=y or 0}
-end
-function A.PvpEnemy()
-    if A.Call(UnitExists,"target")~=true or A.Call(UnitIsPlayer,"target")~=true or A.Call(UnitCanAttack,"player","target")~=true then return nil end
-    local _,name=A.UnitIdentity("target");if not name then name=A.Call(GetUnitName,"target",true)or A.Call(UnitName,"target") end
-    if not L.Text(name,80) then return nil end
-    local className,classFile=A.Call(UnitClass,"target");local level=A.Call(UnitLevel,"target");local faction=A.Call(UnitFactionGroup,"target")
-    return {name=name,class=L.ClassName(className,classFile),level=L.Int(level,0,100) and level or 0,faction=L.Text(faction,16,true) and faction or ""}
 end
 function A.ShowMap(mapID)
     if not L.Int(mapID,1,1000000) then return false end

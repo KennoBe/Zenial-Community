@@ -1,5 +1,5 @@
 local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
-local N={PREFIX=L.PREFIX3,FRAME_BYTES=180,MAX_JOBS=256,MAX_QUEUE_BYTES=65536}
+local N={SESSION_FUTURE=10,PREFIX=L.PREFIX3,FRAME_BYTES=180,MAX_JOBS=256,MAX_QUEUE_BYTES=65536}
 Z.Network3=N
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
@@ -117,8 +117,8 @@ local function presenceWire()
     return#wire<=238 and wire or nil
 end
 function N.Initialize()
-    N.jobs,N.jobBytes,N.assemblies,N.directAssemblies,N.senderParts,N.waitingTargets={},0,{},{},{},{}
-    N.assemblyBytes,N.directAssemblyBytes=0,0;N.inboundPublic,N.inboundDirect={},{};N.inboundPublicBytes,N.inboundDirectBytes=0,0
+    N.jobs,N.jobBytes,N.directAssemblies,N.senderParts,N.waitingTargets={},0,{},{},{}
+    N.directAssemblyBytes=0;N.inboundDirect={};N.inboundDirectBytes=0
     N.stats={sent=0,received=0,throttle=0,dropped=0,invalid=0,presence=0,bundles=0,lastReceive=0,lastError=""}
     N.tokens,N.byteTokens,N.lastClock=8,1600,A.Clock()
     N.nextSend=0;N.backoff=0;N.throttledUntil=0;N.nextPresence=A.Clock()+math.random(0,30)
@@ -130,7 +130,7 @@ function N.Initialize()
 end
 function N.Queue(channel,target,kind,wire,priority,dedupe)
     if not Z.db.consent or channel~="WHISPER"then return nil,"Austausch nicht verfügbar."end
-    if channel=="WHISPER"then local key=Z.ResolvePeerKey(target);if not key or not Z.db.contacts[key]or Z.db.blocked[key]then return nil,"Austausch nicht verfügbar."end end
+    local key=Z.ResolvePeerKey(target);if not key or not Z.db.contacts[key]or Z.db.blocked[key]then return nil,"Austausch nicht verfügbar."end
     if not allowedKind(channel,kind)or type(wire)~="string"or#wire>L.MAX_BYTES or not clean(kind,4)then return nil,"Daten sind ungültig oder zu groß."end
     local total=math.ceil(#wire/N.FRAME_BYTES);if total<1 or total>L.MAX_PARTS then return nil,"Daten sind ungültig oder zu groß."end
     if dedupe then
@@ -183,18 +183,18 @@ local function removeJob(index,job)
 end
 function N.Tick()
     if not Z.db then return end
-    for i=#N.jobs,1,-1 do local job=N.jobs[i];local key=job.channel=="WHISPER"and Z.ResolvePeerKey(job.target);if not Z.db.consent or job.channel~="WHISPER"or job.channel=="WHISPER"and(not key or not Z.db.contacts[key]or Z.db.blocked[key])then removeJob(i,job)end end
+    for i=#N.jobs,1,-1 do local job=N.jobs[i];local key=Z.ResolvePeerKey(job.target);if not Z.db.consent or not key or not Z.db.contacts[key]or Z.db.blocked[key]then removeJob(i,job)end end
     if not Z.db.consent then return end
     local started=A.Clock();local processed=0
     while processed<32 and A.Clock()-started<.002 do
-        local presence=N.inboundPublic[1]and N.inboundPublic[1].kind=="P";local direct=not presence and#N.inboundDirect>0;local queue=direct and N.inboundDirect or N.inboundPublic;local item=table.remove(queue,1);if not item then break end
-        if direct then N.inboundDirectBytes=math.max(0,N.inboundDirectBytes-#item.wire)else N.inboundPublicBytes=math.max(0,N.inboundPublicBytes-#item.wire)end
+        local item=table.remove(N.inboundDirect,1);if not item then break end
+        N.inboundDirectBytes=math.max(0,N.inboundDirectBytes-#item.wire)
         local ok,changed=N.ProcessComplete(item.sender,item.channel,item.kind,item.wire);trace(ok and "accepted"or "rejected_message",item.sender,item.kind);if ok and changed~=false and Z.MarkDirty then Z.MarkDirty(item.kind)end;processed=processed+1
     end
     local clock=A.Clock();local elapsed=math.max(0,math.min(2,clock-(N.lastClock or clock)));N.lastClock=clock
     N.tokens=math.min(8,N.tokens+elapsed*4);N.byteTokens=math.min(1600,N.byteTokens+elapsed*800)
     if Z.db.autoDiscovery then
-        if clock>=N.nextPresence then local wire=presenceWire();if wire then N.QueuePublic("P",wire,70,"PRESENCE")end;N.nextPresence=clock+105+math.random(0,30)end
+        if clock>=N.nextPresence then local wire=presenceWire();if wire then N.QueuePublic("P",wire,70,"PRESENCE");N.lastPresence=clock end;N.nextPresence=clock+105+math.random(0,30)end
         if N.pendingPublish and clock>=(N.publishDue or 0)then local wire=bundleWire();if wire then local id=N.QueuePublic("B",wire,35,"PUBLIC");if id then N.pendingPublish=false;N.lastPublish=clock end end end
         -- Guild name: at once after a change, otherwise refreshed for members who logged in later (never inventoried).
         if clock>=(N.guildHold or 0)then
@@ -234,7 +234,7 @@ function N.Tick()
 end
 function N.PublicSessionAllowed(target,session)
     local epoch=type(session)=="string"and tonumber(session:match("^(%d+)%."))
-    if epoch and epoch>A.Now()+120 then return false end
+    if epoch and epoch>A.Now()+N.SESSION_FUTURE then return false end
     local key=Z.ResolvePeerKey(target);local peer=key and Z.db.peers[key]
     if peer and peer.verifiedSession and peer.verifiedSession~=session then
         local route=Z.BattleNetTransport and Z.BattleNetTransport.Route(target)
@@ -252,25 +252,35 @@ function N.PublicSessionAllowed(target,session)
     end
     return true
 end
+-- A session counts as ended only because of a confirmed direct handshake, never because of a statement from the mesh.
+local function retireSession(peer,session)
+    if not session then return end
+    peer.retiredSessions=peer.retiredSessions or{};peer.retiredSessionOrder=peer.retiredSessionOrder or{}
+    if peer.retiredSessions[session]then return end
+    peer.retiredSessions[session]=true;peer.retiredSessionOrder[#peer.retiredSessionOrder+1]=session
+    while#peer.retiredSessionOrder>16 do peer.retiredSessions[table.remove(peer.retiredSessionOrder,1)]=nil end
+end
 function N.ConfirmSession(target,session)
     local key=Z.ResolvePeerKey(target);local peer=key and Z.db.peers[key]
     if not peer or not L.Text(session,32)then return false end
+    if peer.verifiedSession and peer.verifiedSession~=session then retireSession(peer,peer.verifiedSession)end
+    if peer.session and peer.session~=session then retireSession(peer,peer.session)end
     local changed=peer.verifiedSession and peer.verifiedSession~=session
     if changed or peer.session~=session then
         peer.publicAppliedRev,peer.publicDeltaRev,peer.retractions,peer.presenceSignature=nil,nil,nil,nil
         peer.presence,peer.reportedAt,peer.reportedClock=nil,nil,nil
         if peer.data and peer.data.generation~=session then peer.data,peer.wire=nil,nil end
     end
-    peer.verifiedSession=session;peer.verifiedAt=A.Clock();peer.session=session
+    peer.verifiedSession=session;peer.verifiedAt=A.Clock();peer.session=session;peer.sessionMesh=nil
     if peer.retiredSessions then peer.retiredSessions[session]=nil end
     for i=#(peer.retiredSessionOrder or{}),1,-1 do if peer.retiredSessionOrder[i]==session then table.remove(peer.retiredSessionOrder,i)end end
     N.waitingTargets[L.Identity(target)]=nil
     if Z.engine and Z.engine.waitingTargets then Z.engine.waitingTargets[key]=nil end
     if changed then
-        for index,bucket in ipairs({N.assemblies,N.directAssemblies})do for id,p in pairs(bucket)do if p.key==key then releaseAssembly(bucket,id,index==1 and"assemblyBytes"or"directAssemblyBytes")end end end
-        for index,queue in ipairs({N.inboundPublic,N.inboundDirect})do for i=#queue,1,-1 do if Z.ResolvePeerKey(queue[i].sender)==key then
-            local field=index==1 and"inboundPublicBytes"or"inboundDirectBytes";N[field]=math.max(0,N[field]-#queue[i].wire);table.remove(queue,i)
-        end end end
+        for id,p in pairs(N.directAssemblies)do if p.key==key then releaseAssembly(N.directAssemblies,id,"directAssemblyBytes")end end
+        for i=#N.inboundDirect,1,-1 do if Z.ResolvePeerKey(N.inboundDirect[i].sender)==key then
+            N.inboundDirectBytes=math.max(0,N.inboundDirectBytes-#N.inboundDirect[i].wire);table.remove(N.inboundDirect,i)
+        end end
         local engine=Z.engine
         if engine then for id,p in pairs(engine.parts)do if p.key==key then engine.parts[id]=nil end end;engine.partCounts[key]=nil end
         if Z.CommunityMap and Z.CommunityMap.positions then Z.CommunityMap.positions[key]=nil end
@@ -301,14 +311,15 @@ local function touchPeer(sender,realm,faction,session)
     if peer.retiredSessions[session]and session~=peer.verifiedSession then trace("retired_session",sender);return nil end
     local epoch=tonumber(session:match("^(%d+)%."));local current=peer.session and tonumber(peer.session:match("^(%d+)%."))
     local seq=tonumber(session:match("^%d+%.(%d+)%.%d+$"));local currentSeq=peer.session and tonumber(peer.session:match("^%d+%.(%d+)%.%d+$"))
-    if session~=peer.verifiedSession and sessionChanged and epoch and current and(epoch<current or epoch==current and seq and currentSeq and seq<currentSeq)then trace("older_session",sender);return nil end
+    -- A session that only the mesh reported may be replaced by any later mesh record: ranking then rests on the mesh store.
+    if session~=peer.verifiedSession and sessionChanged and epoch and current and(epoch<current or epoch==current and seq and currentSeq and seq<currentSeq)and not(N.meshContext and peer.sessionMesh)then trace("older_session",sender);return nil end
     if sessionChanged then
-        if peer.session and peer.session~=peer.verifiedSession then peer.retiredSessions[peer.session]=true;peer.retiredSessionOrder[#peer.retiredSessionOrder+1]=peer.session;while#peer.retiredSessionOrder>16 do peer.retiredSessions[table.remove(peer.retiredSessionOrder,1)]=nil end end
         peer.publicAppliedRev,peer.publicDeltaRev,peer.retractions,peer.presenceSignature=nil,nil,nil,nil
     end
     if N.meshContext then
         peer.cap4=true;peer.networkReported=true;peer.reportedAt=N.meshContext.at;peer.reportedClock=A.Clock()-math.max(0,A.Now()-N.meshContext.at)
-    else peer.lastContact=A.Now();peer.lastContactClock=A.Clock()end
+        peer.sessionMesh=session~=peer.verifiedSession or nil
+    else peer.lastContact=A.Now();peer.lastContactClock=A.Clock();peer.sessionMesh=nil end
     peer.session=session;peer.realm=Z.me.realm;peer.advertisedRealm=realm;peer.faction=faction;peer.cap30=true;peer.state="reached"
     return key,peer,sessionChanged
 end
@@ -343,7 +354,6 @@ local function receiveGuild(sender,wire)
     local changed=peer.publicGuild~=row.guild;peer.publicGuild=row.guild
     return true,changed
 end
-local function assemblyBucket(channel)return channel=="PUBLIC"and N.assemblies or N.directAssemblies end
 function N.ProcessComplete(sender,channel,kind,wire)
     if not Z.db or not Z.db.consent or channel=="PUBLIC"and not Z.db.autoDiscovery or not allowedKind(channel,kind)then return false end
     local senderKey=Z.ResolvePeerKey(sender);if senderKey==Z.me.key or senderKey and Z.db.blocked[senderKey]then return false end
@@ -383,31 +393,31 @@ function N.Receive(sender,payload,channel)
     local id,index,total,kind,chunk=payload:match("^3|([%d%.]+)|(%d+)|(%d+)|([A-Z][A-Z0-9]?[A-Z0-9]?[A-Z0-9]?)|(.*)$")
     index,total=tonumber(index),tonumber(total)
     if not id or#id>32 or not L.Int(total,1,L.MAX_PARTS)or not L.Int(index,1,total)or#chunk>N.FRAME_BYTES then N.stats.invalid=N.stats.invalid+1;trace("invalid_frame",sender);return false end
-    if not Z.db.consent or channel=="PUBLIC"and not Z.db.autoDiscovery or not allowedKind(channel,kind)then trace("disabled_or_unsupported",sender,channel,kind);return false end
-    local bucket=assemblyBucket(channel);local rawKey=L.Identity(sender);if not rawKey then trace("invalid_identity",sender);return false end;local key=(Z.ResolvePeerKey and Z.ResolvePeerKey(sender))or rawKey
+    -- Only addon whispers are received here; public records reach ProcessComplete through the mesh.
+    if not Z.db.consent or channel~="WHISPER"or not allowedKind(channel,kind)then trace("disabled_or_unsupported",sender,channel,kind);return false end
+    local bucket=N.directAssemblies;local rawKey=L.Identity(sender);if not rawKey then trace("invalid_identity",sender);return false end;local key=(Z.ResolvePeerKey and Z.ResolvePeerKey(sender))or rawKey
     if key==Z.me.key then trace("self",sender,kind);return false end
     if Z.db.blocked[key]then trace("blocked_sender",sender,kind);return false end
-    local byteField=channel=="PUBLIC"and"assemblyBytes"or"directAssemblyBytes"
+    local byteField="directAssemblyBytes"
     local token=key..":"..id;local p=bucket[token]
     if not p then
-        local limit=channel=="PUBLIC"and 256 or 64;if count(bucket)>=limit or(N.senderParts[key]or 0)>=2 then N.stats.dropped=N.stats.dropped+1;trace("assembly_limit",sender,kind);return false end
+        if count(bucket)>=64 or(N.senderParts[key]or 0)>=2 then N.stats.dropped=N.stats.dropped+1;trace("assembly_limit",sender,kind);return false end
         p={total=total,kind=kind,chunks={},size=0,at=A.Clock(),sender=sender,key=key};bucket[token]=p;N.senderParts[key]=(N.senderParts[key]or 0)+1
     end
     if p.total~=total or p.kind~=kind or p.chunks[index]and p.chunks[index]~=chunk then releaseAssembly(bucket,token,byteField);trace("fragment_conflict",sender,kind);return false end
     if not p.chunks[index]then
-        local byteField=channel=="PUBLIC"and"assemblyBytes"or"directAssemblyBytes";local byteLimit=channel=="PUBLIC"and 1048576 or 262144
-        if N[byteField]+#chunk>byteLimit then releaseAssembly(bucket,token,byteField);N.stats.dropped=N.stats.dropped+1;trace("assembly_byte_limit",sender,kind);return false end
+        if N[byteField]+#chunk>262144 then releaseAssembly(bucket,token,byteField);N.stats.dropped=N.stats.dropped+1;trace("assembly_byte_limit",sender,kind);return false end
         p.chunks[index]=chunk;p.size=p.size+#chunk;N[byteField]=N[byteField]+#chunk
     end
     if p.size>L.MAX_BYTES then releaseAssembly(bucket,token,byteField);trace("message_size_limit",sender,kind);return false end
     for i=1,total do if not p.chunks[i]then trace("fragment_wait",sender,kind,index,total);return false end end
     releaseAssembly(bucket,token,byteField);N.stats.received=N.stats.received+1;N.stats.lastReceive=A.Now()
-    local wire=table.concat(p.chunks);local direct=channel=="WHISPER";local queue=direct and N.inboundDirect or N.inboundPublic;local bytesField=direct and"inboundDirectBytes"or"inboundPublicBytes";local queueLimit=direct and 64 or 256;local bytesLimit=direct and 262144 or 1048576
-    if#queue>=queueLimit or N[bytesField]+#wire>bytesLimit then N.stats.dropped=N.stats.dropped+1;trace("inbound_limit",sender,kind);return false end
-    queue[#queue+1]={sender=sender,channel=channel,kind=kind,wire=wire};N[bytesField]=N[bytesField]+#wire;trace("queued",sender,kind);return true
+    local wire=table.concat(p.chunks)
+    if#N.inboundDirect>=64 or N.inboundDirectBytes+#wire>262144 then N.stats.dropped=N.stats.dropped+1;trace("inbound_limit",sender,kind);return false end
+    N.inboundDirect[#N.inboundDirect+1]={sender=sender,channel=channel,kind=kind,wire=wire};N.inboundDirectBytes=N.inboundDirectBytes+#wire;trace("queued",sender,kind);return true
 end
 function N.ExpireAssemblies()
-    local now=A.Clock();for index,bucket in ipairs({N.assemblies,N.directAssemblies})do for token,p in pairs(bucket)do if now-p.at>45 then releaseAssembly(bucket,token,index==1 and"assemblyBytes"or"directAssemblyBytes");N.stats.dropped=N.stats.dropped+1 end end end
+    local now=A.Clock();for token,p in pairs(N.directAssemblies)do if now-p.at>45 then releaseAssembly(N.directAssemblies,token,"directAssemblyBytes");N.stats.dropped=N.stats.dropped+1 end end
 end
 function N.CancelPublic(dedupe)
     -- Public records are queued exclusively by CommunityMesh.
@@ -416,8 +426,8 @@ end
 function N.CancelPeer(key,target)
     local identity=L.Identity(target);if identity then N.waitingTargets[identity]=nil end
     for i=#N.jobs,1,-1 do local job=N.jobs[i];if job.channel=="WHISPER"and(job.target==target or Z.ResolvePeerKey(job.target)==key)then removeJob(i,job)end end
-    for index,bucket in ipairs({N.assemblies,N.directAssemblies})do for token,p in pairs(bucket)do if p.key==key then releaseAssembly(bucket,token,index==1 and"assemblyBytes"or"directAssemblyBytes")end end end
-    for index,queue in ipairs({N.inboundPublic,N.inboundDirect})do for i=#queue,1,-1 do if Z.ResolvePeerKey(queue[i].sender)==key then local field=index==1 and"inboundPublicBytes"or"inboundDirectBytes";N[field]=math.max(0,N[field]-#queue[i].wire);table.remove(queue,i)end end end
+    for token,p in pairs(N.directAssemblies)do if p.key==key then releaseAssembly(N.directAssemblies,token,"directAssemblyBytes")end end
+    for i=#N.inboundDirect,1,-1 do if Z.ResolvePeerKey(N.inboundDirect[i].sender)==key then N.inboundDirectBytes=math.max(0,N.inboundDirectBytes-#N.inboundDirect[i].wire);table.remove(N.inboundDirect,i)end end
 end
 function N.IsOnline(key)
     local peer=Z.db and Z.db.peers[key];if not peer then return false end
@@ -428,6 +438,6 @@ function N.IsOnline(key)
     return L.PeerOnline(Z.db,key,A.Now())
 end
 function N.Status()
-    return{queue=#N.jobs,bytes=N.jobBytes,assemblies=count(N.assemblies)+count(N.directAssemblies),inbound=#N.inboundPublic+#N.inboundDirect,lastReceive=N.stats.lastReceive,lastError=N.stats.lastError,throttle=N.stats.throttle,throttled=(N.throttledUntil or 0)>A.Clock(),sent=N.stats.sent,received=N.stats.received}
+    return{queue=#N.jobs,bytes=N.jobBytes,assemblies=count(N.directAssemblies),inbound=#N.inboundDirect,lastReceive=N.stats.lastReceive,lastError=N.stats.lastError,throttle=N.stats.throttle,throttled=(N.throttledUntil or 0)>A.Clock(),sent=N.stats.sent,received=N.stats.received}
 end
 return N

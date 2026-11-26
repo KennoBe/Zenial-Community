@@ -11,7 +11,6 @@ end
 local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,PD=true,GN=true}
 local TRANSIENT={MP=true,PD=true,GN=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
 local function enabled()return B.Enabled()and Z.db.autoDiscovery end
-local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record((scheduled and "scheduledmesh:"or optional and "questmesh:"or"mesh:")..event,...)end end
 local function hash(value)
     local n=5381;for i=1,#value do n=(n*48271+value:byte(i))%2147483647 end
     local high,low=math.floor(n/65536),n%65536
@@ -24,21 +23,34 @@ local function recordHash(value)
     -- collision suppressing another origin's state. These are not signatures.
     return string.format("%010d%010d",tonumber(hash(value)),tonumber(hash(value:reverse())))
 end
+local function family(kind)return(kind=="PC"or kind=="PU"or kind=="PX")and"PV"or kind end
+-- Living records one origin may hold per kind. The id of these kinds is free to choose, so without a limit one sender
+-- could fill the store of every participant. Normal use stays far below: PD at most 8 death markers per origin;
+-- RX one retraction per closed group, quest or offer within 24 h (receivers keep only the last 32 per player);
+-- PV (PC, PU, PX share one call id) one call at a time, 12 calls within 20 minutes is not reached by a player.
+local SOFT={B=true,RX=true,PC=true,PU=true,PX=true}
+local ORIGIN_LIMIT={PD=8,RX=32,PV=12}
+-- Limits over all origins per group, so that invented origins cannot push out presence and bundles (16000 records in
+-- total): short-lived markers (MP, PD, GN) 2048, which is two per player for about 1000 players online and lives
+-- 5 to 10 minutes; retractions (RX) 4096, a few per active player and day; PvP calls (PC, PU, PX) 1024, one call per
+-- player at a time. Together 7168, so at least 8832 places stay for P and B.
+local GROUP_LIMIT={T=2048,RX=4096,PV=1024}
+local KIND_GROUP={MP="T",PD="T",GN="T",RX="RX",PC="PV",PU="PV",PX="PV"}
 local function token(row)
     local suffix=""
     if row.kind=="RX"then local f=Z.Network3.Unpack(row.wire);suffix=f and(f[1]..":"..f[2])or"?"
     elseif row.kind=="PC"or row.kind=="PU"or row.kind=="PX"then local f=Z.Network3.Unpack(row.wire);suffix=f and f[1]or"?"
     elseif row.kind=="PD"then local f=Z.Network3.Unpack(row.wire);suffix=f and f[3]or"?" end -- one record per death, not per sender
     if scheduled then local f=Z.Network3.Unpack(row.wire);suffix=f and f[5]or"?"end
-    local family=(row.kind=="PC"or row.kind=="PU"or row.kind=="PX")and"PV"or row.kind
-    return L.Identity(row.origin).."/"..family.."/"..suffix
+    return L.Identity(row.origin).."/"..family(row.kind).."/"..suffix
 end
 -- A PD marker lives 600 s from the time of death (row.at), not from reception.
-local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;if row.kind=="PD"then return 600 end;return(row.kind=="P"or TRANSIENT[row.kind])and 300 or 86400 end
+-- PvP calls (PC, PU, PX) are used for 10 minutes: they live 1200 s in the mesh, not a day.
+local function lifetime(row)if scheduled then return 900 end;if optional then return 1200 end;if row.kind=="PD"then return 600 end;if row.kind=="PC"or row.kind=="PU"or row.kind=="PX"then return 1200 end;return(row.kind=="P"or TRANSIENT[row.kind])and 300 or 86400 end
 local function validSession(session,now)
     if not L.Text(session,32)or not session:match("^%d+%.%d+%.%d+$")then return false end
     local epoch=tonumber(session:match("^(%d+)%."))
-    return L.Int(epoch,1,4102444800)and epoch<=(now or A.Now())+120
+    return L.Int(epoch,1,4102444800)and epoch<=(now or A.Now())+Z.Network3.SESSION_FUTURE
 end
 local function newer(row,old)
     if not old then return true end
@@ -53,7 +65,7 @@ local function validate(row,now)
     now=now or A.Now()
     if type(row)~="table"or not PUBLIC[row.kind]or not L.Text(row.origin,49)or not L.Identity(row.origin)or not row.origin:find(" ",1,true)
         or not validSession(row.session,now)or not L.Int(row.seq,0,2147483646)
-        or not L.Int(row.at,1,4102444800)or row.at>now+120 or now-row.at>lifetime(row)
+        or not L.Int(row.at,1,4102444800)or row.at>now+Z.Network3.SESSION_FUTURE or now-row.at>lifetime(row)
         or not L.Text(row.realm,64)or D.World(row.realm)~=D.OwnWorld()or not D.RegionMatches(row.region)or row.project~=D.Project()
         or type(row.wire)~="string"or#row.wire>L.MAX_BYTES then return false end
     if scheduled then local e=Z.ScheduledGroups and Z.ScheduledGroups.DecodeRecord(row.wire);return e and e.session==row.session and e.at==row.at or false end
@@ -103,6 +115,7 @@ end
 function M.Initialize()
     if optional and Z.QuestHelper and Z.QuestHelper.quests then Z.QuestHelper.publishedSignature=nil;Z.QuestHelper.nextRefresh=0 end
     M.records,M.durable,M.index,M.keys,M.pending,M.assemblies,M.byOrigin,M.sync,M.ignored={},{},{},{},{},{},{},{},{}
+    M.groupCount,M.refused,M.refusedCount={},{},0
     M.bytes,M.pendingBytes,M.assemblyBytes=0,0,0;M.pendingCount=0;M.nextBatch=A.Clock()+2;M.nextSync=A.Clock()+10;M.nextExpire=0;M.groupTurns={};M.cursors={};M.replay={}
     M.stats={published=0,received=0,forwarded=0,duplicates=0,rejected=0,dropped=0,reconciled=0}
     M.region=D.Region()
@@ -113,6 +126,7 @@ function M.Initialize()
         if M.bytes>=M.MAX_STORE_BYTES or#M.keys>=M.MAX_RECORDS then break end
         if A.PublicTable(row)and A.Safe(row.origin,row.session,row.seq,row.at,row.kind,row.wire,row.realm,row.region,row.project)and durable(row)and validate(row,now)then
             local id=token(row);if not M.records[id]and M.bytes+#row.wire<=M.MAX_STORE_BYTES then
+                local g=KIND_GROUP[row.kind];if g then M.groupCount[g]=(M.groupCount[g]or 0)+1 end
                 M.records[id]=row;M.durable[id]=row;M.bytes=M.bytes+#row.wire;M.keys[#M.keys+1]=id;local h=recordHash(id);M.index[h]=M.index[h]or{};M.index[h][id]=true
                 local origin=L.Identity(row.origin);M.byOrigin[origin]=M.byOrigin[origin]or{};M.byOrigin[origin][id]=true
             end
@@ -182,6 +196,7 @@ end
 -- Removes one record from every structure that references it (except M.keys).
 local function drop(id,row)
     M.records[id]=nil;M.durable[id]=nil;M.bytes=M.bytes-#row.wire;removePending(id)
+    local g=KIND_GROUP[row.kind];if g and M.groupCount[g]then M.groupCount[g]=math.max(0,M.groupCount[g]-1)end
     local h=recordHash(id);local set=M.index[h];if set then set[id]=nil;if not next(set)then M.index[h]=nil end end
     local origin=L.Identity(row.origin);set=M.byOrigin[origin];if set then set[id]=nil;if not next(set)then M.byOrigin[origin]=nil end end
 end
@@ -215,19 +230,30 @@ function M.Accept(row,source,own)
     -- prune. (Needed when confirmed participants carry on a scheduled event after its organizer's last own
     -- announcement has run out; their records rank below every real session of the organizer.)
     if not newer(row,old)and not(old and A.Now()-old.at>lifetime(old))then M.stats.duplicates=M.stats.duplicates+1;return true end
-    if row.kind=="PD"and not old then
-        -- At most eight living markers per origin.
-        local live,now=0,A.Now()
-        for other in pairs(M.byOrigin[L.Identity(row.origin)]or{})do local r=M.records[other];if r and r.kind=="PD"and now-r.at<=lifetime(r)then live=live+1 end end
-        if live>=8 then M.stats.rejected=M.stats.rejected+1;return false end
+    local limit=not old and(not own or row.kind=="PD")and ORIGIN_LIMIT[family(row.kind)]
+    if limit then
+        local live,now,kind=0,A.Now(),family(row.kind)
+        for other in pairs(M.byOrigin[L.Identity(row.origin)]or{})do local r=M.records[other];if r and family(r.kind)==kind and now-r.at<=lifetime(r)then live=live+1 end end
+        if live>=limit then M.stats.rejected=M.stats.rejected+1;return false end
     end
     if not old and#M.keys>=M.MAX_RECORDS or M.bytes-(old and#old.wire or 0)+#row.wire>M.MAX_STORE_BYTES then M.stats.dropped=M.stats.dropped+1;return false end
+    -- Only what the application accepted is stored and passed on. The short-lived kinds (one record per origin, at most
+    -- 8 markers) are exempt: their application also refuses for purely local reasons, which must not stop the relay.
+    local group=KIND_GROUP[row.kind]
+    if group and not old and not own and(M.groupCount[group]or 0)>=GROUP_LIMIT[group]then M.stats.dropped=M.stats.dropped+1;return false end
+    -- A refusal only because the origin has no known presence or is offline does not stop the relay: stored data
+    -- (B, RX, PvP calls) reaches others through the mesh. A refusal because of the content does.
+    if not own and not TRANSIENT[row.kind]and not apply(row)then
+        local peer=key and Z.db.peers[key]
+        if not(SOFT[row.kind]and(not peer or not peer.cap30 or not Z.Network3.IsOnline(key)))then M.stats.rejected=M.stats.rejected+1;return false end
+    end
     if not old then
         M.keys[#M.keys+1]=id;local h=recordHash(id);M.index[h]=M.index[h]or{};M.index[h][id]=true
         local origin=L.Identity(row.origin);M.byOrigin[origin]=M.byOrigin[origin]or{};M.byOrigin[origin][id]=true
+        if group then M.groupCount[group]=(M.groupCount[group]or 0)+1 end
     end
     M.records[id]=row;M.bytes=M.bytes-(old and#old.wire or 0)+#row.wire;M.durable[id]=durable(row)and row or nil
-    if not own then apply(row);M.stats.received=M.stats.received+1 end
+    if not own then if TRANSIENT[row.kind]then apply(row)end;M.stats.received=M.stats.received+1 end
     enqueue(id,source);persist();return true
 end
 -- Hands in a record on behalf of another origin, as if it had arrived from a neighbour: it is validated, ranked
@@ -258,7 +284,7 @@ function M.Publish(kind,wire)
 end
 -- (Re)starts the direct PD delivery for one neighbour; any earlier state of that route is replaced.
 function M.ReplayTo(route)
-    if M.replay and route and route.transport=="BNET"and not M.optionalMesh then M.replay[route.target]={due=A.Clock()+3,round=1}end
+    if M.replay and route and route.transport=="BNET"then M.replay[route.target]={due=A.Clock()+3,round=1}end
 end
 function M.OnConnected(route)
     if not enabled()then return end
@@ -301,20 +327,26 @@ end
 local function haveVersion(h,version)
     if M.ignored[h]then if Z.db.blocked[M.ignored[h]]then return true else M.ignored[h]=nil end end
     for id in pairs(M.index[h]or{})do local old=M.records[id];if old and not newer(version,old)then return true end end
+    -- A version refused because of its content is not asked for again until it expires.
+    local refused=M.refused[h]
+    if refused then if A.Now()>=refused.untilAt then M.refused[h]=nil;M.refusedCount=M.refusedCount-1 elseif not newer(version,refused)then return true end end
     return false
 end
 local function replyRecords(route,requested)
-    local frames,size,signature={},0,{}
+    -- One open answer per neighbour: the key only counts the batches of the current answer, a new request replaces
+    -- the batches of the previous one instead of queueing more.
+    local frames,size,batches={},0,0
     local function send()
         if#frames==0 then return true end
-        local ok=queueData(route,protocol,batch(frames),false,"reply:"..route.target..":"..hash(table.concat(signature,",")),20)
-        frames,size,signature={},0,{};return ok
+        batches=batches+1
+        local ok=queueData(route,protocol,batch(frames),false,"reply:"..route.target..":"..batches,20)
+        frames,size={},0;return ok
     end
     for _,id in ipairs(requested)do local row=M.records[id]
         if not TRANSIENT[row.kind]then for part=1,math.ceil(#row.wire/M.CHUNK)do
             local frame=recordFrame(row,part);local bytes=#frame+#tostring(#frame)+1
             if size+bytes>3700 and not send()then return end
-            if bytes<=3700 then frames[#frames+1]=frame;signature[#signature+1]=id..":"..row.seq..":"..part;size=size+bytes end
+            if bytes<=3700 then frames[#frames+1]=frame;size=size+bytes end
         end end
     end
     send()
@@ -349,18 +381,37 @@ function M.Receive(route,payload)
             local assemblyKey=row.origin..":"..row.session..":"..row.seq..":"..row.kind
             local p=M.assemblies[assemblyKey]
             if not p then
-                if L.Count(M.assemblies)>=256 then M.stats.dropped=M.stats.dropped+1;return false end
-                p={row=row,total=total,chunks={},size=0,at=A.Clock(),header=table.concat(f,"\t",2,9)};M.assemblies[assemblyKey]=p
+                -- 256 places for the whole mesh, at most 48 of them per neighbour (a neighbour has about 24 records in
+                -- flight per round); a half-sent record no longer blocks the others.
+                local own=0;for _,other in pairs(M.assemblies)do if other.route==route.target then own=own+1 end end
+                if L.Count(M.assemblies)>=256 or own>=48 then M.stats.dropped=M.stats.dropped+1;return false end
+                p={row=row,total=total,chunks={},size=0,at=A.Clock(),header=table.concat(f,"\t",2,9),route=route.target};M.assemblies[assemblyKey]=p
             end
             if p.header~=table.concat(f,"\t",2,9)or p.total~=total or p.chunks[part]and p.chunks[part]~=chunk then return false end
             if not p.chunks[part]then
-                if M.assemblyBytes+#chunk>262144 or p.size+#chunk>L.MAX_BYTES then return false end
+                if M.assemblyBytes+#chunk>262144 or p.size+#chunk>L.MAX_BYTES then
+                    -- No empty entry stays behind, and an assembly that outgrew the size limit is void.
+                    if p.size==0 or p.size+#chunk>L.MAX_BYTES then M.assemblies[assemblyKey]=nil;M.assemblyBytes=M.assemblyBytes-p.size end
+                    return false
+                end
                 p.chunks[part]=chunk;p.size=p.size+#chunk;M.assemblyBytes=M.assemblyBytes+#chunk
             end
             local complete=true;for i=1,total do if not p.chunks[i]then complete=false;break end end
             if complete then
                 M.assemblies[assemblyKey]=nil;M.assemblyBytes=M.assemblyBytes-p.size;row.wire=table.concat(p.chunks)
-                if M.Accept(row,route.target,false)and row.kind=="P"then
+                local accepted=M.Accept(row,route.target,false)
+                -- A record refused here counts as dealt with for the running comparison, or it would be requested again forever.
+                if not accepted then
+                    local h=recordHash(token(row));for _,s in pairs(M.sync)do if s.missing then s.missing[h]=nil end end
+                    -- Remember the refused version (at most 1024, for the lifetime of the record).
+                    local now=A.Now();local at=L.Int(row.at,1,now)and row.at or now
+                    if not M.refused[h]and M.refusedCount>=1024 then for k,v in pairs(M.refused)do if now>=v.untilAt then M.refused[k]=nil;M.refusedCount=M.refusedCount-1 end end end
+                    if M.refused[h]or M.refusedCount<1024 then
+                        if not M.refused[h]then M.refusedCount=M.refusedCount+1 end
+                        M.refused[h]={session=row.session,seq=row.seq,at=at,untilAt=at+lifetime(row)}
+                    end
+                end
+                if accepted and row.kind=="P"then
                     -- Presence may arrive after a bundle during recovery. Apply
                     -- cached dependent public records without renewing their age.
                     for id in pairs(M.byOrigin[L.Identity(row.origin)]or{})do local r=M.records[id];if r and r.session==row.session and r.kind~="P"then apply(r)end end
@@ -384,7 +435,7 @@ function M.Receive(route,payload)
                 if not haveVersion(h,version)then request[#request+1]=h;if sync then sync.missing[h]=version end end
             end
             if#request>1 then queueData(route,protocol,batch({Z.Network3.Pack(request)}),false,"request:"..route.target,15)end
-        elseif f[1]=="Q"and#f<=80 then
+        elseif f[1]=="Q"and#f<=17 then -- a request names at most 16 records
             local requested={}
             for i=2,#f do if not f[i]:match("^%d+$")then return false end;for id in pairs(M.index[f[i]]or{})do
                 requested[#requested+1]=id
@@ -523,7 +574,7 @@ function M.ConfirmSession(target,session)
 end
 function M.PrivacyChanged()
     if M.records then local me=L.Identity(Z.me.target);compact(function(_,row)return L.Identity(row.origin)==me end)end
-    M.pending={};M.pendingBytes=0;M.pendingCount=0
+    -- compact also removed the pending relays of those own records; relays of other origins stay queued.
 end
 function M.Status()return{records=#(M.keys or{}),bytes=M.bytes or 0,pending=M.pendingCount or 0,pendingBytes=M.pendingBytes or 0,assemblies=L.Count(M.assemblies),assemblyBytes=M.assemblyBytes or 0}end
 return M

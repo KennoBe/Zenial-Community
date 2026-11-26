@@ -253,13 +253,6 @@ function D.OnEvent(event)
 end
 local function beginScan()
     D.available,D.rosterReady=D.AvailableGroups();D.groups={};local joined={}
-    -- The invite does not encode a verified club ID. Learn it only from a
-    -- subscribed Battle.net club with the operator's exact lounge name.
-    if #D.config.groups==0 and D.BOOTSTRAP_ID then for _,row in ipairs(D.available)do
-        if row.id==D.BOOTSTRAP_ID then
-            D.config.groups[1]={id=row.id,name=row.name,invite=D.BOOTSTRAP_INVITE};D.ChoosePair(false);break
-        end
-    end end
     for _,row in ipairs(D.available)do joined[row.id]=true end
     local scan={groups={},group=1,index=1,found={},foundCount=0,scanned=0,total=0,unresolved=0,reasons={},loading=not D.rosterReady}
     for _,id in ipairs(D.config.assignment)do

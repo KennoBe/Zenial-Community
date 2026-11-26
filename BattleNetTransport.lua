@@ -1,6 +1,6 @@
 -- Verified direct transport. Private application frames never enter the mesh.
 local Z,L,A,D=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter,ZenialCommunity.CommunityDirectory
-local B={PREFIX="ZENIALNET1",MAX_JOBS=256,MAX_BYTES=65536,MAX_ROUTES=256,MAX_TEST_TARGETS=20}
+local B={HANDSHAKE_GAP=5,PREFIX="ZENIALNET1",MAX_JOBS=256,MAX_BYTES=65536,MAX_ROUTES=256,MAX_TEST_TARGETS=20}
 Z.BattleNetTransport=B
 local function trace(reason,...)
     if Z.Diagnostics then Z.Diagnostics.Record("bnet:"..reason,...)end
@@ -29,7 +29,7 @@ end
 function B.Reset(reason)
     B.jobs,B.bytes,B.pending,B.routes,B.proofs,B.inbound={},0,{},{},{},{}
     B.test=nil;B.serial=0;B.nextSend=0;B.tokens=1;B.byteTokens=6144;B.lastClock=A.Clock();B.nextExpiry=0;B.nextProbe=0
-    B.failed={};B.publicTokens=1;B.publicLastClock=A.Clock()
+    B.failed={};B.handshakeAt={};B.publicTokens=1;B.publicLastClock=A.Clock()
     if Z.Network3 then Z.Network3.waitingTargets={}end
     if Z.engine then Z.engine.waitingTargets={}end
     if Z.CommunityMesh then Z.CommunityMesh.poolUntil=0 end
@@ -37,7 +37,7 @@ function B.Reset(reason)
     trace("reset",reason or"initialize")
 end
 function B.Initialize()
-    B.stats={sent=0,received=0,acknowledged=0,confirmedBNet=0,confirmedWhisper=0,throttled=0,rejected=0,timeouts=0,errors=0,cancelled=0,dropped=0,lastError=""}
+    B.stats={sent=0,received=0,acknowledged=0,confirmedBNet=0,confirmedWhisper=0,throttled=0,rejected=0,handshakeDropped=0,timeouts=0,errors=0,cancelled=0,dropped=0,lastError=""}
     B.registered=false
     if C_ChatInfo and type(C_ChatInfo.RegisterAddonMessagePrefix)=="function"then
         local result=A.Call(C_ChatInfo.RegisterAddonMessagePrefix,B.PREFIX);local e=Enum and Enum.RegisterAddonMessagePrefixResult
@@ -53,6 +53,11 @@ function B.Queue(transport,target,kind,nonce,reason)
     if not enabled()or not B.registered then return false,"Connection tests are disabled."end
     local wire=identity(nonce,kind)
     if #wire>(transport=="WHISPER"and 240 or 3800)then return false,"Probe frame is too large."end
+    -- An answer (A, R, F) belongs to one route: a newer one replaces the open one instead of queueing another.
+    if kind=="A"or kind=="R"or kind=="F"then for _,job in ipairs(B.jobs)do if job.kind==kind and job.transport==transport and job.target==target then
+        if B.bytes-#job.wire+#wire>B.MAX_BYTES then return false,"Probe queue is full."end
+        B.bytes=B.bytes-#job.wire+#wire;job.wire=wire;job.nonce=nonce;job.reason=reason or"handshake";job.queuedAt=A.Clock();return true
+    end end end
     if #B.jobs>=B.MAX_JOBS or B.bytes+#wire>B.MAX_BYTES then B.stats.dropped=B.stats.dropped+1;return false,"Probe queue is full."end
     B.jobs[#B.jobs+1]={transport=transport,target=target,wire=wire,kind=kind,nonce=nonce,private=true,reason=reason or"handshake",queuedAt=A.Clock(),priority=(kind=="H"or kind=="W")and 80 or 110};B.bytes=B.bytes+#wire;return true
 end
@@ -134,6 +139,7 @@ local function confirm(transport,target,f,identityProof)
     peer.cap4=true;peer.cap3=true;peer.lastContact=A.Now();peer.lastContactClock=A.Clock();peer.state="reached"
     if Z.WhisperGuard then Z.WhisperGuard.Verified(f[4])end
     if Z.Network3.ConfirmSession then Z.Network3.ConfirmSession(f[4],f[10])end
+    if Z.CraftOrders and Z.CraftOrders.OnPeerOnline then Z.CraftOrders.OnPeerOnline(peerKey,f[10])end
     if first and Z.CommunityMesh then Z.CommunityMesh.OnConnected(B.routes[routeKey])
     elseif oldRoute and oldRoute.session~=f[10]and Z.CommunityMesh and Z.CommunityMesh.ReplayTo then Z.CommunityMesh.ReplayTo(B.routes[routeKey])end -- neighbour restarted (/reload)
     if Z.QuestMesh and(first or not B.routes[routeKey].questHelper)then Z.QuestMesh.OnConnected(B.routes[routeKey])end
@@ -148,6 +154,14 @@ local function allowInbound(routeKey)
     if not row then if L.Count(B.inbound)>=512 then return false end;row={at=now,count=0};B.inbound[routeKey]=row end
     if now-row.at>=60 then row.at=now;row.count=0 end
     if row.count>=600 then return false end;row.count=row.count+1;return true
+end
+-- Handshake frames (H, W, V) of one sender: about one per 5 seconds, the rest is dropped and counted. A retry of
+-- a pending probe comes after 8 seconds or more and passes.
+local function allowHandshake(routeKey,kind)
+    local now=A.Clock();local token=routeKey.."|"..kind;local at=B.handshakeAt[token]
+    if at and now-at<B.HANDSHAKE_GAP then B.stats.handshakeDropped=B.stats.handshakeDropped+1;return false end
+    if not at and L.Count(B.handshakeAt)>=512 then B.stats.handshakeDropped=B.stats.handshakeDropped+1;return false end
+    B.handshakeAt[token]=now;return true
 end
 function B.Route(target)
     local identity=L.Identity(target);if not identity then return nil end
@@ -289,6 +303,7 @@ function B.Receive(prefix,wire,transport,sender)
         local info,accountReason=freshAccount(sender);local bound=info and boundIdentity(info,f)
         if not bound then B.stats.rejected=B.stats.rejected+1;trace("rejected","BNET",accountReason or"identity_mismatch");return false end
         if f[2]=="H"then
+            if not allowHandshake(routeKey,"H")then return false end
             B.Queue("BNET",sender,"A",f[3]);if not B.pending[routeKey]and not B.routes[routeKey]then B.Probe("BNET",sender)end;return true
         end
         local pending=B.pending[routeKey]
@@ -304,6 +319,7 @@ function B.Receive(prefix,wire,transport,sender)
     if L.Identity(sender)~=L.Identity(f[4])then B.stats.rejected=B.stats.rejected+1;return false end
     -- A new native challenge proves current activity; permit its reciprocal proof.
     if f[2]=="W"or f[2]=="V"then B.failed[routeKey]=nil end
+    if(f[2]=="W"or f[2]=="V")and not allowHandshake(routeKey,f[2])then return false end
     if f[2]=="W"then
         B.Queue("WHISPER",sender,"R",f[3],"handshake_reply")
         local route=B.routes[routeKey]
@@ -400,6 +416,7 @@ function B.Tick()
         for routeKey,p in pairs(B.routes)do if clock-p.at>300 then B.routes[routeKey]=nil end end
         for routeKey,p in pairs(B.inbound)do if clock-p.at>=60 then B.inbound[routeKey]=nil end end
         for routeKey,untilAt in pairs(B.failed)do if clock>=untilAt then B.failed[routeKey]=nil end end
+        for token,at in pairs(B.handshakeAt)do if clock-at>=B.HANDSHAKE_GAP then B.handshakeAt[token]=nil end end
     end
     if B.Available()and Z.db.autoDiscovery and clock>=B.nextProbe and #B.jobs<16 then
         B.nextProbe=clock+2
