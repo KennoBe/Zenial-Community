@@ -124,7 +124,7 @@ function D.Evaluate(events,snapshot,myGUID)
     local c,order=D.Attackers(events,myGUID)
     if c.cause~="player"then return nil,c.cause end
     local death={id=snapshot.at.."."..snapshot.serial,at=snapshot.at,cause="player",confirmed=true,
-        mapID=snapshot.mapID,area=snapshot.area,subzone=snapshot.subzone,hasPos=snapshot.hasPos,x=snapshot.x,y=snapshot.y,layerID=snapshot.layerID,
+        mapID=snapshot.mapID,area=snapshot.area,subzone=snapshot.subzone,hasPos=snapshot.hasPos,x=snapshot.x,y=snapshot.y,
         attackers={},minAttackers=math.max(1,#order),attackersComplete=false}
     for _,class in ipairs(order)do
         if #death.attackers>=D.MAX_ATTACKERS then break end
@@ -138,9 +138,9 @@ function D.Evaluate(events,snapshot,myGUID)
 end
 
 local function snapshotNow(at)
-    local loc=A.PvpLocation(false);local snap=Z.CommunityLayer and Z.CommunityLayer.Snapshot and Z.CommunityLayer.Snapshot(loc.mapID)
+    local loc=A.PvpLocation(false)
     D.serial=D.serial+1
-    return{at=at,serial=D.serial,mapID=loc.mapID,area=loc.area,subzone=loc.subzone,hasPos=loc.hasPos,x=loc.x,y=loc.y,layerID=snap and snap.layerID or nil}
+    return{at=at,serial=D.serial,mapID=loc.mapID,area=loc.area,subzone=loc.subzone,hasPos=loc.hasPos,x=loc.x,y=loc.y}
 end
 
 function D.Initialize()D.pending=nil;D.cache={};D.armed=not A.IsDeadOrGhost()end

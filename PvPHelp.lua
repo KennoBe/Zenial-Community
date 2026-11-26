@@ -10,7 +10,7 @@ local function validID(v)return L.Text(v,32)and v:match("^[%d%.]+$")end
 local function cleanLocation(v)
     if type(v)~="table"then return{mapID=0,area="",subzone="",hasPos=false,x=0,y=0}end
     local mapID=L.Int(v.mapID or 0,0,1000000)and v.mapID or 0;local x=L.Int(v.x or 0,0,10000)and v.x or 0;local y=L.Int(v.y or 0,0,10000)and v.y or 0
-    return{mapID=mapID,area=L.Text(v.area or"",64,true)and v.area or"",subzone=L.Text(v.subzone or"",64,true)and v.subzone or"",hasPos=v.hasPos==true and mapID>0,x=x,y=y,layerID=L.Int(v.layerID,1,4294967295)and v.layerID or nil}
+    return{mapID=mapID,area=L.Text(v.area or"",64,true)and v.area or"",subzone=L.Text(v.subzone or"",64,true)and v.subzone or"",hasPos=v.hasPos==true and mapID>0,x=x,y=y}
 end
 local function cleanEnemy(v)
     if type(v)~="table"or not L.Text(v.name,113)then return nil end
@@ -39,7 +39,7 @@ local function cleanKillLog(list,now)
     return#out>0 and out or nil
 end
 P.CleanDeath,P.CleanKillLog=cleanDeath,cleanKillLog
-local function copyLocation(dst,src)dst.mapID, dst.area, dst.subzone, dst.hasPos, dst.x, dst.y,dst.layerID=src.mapID,src.area,src.subzone,src.hasPos,src.x,src.y,src.layerID end
+local function copyLocation(dst,src)dst.mapID, dst.area, dst.subzone, dst.hasPos, dst.x, dst.y=src.mapID,src.area,src.subzone,src.hasPos,src.x,src.y end
 local function peerFaction(key)local p=Z.db and Z.db.peers[key];return p and(p.faction or p.data and p.data.faction)end
 local function currentCall()local o=P.store and P.store.own;return o and o.expires>A.Now()and o or nil end
 local function contactTarget(key)local c=Z.db and Z.db.contacts[key];return c and c.target end
@@ -164,10 +164,7 @@ end
 function P.FormatLocation(v)
     if not v then return tr("Location unknown")end;local place=v.area~=""and v.area or tr("Area unknown");if v.subzone and v.subzone~=""and v.subzone~=v.area then place=place.." · "..v.subzone end
     if v.hasPos then place=place..string.format(" · %.1f / %.1f",v.x/100,v.y/100)end
-    local layer=v.layerID
-    if not layer and v.key and v.id and v.rev and Z.CommunityLayer then layer=Z.CommunityLayer.Call(v.key,v.id,v.rev,v.mapID)end
-    -- Only the caller's own reported layer is shown; an unknown layer (always so in dungeons) is simply omitted.
-    local known=Z.CommunityLayer and Z.CommunityLayer.KnownLabel(layer);return known and place.." · "..known or place
+    return place
 end
 function P.Own()return currentCall()end
 function P.RecipientCounts()

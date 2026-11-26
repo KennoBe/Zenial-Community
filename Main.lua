@@ -2,7 +2,7 @@ local Z,L,A=ZenialCommunity,ZenialCommunity.Logic,ZenialCommunity.Adapter
 local H=Z.History
 local uiDirty=false
 
--- Kinds that never touch peers, contacts, own profile, location, layers or
+-- Kinds that never touch peers, contacts, own profile, location or
 -- links, i.e. nothing the member list model reads. Their changes still refresh
 -- the visible page at once and invalidate every other view cache; only the
 -- member list model is reused. Unknown or missing kinds invalidate everything.
@@ -558,7 +558,6 @@ local function initializeNetworkModules()
     Z.BattleNetTransport.Initialize()
     Z.CommunityMesh.Initialize()
     if Z.LocalNetwork then Z.LocalNetwork.Initialize()end
-    if Z.CommunityLayer then Z.CommunityLayer.Initialize()end
     Z.QuestMesh.Initialize()
     Z.QuestHelper.Initialize()
     Z.CommunityMap.Initialize()
@@ -690,8 +689,6 @@ register("PLAYER_TARGET_CHANGED")
 register("UPDATE_MOUSEOVER_UNIT")
 register("NAME_PLATE_UNIT_ADDED")
 register("NAME_PLATE_UNIT_REMOVED")
--- Layer transfer signals; registration is defensive because the client may not know them.
-register("SHARD_TRANSFER");register("SHARD_TRANSFER_IMMINENT")
 register("BAG_UPDATE_DELAYED")
 register("GET_ITEM_INFO_RECEIVED")
 register("ITEM_DATA_LOAD_RESULT")
@@ -725,7 +722,7 @@ frame:SetScript("OnEvent",function(_,event,...)
         if Z.CrossFactionPresence and A.Safe(prefix)and type(prefix)=="string"and prefix==Z.CrossFactionPresence.PREFIX then pcall(Z.CrossFactionPresence.OnBNet,prefix,payload,sender)
         else Z.BattleNetTransport.Receive(prefix,payload,"BNET",sender)end end
     elseif event:match("^BN_")or event:match("^CLUB_")or event=="INITIAL_CLUBS_LOADED"or event=="PLAYER_ENTERING_WORLD"then
-        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.ResetBattleNet("disconnect")end end
+        if Z.db then if event=="PLAYER_ENTERING_WORLD"and Z.SocialDiary then Z.SocialDiary.OnEvent(event)end;Z.CommunityDirectory.OnEvent(event);if event=="BN_DISCONNECTED"then Z.BattleNetTransport.ResetBattleNet("disconnect")end end
     elseif event=="PLAYER_LEVEL_UP" then
         local level=...
         if Z.Events and A.Safe(level)and type(level)=="number"then pcall(Z.Events.Emit,"community","community.player.level_up",{level=level})end
@@ -741,11 +738,9 @@ frame:SetScript("OnEvent",function(_,event,...)
         elseif Z.db then A.Receive(...) end
     elseif event=="SKILL_LINES_CHANGED"or event=="SPELLS_CHANGED"or event:match("^TRADE_SKILL_")then if Z.ProfessionScan then Z.ProfessionScan.OnEvent(event,...)end
     elseif event=="PLAYER_DEAD"or event=="PLAYER_ALIVE"or event=="PLAYER_UNGHOST"or event=="PLAYER_FLAGS_CHANGED"then if Z.PvPHelp then Z.PvPHelp.OnEvent(event,...)end
-    elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end;if Z.db and Z.SocialDiary and event=="ZONE_CHANGED_NEW_AREA"then Z.SocialDiary.OnEvent(event)end;Z.RefreshLocation(false)
-    elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then local unit=event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil;if Z.CommunityLayer then Z.CommunityLayer.RequestScan(unit)end;if Z.PvPDeath and unit and event~="NAME_PLATE_UNIT_REMOVED"then Z.PvPDeath.Observe(unit)end
-    elseif event=="SHARD_TRANSFER"or event=="SHARD_TRANSFER_IMMINENT"then if Z.db and Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
+    elseif event=="ZONE_CHANGED_NEW_AREA"or event=="ZONE_CHANGED"or event=="ZONE_CHANGED_INDOORS"then if Z.db and Z.SocialDiary and event=="ZONE_CHANGED_NEW_AREA"then Z.SocialDiary.OnEvent(event)end;Z.RefreshLocation(false)
+    elseif event=="PLAYER_TARGET_CHANGED"or event=="UPDATE_MOUSEOVER_UNIT"or event=="NAME_PLATE_UNIT_ADDED"or event=="NAME_PLATE_UNIT_REMOVED"then local unit=event=="PLAYER_TARGET_CHANGED"and"target"or event=="UPDATE_MOUSEOVER_UNIT"and"mouseover"or event=="NAME_PLATE_UNIT_ADDED"and...or nil;if Z.PvPDeath and unit and event~="NAME_PLATE_UNIT_REMOVED"then Z.PvPDeath.Observe(unit)end
     elseif event=="GROUP_ROSTER_UPDATE" then
-        if Z.CommunityLayer then Z.CommunityLayer.OnEvent(event)end
         Z.CommunityMap.Refresh()
         if Z.ActivityParty and Z.ActivityParty.SyncLive()then L.Touch(Z.db);Z.Publish()end
         if Z.db and Z.db.lfg[1] and Z.db.lfg[1].mode~="LFG" then local have=A.GroupRoles()
@@ -792,7 +787,6 @@ local function tickQuarterSecond()
     end
     Z.CommunityMesh.Tick()
     if Z.LocalNetwork then Z.LocalNetwork.Tick()end
-    if Z.CommunityLayer then Z.CommunityLayer.Tick()end
     Z.QuestHelper.Tick()
     Z.MaterialPlanner.Tick()
     Z.ScheduledMesh.Tick()

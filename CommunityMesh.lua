@@ -8,8 +8,8 @@ if scheduled then Z.ScheduledMesh=M elseif optional then Z.QuestMesh=M else Z.Co
 local function queueData(route,_,payload,private,dedupe,priority,...)
     return B.QueueData(route,protocol,payload,private,dedupe,optional and 5 or priority,...)
 end
-local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true,GN=true}
-local TRANSIENT={MP=true,LY=true,L2=true,PD=true,GN=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
+local PUBLIC=scheduled and{SE=true}or optional and{QH=true}or{P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,PD=true,GN=true}
+local TRANSIENT={MP=true,PD=true,GN=true} -- optional short-lived kinds: never inventoried, never durable, own batch frames
 local function enabled()return B.Enabled()and Z.db.autoDiscovery end
 local function trace(event,...)if Z.Diagnostics then Z.Diagnostics.Record((scheduled and "scheduledmesh:"or optional and "questmesh:"or"mesh:")..event,...)end end
 local function hash(value)
@@ -73,14 +73,6 @@ local function validate(row,now)
         local position=Z.Network3.DecodeMapPosition(row.wire)
         return position and position.session==row.session and position.at==row.at or false
     end
-    if row.kind=="LY"then
-        local layer=Z.CommunityLayer and Z.CommunityLayer.Decode(row.wire)
-        return layer and layer.session==row.session and layer.at==row.at or false
-    end
-    if row.kind=="L2"then
-        local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(row.wire)
-        return layer and layer.session==row.session and layer.at==row.at or false
-    end
     if row.kind=="PD"then
         local death=Z.Network3.DecodePvPDeath(row.wire)
         return death and death.session==row.session and death.at==row.at or false
@@ -101,7 +93,7 @@ local function validate(row,now)
         and L.Int(tonumber(f[5]),0,1000000)and L.Text(f[6],64,true)and L.Text(f[7],64,true)
         and L.Int(tonumber(f[8]),0,1)and L.Int(tonumber(f[9]),0,10000)and L.Int(tonumber(f[10]),0,10000)
 end
--- Presence/position/layer rows live for minutes; they are relayed from memory
+-- Presence/position rows live for minutes; they are relayed from memory
 -- only and never written to the account-wide SavedVariables store.
 local function durable(row)return row.kind~="P"and not TRANSIENT[row.kind]end
 local function persist()
@@ -169,7 +161,7 @@ end
 local function enqueue(id,source)
     local row=M.records[id];if not row then return false end
     -- The guild name is never urgent: it ranks below the other optional kinds, so that it only travels when no
-    -- position, layer or death marker waits for the same neighbour (one optional kind per frame, see flush).
+    -- position or death marker waits for the same neighbour (one optional kind per frame, see flush).
     local priority=optional and 5 or row.kind=="GN"and 3 or TRANSIENT[row.kind]and 5 or row.kind=="P"and 70 or row.kind=="B"and row.seq<=2 and 10 or 80
     local old=M.pending[id]
     if old then M.pendingBytes=M.pendingBytes-#old.row.wire;M.pending[id]=nil;M.pendingCount=M.pendingCount-1 end
@@ -253,14 +245,6 @@ function M.Publish(kind,wire)
     if kind=="MP"then
         local position=Z.Network3.DecodeMapPosition(wire);if not position then return nil end
         row.at=position.at -- Keep the actual sample time, including at a second boundary.
-    end
-    if kind=="LY"then
-        local layer=Z.CommunityLayer and Z.CommunityLayer.Decode(wire);if not layer then return nil end
-        row.at=layer.at
-    end
-    if kind=="L2"then
-        local layer=Z.CommunityLayer and Z.CommunityLayer.DecodeV2(wire);if not layer then return nil end
-        row.at=layer.at
     end
     if kind=="PD"then
         local death=Z.Network3.DecodePvPDeath(wire);if not death then return nil end
@@ -355,7 +339,9 @@ function M.Receive(route,payload)
     for _,wire in ipairs(frames)do
         local f=Z.Network3.Unpack(wire)
         if not f then return false end
-        if f[1]=="U"and#f==12 then
+        if f[1]=="U"and#f==12 and(f[6]=="LY"or f[6]=="L2")then
+            M.stats.dropped=M.stats.dropped+1 -- layer records of older clients: ignored, neither stored nor relayed
+        elseif f[1]=="U"and#f==12 then
             local row={origin=f[2],session=f[3],seq=tonumber(f[4]),at=tonumber(f[5]),kind=f[6],realm=f[7],region=tonumber(f[8]),project=tonumber(f[9])}
             local part,total=tonumber(f[10]),tonumber(f[11]);local chunk=f[12]
             if not PUBLIC[row.kind]or not L.Text(row.origin,49)or not L.Identity(row.origin)or not validSession(row.session)or not L.Int(row.seq,0,2147483646)

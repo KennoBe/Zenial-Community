@@ -136,7 +136,6 @@ function T.community()
             local legacy=peer and peer.location and peer.location.mapID==mapID and peer.location
             row.location={mapID=mapID,area=text(field(info,'name'))or legacy and text(legacy.area),subzone=not presence and legacy and text(legacy.subzone)or'',at=presence and number(presence.at)or legacy and number(legacy.at)}
             if presence and presence.instanceID and Z.DungeonData then row.position=nil;row.location={instanceID=presence.instanceID,area=Z.DungeonData.Name(presence.instanceID),entrance=Z.DungeonData.Entrance(presence.instanceID),at=presence.at}end
-            row.layerID=Z.CommunityLayer and Z.CommunityLayer.Member(key,mapID)or nil
             local size=#P.Json(row);if bytes+size>48000 or count>=1000 then truncated=true;break end
             rows[#rows+1]=row;count=count+1;bytes=bytes+size+1
             local market=peer and peer.data and peer.data.market or{}

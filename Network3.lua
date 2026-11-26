@@ -3,7 +3,7 @@ local N={PREFIX=L.PREFIX3,FRAME_BYTES=180,MAX_JOBS=256,MAX_QUEUE_BYTES=65536}
 Z.Network3=N
 
 local function count(t)local n=0;for _ in pairs(t or{})do n=n+1 end;return n end
-local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,LY=true,L2=true,PD=true,GN=true}
+local PUBLIC={P=true,B=true,RX=true,PC=true,PU=true,PX=true,MP=true,PD=true,GN=true}
 local DIRECT={RQ=true,RR=true,RB=true,OC=true,OO=true,OS=true,OQ=true,OA=true,AV=true,SH=true,SA=true,SQ=true,SS=true,SK=true,SP=true,SX=true}
 local function allowedKind(channel,kind)return channel=="PUBLIC"and PUBLIC[kind]or channel=="WHISPER"and DIRECT[kind]or false end
 local function trace(reason,...)
@@ -53,7 +53,7 @@ function N.DecodeMapPosition(wire)
         or mapID==0 and(x~=0 or y~=0)then return nil end
     return{session=f[1],at=at,mapID=mapID,x=x,y=y}
 end
--- PD (PvP death marker) wire: session, at (time of death), deathId, mapID, x, y, area, subzone, layerID (0 = unknown),
+-- PD (PvP death marker) wire: session, at (time of death), deathId, mapID, x, y, area, subzone, a reserved field (always 0; formerly the layer ID, ignored on receipt),
 -- minAttackers, killerFirst, attackerCount, then per attacker: name, classFile, race, level (0 = unknown).
 -- The victim is never part of the wire; receivers take it from the validated mesh origin. No GUIDs.
 N.PD_LIFETIME=600
@@ -62,10 +62,10 @@ function N.DecodePvPDeath(wire)
     local f=fields(wire);if not f or#f<12 then return nil end
     if not L.Text(f[1],32)or not f[1]:match("^%d+%.%d+%.%d+$")or not L.Text(f[3],24)or not f[3]:match("^%d+%.%d+$")then return nil end
     local at,mapID,x,y=digits(f[2]),digits(f[4]),digits(f[5]),digits(f[6])
-    local layerID,minA,killerFirst,count=digits(f[9]),digits(f[10]),digits(f[11]),digits(f[12])
+    local reserved,minA,killerFirst,count=digits(f[9]),digits(f[10]),digits(f[11]),digits(f[12])
     local now=A.Now()
     if not L.Int(at,1,4102444800)or at>now+120 or now-at>N.PD_LIFETIME or not L.Int(mapID,1,1000000)or not L.Int(x,0,10000)or not L.Int(y,0,10000)
-        or not L.Int(layerID,0,4294967295)or not L.Int(minA,1,40)or not L.Int(killerFirst,0,1)or not L.Int(count,0,5)
+        or not L.Int(reserved,0,4294967295)or not L.Int(minA,1,40)or not L.Int(killerFirst,0,1)or not L.Int(count,0,5)
         or not L.Text(f[7],64,true)or not L.Text(f[8],64,true)or#f~=12+4*count or killerFirst==1 and count<1 or minA<count then return nil end
     local attackers={}
     for i=1,count do
@@ -73,13 +73,13 @@ function N.DecodePvPDeath(wire)
         if not L.Text(f[base+1],80)or not L.Text(f[base+2],16,true)or f[base+2]~=""and not f[base+2]:match("^[A-Z_]+$")or not L.Text(f[base+3],24,true)or not L.Int(level,0,100)then return nil end
         attackers[i]={name=f[base+1],classFile=f[base+2],race=f[base+3],level=level>0 and level or nil}
     end
-    return{session=f[1],at=at,deathId=f[3],mapID=mapID,x=x,y=y,area=f[7],subzone=f[8],layerID=layerID>0 and layerID or nil,minAttackers=minA,killerFirst=killerFirst==1,attackers=attackers}
+    return{session=f[1],at=at,deathId=f[3],mapID=mapID,x=x,y=y,area=f[7],subzone=f[8],minAttackers=minA,killerFirst=killerFirst==1,attackers=attackers}
 end
 function N.PackPvPDeath(session,d)
     local list={};local killer=d.killer
     if killer then list[1]=killer end
     for _,a in ipairs(d.attackers or{})do if not(killer and a.name==killer.name)and#list<5 then list[#list+1]=a end end
-    local values={session,d.at,d.id,d.mapID,d.x,d.y,d.area or"",d.subzone or"",d.layerID or 0,math.max(d.minAttackers or 1,#list),killer and 1 or 0,#list}
+    local values={session,d.at,d.id,d.mapID,d.x,d.y,d.area or"",d.subzone or"",0,math.max(d.minAttackers or 1,#list),killer and 1 or 0,#list}
     for _,a in ipairs(list)do values[#values+1]=a.name;values[#values+1]=a.classFile or"";values[#values+1]=a.race or"";values[#values+1]=a.level or 0 end
     return N.Pack(values)
 end
@@ -351,14 +351,6 @@ function N.ProcessComplete(sender,channel,kind,wire)
     if kind=="MP"then return Z.CommunityMap and Z.CommunityMap.Receive(sender,wire,N.meshContext)or false end
     if kind=="PD"then return Z.CommunityMap and Z.CommunityMap.ReceiveDeath(sender,wire,N.meshContext)or false end
     if kind=="GN"then return receiveGuild(sender,wire)end
-    if kind=="LY"then
-        if Z.CommunityLayer then return Z.CommunityLayer.Receive(sender,wire,N.meshContext)end
-        return false
-    end
-    if kind=="L2"then
-        if Z.CommunityLayer then return Z.CommunityLayer.ReceiveV2(sender,wire,N.meshContext)end
-        return false
-    end
     if kind=="RX"then
         local f=fields(wire);local key=Z.ResolvePeerKey and Z.ResolvePeerKey(sender);local peer=key and Z.db.peers[key];local revision=f and tonumber(f[3]);if not f or#f~=3 or(f[1]~="G"and f[1]~="Q"and f[1]~="M")or not L.Text(f[2],32)or not L.Int(revision,0,2147483646)or not peer or not peer.cap30 or not N.IsOnline(key)or revision<(peer.publicAppliedRev or-1)then return false end
         local data=peer.data;if data then if f[1]=="G"and data.group and data.group.id==f[2]then data.group=nil elseif f[1]=="Q"and data.quest and data.quest.id==f[2]then data.quest=nil elseif f[1]=="M"then for i=#(data.market or{}),1,-1 do if data.market[i].id==f[2]then table.remove(data.market,i)end end end end

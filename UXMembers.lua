@@ -125,11 +125,6 @@ local function memberEntries(ownOnly)
             m.sourceLinkVersion = s and s.linkVersion
             -- The public guild name arrives on its own and changes neither the profile table nor its revision.
             m.sourceGuild = Z.Social.PeerGuild(m.key, s)
-            m.layerID = Z.CommunityLayer and (m.own and Z.CommunityLayer.Own() or not m.own and Z.CommunityLayer.Member(m.key)) or nil
-            -- Heuristic hints only: "probable" never claims a certain shared layer.
-            m.layerRelation = not m.own and m.layerID and Z.CommunityLayer.Relation and Z.CommunityLayer.Relation(m.key) or nil
-            local layerSnapshot = not m.own and m.layerID and Z.CommunityLayer.MemberSnapshot and Z.CommunityLayer.MemberSnapshot(m.key) or nil
-            m.layerSeenAt = layerSnapshot and layerSnapshot.observedAt or nil
             m.where = locationText(m.location)
             if
                 not m.own
@@ -352,7 +347,7 @@ end
 local function stripColors(value)
     return (tostring(value or ''):gsub('|c%x%x%x%x%x%x%x%x', ''):gsub('|r', ''))
 end
--- Plain text of the whole card (header lines, layer chip and fact list) as shown to the player.
+-- Plain text of the whole card (header lines and fact list) as shown to the player.
 function U.MemberCardText()
     local card = U.memberCard
     local parts = {}
@@ -362,15 +357,12 @@ function U.MemberCardText()
                 parts[#parts + 1] = region:GetText()
             end
         end
-        if card.layerTag and card.layerTag:IsShown() then
-            parts[#parts + 1] = card.layerTag.text:GetText()
-        end
     end
     parts[#parts + 1] = U.memberDetail:GetText()
     return stripColors(table.concat(parts, '\n'))
 end
--- Header of the member card: portrait, class-coloured name, class line, presence and the known layer chip.
-local function updateMemberHeader(m, s, layerText)
+-- Header of the member card: portrait, class-coloured name, class line and presence.
+local function updateMemberHeader(m, s)
     local card = U.memberCard
     if not card then
         return
@@ -387,7 +379,6 @@ local function updateMemberHeader(m, s, layerText)
         region:SetShown(has)
     end
     if not has then
-        card.layerTag:Hide()
         return
     end
     local r, g, b
@@ -412,15 +403,6 @@ local function updateMemberHeader(m, s, layerText)
     if T and T.Tint then
         T.Tint(card.status, 'SetTextColor', m.online and 'online' or 'dim')
         T.Tint(card.statusDot, 'SetColorTexture', m.online and 'online' or 'dim')
-    end
-    if s and layerText then
-        card.layerTag:SetLabel(layerText)
-        card.layerTag:ClearAllPoints()
-        local width = card.status.GetStringWidth and card.status:GetStringWidth()
-        card.layerTag:SetPoint('LEFT', card.status, 'LEFT', (type(width) == 'number' and width or 40) + 10, 0)
-        card.layerTag:Show()
-    else
-        card.layerTag:Hide()
     end
 end
 -- Linked group of a member in the grouped view; nil for single characters, in the single-character view
@@ -532,13 +514,12 @@ local function refreshMemberDetail()
     end
     local s = m.data
     if not s then
-        updateMemberHeader(m, nil, nil)
+        updateMemberHeader(m, nil)
         groupLines[#groupLines + 1] = dimText(tr('Profile not received yet'))
         U.memberDetail:SetText(table.concat(groupLines, '\n'))
         return
     end
-    local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
-    updateMemberHeader(m, s, layerText)
+    updateMemberHeader(m, s)
     -- Fact list: every line the plain detail used to carry, with a dim caption in front of the value.
     local function fact(caption, value)
         return dimText(caption) .. ' ' .. value
@@ -576,15 +557,6 @@ local function refreshMemberDetail()
     if type(met) == 'table' and type(met.count) == 'number' and met.count > 0 then
         lines[#lines + 1] = fact(tr('Social diary') .. ':', Z.T('%d encounters', met.count)
             .. (met.last and ' · ' .. tr('Last encounter') .. ' ' .. age(met.last) or ''))
-    end
-    -- A layer is shown only when it is known; nothing is said about an unknown one.
-    if layerText then
-        if m.layerRelation == 'probable' then
-            lines[#lines + 1] = dimText(tr('Probably the same layer'))
-        end
-        if m.layerSeenAt then
-            lines[#lines + 1] = dimText(Z.T('Layer last detected %s', age(m.layerSeenAt)))
-        end
     end
     U.memberDetail:SetText(table.concat(lines, '\n'))
 end
@@ -674,10 +646,6 @@ local function locationLine(m)
     return m.where ~= '' and ((m.online and tr('Location:') .. ' ' or tr('Last known location') .. ': ') .. m.where)
         or (tr('Location') .. ': ' .. string.lower(tr('Unknown')))
 end
-local function layerChip(m)
-    local layerText = Z.CommunityLayer.KnownLabel(m.layerID)
-    return layerText and ('|cff' .. paletteHex('accentBlue') .. layerText .. '|r · ') or '', layerText
-end
 -- Guild line of a hover text: the own guild from the roster, every other guild from the member's shared name.
 local function guildLine(m)
     local name = Z.Social.IsGuildMember(m.key) and Z.Social.GuildName() or Z.Social.PeerGuild(m.key, m.data)
@@ -730,16 +698,6 @@ local function characterItem(m, ctx)
     if updated > 0 then
         tooltip = tooltip .. '\n' .. Z.T('Updated %s', age(updated))
     end
-    local chip, layerText = layerChip(m)
-    if layerText then
-        tooltip = tooltip .. '\n' .. layerText
-        if m.layerRelation == 'probable' then
-            tooltip = tooltip .. '\n' .. tr('Probably the same layer')
-        end
-        if m.layerSeenAt then
-            tooltip = tooltip .. '\n' .. Z.T('Layer last detected %s', age(m.layerSeenAt))
-        end
-    end
     local level = s and type(s.level) == 'number' and s.level > 0 and tostring(s.level) or tr('Unknown')
     local at = ctx.category == 'RECONTACT' and ctx.C.LastTogether(m.key)
     if at then
@@ -757,8 +715,8 @@ local function characterItem(m, ctx)
         textInset = 46,
         text = title,
         display = display,
-        subtitle = tr('Level') .. ' ' .. level .. ' · ' .. chip .. locationLine(m),
-        subtitleDisplay = paint('textSoft', tr('Level') .. ' ' .. level) .. ' · ' .. chip .. locationLine(m),
+        subtitle = tr('Level') .. ' ' .. level .. ' · ' .. locationLine(m),
+        subtitleDisplay = paint('textSoft', tr('Level') .. ' ' .. level) .. ' · ' .. locationLine(m),
         tooltip = tooltip,
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),
@@ -791,7 +749,7 @@ local function containsKey(g, key)
     return false
 end
 -- Header of one linked group. The headline is the main's name; every live detail
--- (class, level, location, layer) belongs to the active character only.
+-- (class, level, location) belongs to the active character only.
 local function groupItem(g, hits, ctx)
     local main, active = g.mainMember, g.activeMember
     local ms = main and main.data
@@ -819,8 +777,7 @@ local function groupItem(g, hits, ctx)
         .. status
     local subtitle
     if active then
-        local chip = layerChip(active)
-        subtitle = tr('Active') .. ': ' .. active.target .. ' · ' .. classLevel(active) .. ' · ' .. chip .. locationLine(active)
+        subtitle = tr('Active') .. ': ' .. active.target .. ' · ' .. classLevel(active) .. ' · ' .. locationLine(active)
         if #g.activeMembers > 1 then
             subtitle = subtitle .. ' · ' .. Z.T('+%d more online', #g.activeMembers - 1)
         end
@@ -854,8 +811,6 @@ local function groupItem(g, hits, ctx)
     if active then
         lines[#lines + 1] = (active == main and tr('Online') or Z.T('Online: %s', active.target)) .. ' · ' .. classLevel(active)
         if active.where and active.where ~= '' then lines[#lines + 1] = active.where end
-        local _, knownLayer = layerChip(active)
-        if knownLayer then lines[#lines + 1] = knownLayer end
     else
         lines[#lines + 1] = g.lastSeen > 0 and Z.T('Offline · last seen %s', age(g.lastSeen)) or tr('Offline')
     end
@@ -913,7 +868,6 @@ local function groupMemberItem(g, m, hit, ctx)
         .. (ctx.filtering and hit and dimText(' · ' .. tr('Match')) or '')
         .. '    '
         .. (m.online and '|cff' .. paletteHex('online') .. tr('Online') .. '|r' or dimText(age(m.seen)))
-    local chip = layerChip(m)
     local memberKey = m.key
     local display = '|cff'
         .. (classHex or (m.own and 'ffd36b' or 'ffffff'))
@@ -935,8 +889,8 @@ local function groupMemberItem(g, m, hit, ctx)
         icon = T and (T.ClassIcon(s and s.classFile, s and s.class) or neutralIcon()),
         text = title,
         display = display,
-        subtitle = classLevel(m) .. ' · ' .. chip .. locationLine(m),
-        subtitleDisplay = paint('textSoft', classLevel(m)) .. ' · ' .. chip .. locationLine(m),
+        subtitle = classLevel(m) .. ' · ' .. locationLine(m),
+        subtitleDisplay = paint('textSoft', classLevel(m)) .. ' · ' .. locationLine(m),
         tooltip = guildLine(m),
         favorite = Z.Social.IsFavorite(m.key),
         sameGuild = Z.Social.IsGuildMember(m.key),

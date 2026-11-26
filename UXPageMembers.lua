@@ -52,16 +52,7 @@ local function createMemberCard(page)
     if T then
         T.Tint(card.divider, 'SetColorTexture', 'line')
         T.Tint(card.classLine, 'SetTextColor', 'dim')
-        card.layerTag = T.CreateTag(card, 'accentBlueBg', 'accentBlueEdge', 'accentBlue')
-    else
-        card.layerTag = CreateFrame('Frame', nil, card)
-        card.layerTag.text = card.layerTag:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
-        card.layerTag.SetLabel = function(self, value)
-            self.text:SetText(value)
-        end
     end
-    card.layerTag:SetHeight(16)
-    card.layerTag:Hide()
     -- No member selected: a symbol and the hint instead of an empty sheet (positioned by U.RefreshMemberCategories).
     if Z.Kit and T then
         card.empty = Z.Kit.EmptyState(card, { icon = 'members', title = tr('Select a member.'), hint = '', width = 240 })

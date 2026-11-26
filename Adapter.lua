@@ -448,7 +448,7 @@ function A.PvpLocation(corpse)
         if not point then point=A.Call(C_Map and C_Map.GetPlayerMapPosition,mapID,"player") end
     end
     local x,y=vectorXY(point)
-    return {mapID=mapID,area=area,subzone=subzone,hasPos=x~=nil,x=x or 0,y=y or 0,layerID=Z.CommunityLayer and Z.CommunityLayer.Own(mapID)or nil}
+    return {mapID=mapID,area=area,subzone=subzone,hasPos=x~=nil,x=x or 0,y=y or 0}
 end
 function A.PvpEnemy()
     if A.Call(UnitExists,"target")~=true or A.Call(UnitIsPlayer,"target")~=true or A.Call(UnitCanAttack,"player","target")~=true then return nil end
