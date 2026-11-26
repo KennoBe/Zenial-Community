@@ -8,7 +8,7 @@
 -- other players. Main changes go through Z.SetMain, deletion through the existing
 -- Z.RemoveCharacter confirmation; hiding only affects this view.
 local Z,U,A=ZenialCommunity,ZenialCommunity.UI,ZenialCommunity.Adapter
-local L,T=Z.Logic,Z.Theme
+local T=Z.Theme
 local S
 local function tr(s,...)return Z.T(s,...)end
 local function O()return Z.AccountOverview end
@@ -158,8 +158,15 @@ function U.MyCharactersRows()
     for _,r in ipairs(scoped)do
         if query==''or string.lower(r.name):find(needle,1,true)~=nil then rows[#rows+1]=r end
     end
-    return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=true,
+    return rows,{all=#all,scoped=scoped,hidden=hidden,query=query,filtered=f.faction~=nil or query~='',
         realm=f.realm,faction=f.faction,showHidden=showHidden}
+end
+-- Realm, faction and hidden choice that every tab applies; shown where a tab has no filter row of its own.
+local function scopeText(context)
+    local realm=context.realm==nil and tr('All realms')or context.realm~=''and context.realm or tr('Unknown')
+    local parts={realm,context.faction and tr(context.faction)or tr('All factions')}
+    if context.showHidden then parts[#parts+1]=tr('including hidden')end
+    return tr('Scope: %s',table.concat(parts,' · '))
 end
 local function summary(context)
     local overview=O();local scoped=context.scoped;local known,unknown,oldest,professions=0,0,nil,0
@@ -306,10 +313,6 @@ local function cleanSelection(selection,allowed)
     if type(selection)=='table'then for _,field in ipairs(allowed)do if selection[field]~=nil then out[field]=selection[field]end end end
     return next(out)and out or nil
 end
-function U.OpenMyCharactersDetail(key)
-    if type(key)~='string'or key==''then return false end
-    return openRoute('overview',{characterKey=key})
-end
 function U.OpenMyCharactersRecipes(selection)
     return openRoute('recipes',cleanSelection(selection,{'characterKey','profession','recipe'}))
 end
@@ -318,7 +321,7 @@ function U.OpenMyCharactersInventory(selection)
 end
 
 -- Pieces the tab files share with the shell.
-U.MyCharactersUI={paint=paint,styled=styled,when=when,duration=duration,className=className,plain=plain,badge=badge,classIcon=classIcon,
+U.MyCharactersUI={scopeText=scopeText,paint=paint,styled=styled,when=when,duration=duration,className=className,plain=plain,badge=badge,classIcon=classIcon,
     canDelete=canDelete,canSetMain=canSetMain,canHide=canHide,buttonTextWidth=buttonTextWidth,fitButton=fitButton,place=place,shown=shown,
     BUTTON_HEIGHT=BUTTON_HEIGHT,
     showDetail=function(key)

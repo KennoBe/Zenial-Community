@@ -34,6 +34,7 @@ local EVENTS={"PLAYER_ENTERING_WORLD","PLAYER_MONEY","TIME_PLAYED_MSG","PLAYER_X
 local INVENTORY_EVENTS={"BAG_UPDATE_DELAYED","BANKFRAME_OPENED","BANKFRAME_CLOSED","PLAYERBANKSLOTS_CHANGED"}
 local frame
 local played,startPlayed={}
+local accountIndex
 
 local function defaults()return{version=O.VERSION,enabled=true,enabledBy="default",inventory=true,inventoryBy="default",characters={},hidden={}}end
 local function stamp()local now=A.Now();return now>0 and now or nil end
@@ -84,6 +85,8 @@ local function accountCharacters()return Z.account and type(Z.account.characters
 local function ownKey()return Z.accountCharacterKey or Z.storageKey end
 
 local function setEvents()
+    -- Without the bank events a closed bank would stay "open": never read a closed bank as empty.
+    if not O.InventoryEnabled()then O.bankOpen=false end
     if not frame then return end
     frame:UnregisterAllEvents()
     if not O.Enabled()then return end
@@ -93,7 +96,7 @@ end
 
 function O.Initialize()
     O.revision=0;O.bankOpen=false;O.bagsDirty=false;O.bankDirty=false;O.bankScanQueued=false
-    O.lastScan={};O.bankRetries=0;O.bankRetryQueued=false;O.stockCache=nil
+    O.lastScan={};O.bankRetries=0;O.bankRetryQueued=false;O.stockCache=nil;O.listCache=nil
     local root=ZenialCommunityDB;if type(root)~="table"then return end
     local raw=root.accountOverview
     -- A newer format from a later addon version stays untouched and read-only.
@@ -125,6 +128,14 @@ function O.Initialize()
             if value==true and canonical and not store.hidden[canonical]and hidden<O.MAX_CHARACTERS+O.MAX_UTILITY then store.hidden[canonical]=true;hidden=hidden+1 end
         end
         store.imported=O.SanitizeImported(raw.imported)
+        -- A Utility-only row hidden before its character first logged in with Community keeps its mark on the Community row.
+        local index=accountIndex(known)
+        for id,u in pairs(store.imported and store.imported.characters or{})do
+            local utilityKey="utility:"..u.realm.."@"..u.faction.."@"..u.name;local target=index[id]
+            if store.hidden[utilityKey]and type(target)=="string"and known[target]then
+                store.hidden[utilityKey]=nil;store.hidden[target]=true
+            end
+        end
     end
     root.accountOverview=store;O.store=store
     if not frame then frame=CreateFrame("Frame");frame:SetScript("OnEvent",function(_,event,...)O.OnEvent(event,...)end)end
@@ -421,7 +432,7 @@ end
 -- Utility may store the given name or the full name. A row matches a Community
 -- character with the same world, faction and either name; a name that two
 -- Community characters share stays unmatched.
-local function accountIndex(characters)
+function accountIndex(characters)
     local index={}
     for key,c in pairs(characters)do if type(c)=="table"and L.Text(c.target,113)then
         local base=c.target:match("^(.-)%-.+$")or c.target
@@ -483,9 +494,50 @@ local function mainFor(characters,realm,faction)
     if type(c)=="table"and c.realm==realm and c.faction==faction then return key,c.target end
 end
 
--- All known characters, optionally filtered by realm and faction.
+-- Everything the rows read outside the store: account list, mains, profession lists and recipe states.
+-- A change of any of it changes this text, so the cached rows are rebuilt (the store has its revision).
+local function accountSignature()
+    local a=Z.account or{};local characters=accountCharacters();local keys={}
+    for key in pairs(characters)do keys[#keys+1]=key end
+    table.sort(keys)
+    local profiles=type(ZenialCommunityDB)=="table"and type(ZenialCommunityDB.characters)=="table"and ZenialCommunityDB.characters or{}
+    local out={tostring(ownKey()),tostring(a.mainKey),tostring(a.linkVersion),Z.me and(tostring(Z.me.realm).."|"..tostring(Z.me.faction))or""}
+    local mains={};for scope,key in pairs(type(a.mains)=="table"and a.mains or{})do mains[#mains+1]=tostring(scope).."="..tostring(key)end
+    table.sort(mains);out[#out+1]=table.concat(mains,",")
+    for _,key in ipairs(keys)do
+        local c,p=characters[key],profiles[key];local line={key}
+        if type(c)=="table"then for _,field in ipairs({"target","realm","faction","class","level","lastLogin"})do line[#line+1]=tostring(c[field])end end
+        if type(p)=="table"then
+            line[#line+1]=tostring(p.professionsAt)..":"..tostring(p.recipeRev)
+            for _,pr in ipairs(type(p.professions)=="table"and p.professions or{})do
+                if type(pr)=="table"then line[#line+1]=tostring(pr.id)..","..tostring(pr.name)..","..tostring(pr.rank)..","..tostring(pr.max)end
+            end
+            local names={};for name in pairs(type(p.recipeStates)=="table"and p.recipeStates or{})do names[#names+1]=tostring(name)end
+            table.sort(names)
+            for _,name in ipairs(names)do
+                local st=p.recipeStates[name]
+                if type(st)=="table"then line[#line+1]=name..","..tostring(st.complete)..","..tostring(st.at)..","..tostring(st.fullAt)..","..tostring(st.count)end
+            end
+        end
+        out[#out+1]=table.concat(line,"\1")
+    end
+    return table.concat(out,"\2")
+end
+-- All known characters, optionally filtered by realm and faction. The rows are cached per store revision and
+-- account signature; callers read them and never change them.
 function O.List(filter)
     filter=filter or{}
+    local sig=accountSignature();local cache=O.listCache
+    if not(cache and cache.revision==O.revision and cache.store==O.store and cache.sig==sig)then
+        cache={revision=O.revision,store=O.store,sig=sig,rows=O.BuildRows()};O.listCache=cache
+    end
+    local out={}
+    for _,r in ipairs(cache.rows)do
+        if(not filter.realm or r.realm==filter.realm)and(not filter.faction or r.faction==filter.faction)then out[#out+1]=r end
+    end
+    return out
+end
+function O.BuildRows()
     local characters=accountCharacters();local rows,matched={},{}
     local index=accountIndex(characters)
     local imported=O.store and O.store.imported
@@ -533,16 +585,12 @@ function O.List(filter)
             classFile=u.classFile,classFromUtility=u.classFile~=nil or nil,level=u.level,levelAt=u.level and u.seen,levelFromUtility=u.level~=nil or nil,
             lastLogin=u.seen,money=u.money,moneyAt=u.seen,moneyFromUtility=u.money~=nil or nil,professions={},primary={},secondary={},recipeStates={},inventory=O.Inventory(key)}
     end
-    local out={}
-    for _,r in ipairs(rows)do
-        if(not filter.realm or r.realm==filter.realm)and(not filter.faction or r.faction==filter.faction)then out[#out+1]=r end
-    end
-    table.sort(out,function(a,b)
+    table.sort(rows,function(a,b)
         if a.current~=b.current then return a.current==true end
         if(a.lastLogin or 0)~=(b.lastLogin or 0)then return(a.lastLogin or 0)>(b.lastLogin or 0)end
         return a.name<b.name
     end)
-    return out
+    return rows
 end
 -- Source and age of the taken-over Utility data, and how many of its rows
 -- could not be assigned unambiguously (left out of every list and sum).
@@ -556,11 +604,6 @@ end
 function O.Get(key)
     if type(key)~="string"then return nil end
     for _,r in ipairs(O.List())do if r.key==key then return r end end
-end
-function O.Realms()
-    local seen,out={},{}
-    for _,r in ipairs(O.List())do if r.realm~=""and not seen[r.realm]then seen[r.realm]=true;out[#out+1]=r.realm end end
-    table.sort(out);return out
 end
 function O.TotalMoney(rows)local n=0;for _,r in ipairs(rows)do n=n+(r.money or 0)end;return n end
 

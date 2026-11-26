@@ -505,7 +505,7 @@ local function buildDetail(r)
     if r.hidden then notes[#notes+1]=tr('Hidden from this overview. Its data is kept; show hidden characters to see it again.')end
     if r.utilityOnly then notes[#notes+1]=tr('Only known from the data taken over from ZENIAL Utility. Log in with this character to record more.')end
     for _,note in ipairs(notes)do y=y+textBlock(0,y,width,note,'caption','dim')+6;mirror(nil,note)end
-    local sections={}
+    local sections
     if r.utilityOnly then
         sections={{1,goldSection(r)},{1,dataSection(r)}}
     else
@@ -536,7 +536,7 @@ end
 local function emptyHint(context)
     if context.query~=''then return tr('No character matches this search.')end
     if context.hidden>0 then return tr('All matching characters are hidden. Turn on "Show hidden" to see them.')end
-    if context.filtered then return tr('No character for this realm and faction.')end
+    if context.filtered or context.all>0 then return tr('No character for this realm and faction.')end
     return tr('No characters recorded yet.')
 end
 

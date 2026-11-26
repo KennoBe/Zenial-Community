@@ -253,7 +253,7 @@ end
 local function emptyHint(context)
     if context.query~=''then return tr('No character matches this search.')end
     if context.hidden>0 then return tr('All matching characters are hidden. Turn on "Show hidden" to see them.')end
-    if context.filtered then return tr('No character for this realm and faction.')end
+    if context.filtered or context.all>0 then return tr('No character for this realm and faction.')end
     return tr('No characters recorded yet.')
 end
 

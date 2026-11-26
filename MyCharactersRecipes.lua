@@ -140,9 +140,9 @@ end
 
 -- Row models of the list: a section row per profession (with the count), then its recipes.
 local function buildModels(entries,names,fallbackIcon)
-    local counts,order={},{}
+    local counts={}
     for _,e in ipairs(entries)do
-        if not counts[e.profession]then counts[e.profession]=0;order[#order+1]=e.profession end
+        if not counts[e.profession]then counts[e.profession]=0 end
         counts[e.profession]=counts[e.profession]+1
     end
     local items,last={},nil
@@ -287,8 +287,19 @@ local function refresh(rows,context)
     local characterValues={ALL};for _,r in ipairs(scoped)do characterValues[#characterValues+1]=r.key end
     setOptions(M.professionSelector,professionValues,M.profession or ALL,table.concat(professionValues,'\1'))
     setOptions(M.characterSelector,characterValues,M.characterKey or ALL,table.concat(characterValues,'\1'))
-    local entries=R.List({keys=keys,profession=M.profession,characterKey=M.characterKey,query=trim(M.search:GetText())})
-    M.entries=entries
+    -- The list is searched and the rows are built again only when the index, a filter, the search text or the
+    -- characters changed (also see M.modelKey below).
+    local query=trim(M.search:GetText());local scopedKeys,nameParts={},{}
+    for _,r in ipairs(scoped)do scopedKeys[#scopedKeys+1]=r.key end
+    local allKeys={};for key in pairs(names)do allKeys[#allKeys+1]=key end
+    table.sort(allKeys);for _,key in ipairs(allKeys)do nameParts[#nameParts+1]=key..'='..names[key]end
+    local namesKey=table.concat(nameParts,'\1')
+    local entriesKey=table.concat({R.Index().sig,M.profession or'',M.characterKey or'',query,table.concat(scopedKeys,'\1')},'\2')
+    if M.entriesKey~=entriesKey or not M.entries then
+        M.entriesKey=entriesKey
+        M.entries=R.List({keys=keys,profession=M.profession,characterKey=M.characterKey,query=query})
+    end
+    local entries=M.entries
     -- Selected recipe: the requested one, the kept one, else the first.
     local byEntry,chosen={},nil
     for _,e in ipairs(entries)do byEntry[entryKey(e)]=e end
@@ -309,9 +320,15 @@ local function refresh(rows,context)
     for _,r in ipairs(scoped)do for _,n in pairs(R.Counts(r.key))do total=total+n end end
     local hint=#entries==0 and(total==0 and tr('No recipes recorded yet.')or tr('No matching recipes.'))or nil
     U.SetEmptyHint(M.list,hint,hint and'search'or nil)
-    M.noteText=scanNote(M.characterKey,M.profession,byKey)
-    M.models=buildModels(entries,names,{file=QUESTION})
-    M.S.rows(M.list,M.models,ROW_HEIGHT)
+    -- The scope line names the realm, faction and hidden choice this list applies (the filter row is not shown here).
+    local scanText=scanNote(M.characterKey,M.profession,byKey);local scope=H.scopeText(context)
+    M.noteText=scanText and(scope..'\n'..scanText)or scope
+    local modelKey=table.concat({entriesKey,namesKey,tostring(M.recipeKey),tostring(M.itemRev)},'\2')
+    if M.modelKey~=modelKey then
+        M.modelKey=modelKey
+        M.models=buildModels(entries,names,{file=QUESTION})
+        M.S.rows(M.list,M.models,ROW_HEIGHT)
+    end
     M.refreshed=true
 end
 
@@ -319,6 +336,7 @@ end
 local previousItemData=U.OnItemData
 function U.OnItemData(...)
     if previousItemData then previousItemData(...)end
+    M.itemRev=(M.itemRev or 0)+1
     if not M.refreshed or not U.frame or not U.frame:IsShown()or U.page~=6 or U.myCharactersTab~='recipes'or not U.myCharactersBuilt then return end
     local now=A.Clock()
     if now-(M.itemRedrawAt or 0)<.5 then

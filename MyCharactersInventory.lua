@@ -2,7 +2,7 @@
 -- (pooled slots, only the visible rows are drawn); Search mode is the item search over the recorded bags and
 -- banks of the filtered characters (hits on the left, holders on the right). Reads the local AccountOverview
 -- read model only; nothing here scans or sends anything.
-local Z,U,A=ZenialCommunity,ZenialCommunity.UI,ZenialCommunity.Adapter
+local Z,U=ZenialCommunity,ZenialCommunity.UI
 local L,T=Z.Logic,Z.Theme
 local function tr(s,...)return Z.T(s,...)end
 local function O()return Z.AccountOverview end
@@ -50,12 +50,7 @@ function U.MyCharactersItemHits(context)
     local hits,unresolved=O().Search(query,context.scoped)
     return hits,unresolved,query
 end
--- Scope shown on the search: the overview's realm, faction and hidden choice. Items are searched exactly there.
-local function scopeText(context)
-    local parts={context.realm or tr('All realms'),context.faction and tr(context.faction)or tr('All factions')}
-    if context.showHidden then parts[#parts+1]=tr('including hidden')end
-    return tr('Scope: %s',table.concat(parts,' · '))
-end
+-- Scope shown on the search (H.scopeText): the overview's realm, faction and hidden choice. Items are searched exactly there.
 local function holderItem(h,byKey)
     local r=byKey[h.key];local where_={}
     local function part(name,count,time)
@@ -76,7 +71,7 @@ end
 local function refreshSearch(context)
     local overview=O()
     local hits,unresolved,query=U.MyCharactersItemHits(context)
-    U.itemScope:SetText(scopeText(context))
+    U.itemScope:SetText(H.scopeText(context))
     local notes={tr('Search the recorded bags and bank compartments of your characters.'),tr('Bag and bank recording must be on. Bank contents exist only after you opened the bank while recording. Saved amounts can be older than your current inventory.')}
     if unresolved>0 then notes[#notes+1]=tr('%d item names are still loading. Search again in a moment.',unresolved)end
     if not overview.InventoryEnabled()then notes[#notes+1]=tr('Bags and bank are only searched once their recording is on.')end
@@ -317,7 +312,7 @@ function I.Render()render()end
 local function emptyHint(context)
     if context.query~=''then return tr('No character matches this search.')end
     if context.hidden>0 then return tr('All matching characters are hidden. Turn on "Show hidden" to see them.')end
-    if context.filtered then return tr('No character for this realm and faction.')end
+    if context.filtered or context.all>0 then return tr('No character for this realm and faction.')end
     return tr('No characters recorded yet.')
 end
 
@@ -362,7 +357,12 @@ local function refresh(rows,context)
     I.selected=nil
     chosen=chosen or current or values[1]
     for _,r in ipairs(rows)do if r.key==chosen then I.selected=r end end
-    I.selector:SetOptions(#values>0 and values or{''},chosen or'')
+    -- The popup is rebuilt (and scrolled to the top) only when its entries change.
+    local list=#values>0 and values or{''}
+    local parts={};for _,value in ipairs(list)do parts[#parts+1]=value..'='..(names[value]or'')end
+    local signature=table.concat(parts,'\1')
+    if I.selector.zenialSignature~=signature then I.selector.zenialSignature=signature;I.selector:SetOptions(list,chosen or'')
+    else I.selector:SetText(chosen or'')end
 end
 
 local function modeWidth(seg)
@@ -437,17 +437,13 @@ function U.ApplyMyCharactersInventorySelection(selection)
         I.mode='character'
     end
 end
-function U.SetMyCharactersInventoryMode(mode)
-    if mode~='character'and mode~='search'then return end
-    I.mode=mode;U.itemsDetailOpen=false;U.CloseDropdowns();U.RefreshMyCharacters()
-end
 
 -- Item names and icons arrive later from the client: redraw the visible tab once, not once per event.
 local pending=false
 local previousOnItemData=U.OnItemData
 function U.OnItemData(...)
     if previousOnItemData then previousOnItemData(...)end
-    if pending or not U.myCharactersBuilt or U.myCharactersTab~='items'or not U.frame or not U.frame:IsShown()then return end
+    if pending or not U.myCharactersBuilt or U.myCharactersTab~='items'or not U.frame or not U.frame:IsShown()or U.page~=6 then return end
     if U.profileView=='public'then return end
     local function redraw()
         pending=false
