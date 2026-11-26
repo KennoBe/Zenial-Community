@@ -195,7 +195,10 @@ end
 function XF.IsProtocolLine(text)
     if not A.Safe(text)or type(text)~='string'then return false end
     local ok,frame=pcall(P.ParseLine,text)
-    return ok and frame~=nil
+    if ok and frame~=nil then return true end
+    -- lines of the retired format 1 stay hidden for ZenialChat too, although they are no longer read
+    local legacy,found=pcall(Z.CrossFactionCodec.IsLegacyLine,text)
+    return legacy and found==true
 end
 -- ===== Sending =====
 local function nextMessageId()
@@ -427,6 +430,8 @@ end
 local function filterBody(chatFrame,event,...)
     if not XF.IsEnabled()then return false end
     local text,sender,language,_,_,_,_,_,_,_,lineID,guid=...
+    -- lines of the retired format 1 (older versions) cannot be read any more; they are hidden instead of shown as gibberish
+    if A.Safe(text)and Z.CrossFactionCodec.IsLegacyLine(text)then return true end
     local r=process(event,text,sender,lineID,guid,language)
     if not r or not r.hide then return false end
     if r.display and type(chatFrame)=='table'then

@@ -14,7 +14,7 @@ local LN={PREFIX="ZENIALLN1",PROTO=1,CHUNK=190,MAX_PARTS=24,TTL=300,
     MAX_ASSEMBLIES=32,MAX_ASSEMBLY_BYTES=65536,ASSEMBLY_TTL=30,INBOUND_PER_MINUTE=120,
     CAP_PRESENCE=1,CAP_GATEWAY=2,CAP_MESH=4,CAP_BUNDLE=8,CAP_RELAY=16,
     PRIORITY_PRESENCE=4,PRIORITY_GATEWAY=3,PRIORITY_BACKGROUND=2,
-    MAX_SAVED_DIRECT=8,SAVED_PER_SEED=16,SAVED_MAX=64,SAVED_TTL=2592000,SAVED_TRIES=2,SAVED_SEED_GAP=5}
+    MAX_SAVED_DIRECT=8,SAVED_PER_SEED=16,SAVED_MAX=64,SAVED_TTL=2592000,SAVED_TRIES=2,SAVED_SEED_GAP=5,ANSWER_GAP=10,PAGE_GAP=2}
 Z.LocalNetwork=LN
 local H={} -- message handlers by kind
 LN.handlers=H
@@ -56,6 +56,8 @@ function LN.Enabled()
         and LN.registered and b and b.registered and b.jobs and LN.stats and true or false
 end
 local function me()return Z.me and L.Identity(Z.me.target)end
+-- The switch "detect ZENIAL players automatically": off means no whisper probe for any candidate, whatever its source.
+local function detection()local XF=Z.CrossFaction;return type(XF)=="table"and XF.Settings().discovery==true end
 
 -- ===== Sending: own frame budget below every mesh and private priority =====
 -- Frame: L1|<message>|<part>|<total>|<KIND>|<chunk>. A message's frames leave in order; messages with the same
@@ -203,7 +205,9 @@ function LN.OnConnected(r,fresh)
     if probe then p.source=probe.source elseif old and old.source and p.source=="inbound"then p.source=old.source end
     LN.probes[id]=nil;LN.candidates[id]=nil;LN.failed[id]=nil
     remember(id,r.name,p.source)
-    saveLocalPeer(id,r);LN.savedTries[id]=LN.SAVED_TRIES
+    -- Players are saved only while the community member search is on.
+    if Z.db and Z.db.consent and Z.db.autoDiscovery then saveLocalPeer(id,r)end
+    LN.savedTries[id]=LN.SAVED_TRIES
     trace("connected",r.name,p.source,fresh and"fresh"or"refresh")
     if LN.Enabled()and p.helloSent~=r.session then sendHello(id,p)end
 end
@@ -217,7 +221,7 @@ local function reportedByMesh(key)
 end
 -- A candidate is only a name to try: nothing is trusted or shown before the whisper handshake succeeds.
 function LN.Candidate(name,source)
-    if not LN.Enabled()then return false end
+    if not LN.Enabled()or not detection()then return false end
     local id,target=L.Identity(name)
     if not id or type(target)~="string"or not target:find(" ",1,true)then trace("candidate_identity",source);return false end
     if id==me()then return false end
@@ -240,8 +244,11 @@ function LN.Candidate(name,source)
 end
 local CHANNEL_SOURCE={GUILD="guild",OFFICER="guild",PARTY="group",RAID="group",INSTANCE_CHAT="group",WHISPER="whisper"}
 -- A confirmed ZENIAL presence signal (CrossFactionPresence) of a player of unknown network state.
+-- Only guild, group and whisper contacts count; a signal from /say or /yell (beacon) is no candidate.
 function LN.OnPresenceSignal(name,channel)
-    return LN.Candidate(name,CHANNEL_SOURCE[type(channel)=="string"and channel:upper()or""]or"whisper")
+    local source=CHANNEL_SOURCE[type(channel)=="string"and channel:upper()or""]
+    if not source then return false end
+    return LN.Candidate(name,source)
 end
 function LN.DirectCount()
     local n=0;for id,p in pairs(LN.peers)do if p.hello and route(id)then n=n+1 end end;return n
@@ -302,7 +309,7 @@ local function probeTick(clock)
     for id,untilAt in pairs(LN.failed)do if clock>=untilAt then LN.failed[id]=nil end end
     for id,row in pairs(LN.candidates)do if clock-row.at>LN.CANDIDATE_TTL or route(id)then LN.candidates[id]=nil end end
     local window=LN.probeWindow;while window[1]and clock-window[1]>=60 do table.remove(window,1)end
-    if not next(LN.candidates)or clock<LN.nextProbe then return end
+    if not next(LN.candidates)or clock<LN.nextProbe or not detection()then return end
     if#window>=LN.PROBES_PER_MINUTE then stat("probeBudget");return end
     if LN.DirectCount()>=LN.MAX_DIRECT then stat("directLimit");return end
     if#b.jobs>=16 then stat("deferred");return end
@@ -376,7 +383,12 @@ function H.HI(id,wire,r)
     local restarted=f[7]=="1"and not first
     p.hello=A.Clock();p.caps=caps;p.mesh=mesh==1;p.load=load;p.size=size;p.rx=A.Clock()
     -- An answer request is always answered (the answer carries 0, so there is no ping-pong).
-    if p.helloSent~=r.session or restarted or f[7]=="1"then sendHello(id,p)end
+    -- The first hello of a route is always sent; a peer that keeps asking gets an answer every ANSWER_GAP seconds.
+    if p.helloSent~=r.session then sendHello(id,p)
+    elseif restarted or f[7]=="1"then
+        local clock=A.Clock()
+        if clock-(p.answeredAt or -1000)>=LN.ANSWER_GAP then p.answeredAt=clock;sendHello(id,p)else stat("rateLimited")end
+    end
     if first or restarted then p.presenceSig,p.presenceAt,p.bundleRev,p.bundleAt=nil,nil,nil,nil end
     trace("hello",r.name,caps);return true
 end
@@ -547,8 +559,9 @@ local AVAILABILITY={AVAILABLE=true,AFK=true,BUSY=true,GROUP=true}
 local function clean(value)return type(value)=="string"and not value:find(SEP,1,true)end
 local function validSession(session)
     if not L.Text(session,32)or not session:match("^%d+%.%d+%.%d+$")then return false end
-    local epoch=tonumber(session:match("^(%d+)%."));return L.Int(epoch,1,4102444800)and epoch<=A.Now()+120
+    local epoch=tonumber(session:match("^(%d+)%."));return L.Int(epoch,1,4102444800)and epoch<=A.Now()+Z.Network3.SESSION_FUTURE
 end
+LN.ValidSession=validSession
 -- The same field rules as a mesh presence record (CommunityMesh validate, kind P).
 local function validPresence(f)
     local D=Z.CommunityDirectory
@@ -759,7 +772,7 @@ function LN.OnPeerLost(id)
     if LN.serve then LN.serve.clients[id]=nil end
 end
 function LN.ResetGateway()
-    LN.gw=nil;LN.serve={clients={},built={}};LN.gwCooldown={};LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=A.Clock();LN.backupName=""
+    LN.gw=nil;LN.serve={clients={},built={},refused={}};LN.gwCooldown={};LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=A.Clock();LN.backupName=""
 end
 function LN.GatewayTick(clock)
     local now=A.Now()
@@ -767,6 +780,9 @@ function LN.GatewayTick(clock)
         if not route(id)or clock-c.lastSeen>GW.CLIENT_IDLE or not LN.CanServe()then LN.serve.clients[id]=nil;trace("serve_end",c.name)end
     end
     for id,untilAt in pairs(LN.gwCooldown)do if clock>=untilAt then LN.gwCooldown[id]=nil end end
+    -- Request tables per peer only live as long as their limit does.
+    for id,at in pairs(LN.serve.built)do if clock<at or clock-at>=10 then LN.serve.built[id]=nil end end
+    for id,at in pairs(LN.serve.refused)do if clock<at or clock-at>=LN.PAGE_GAP then LN.serve.refused[id]=nil end end
     for id,a in pairs(LN.applied)do if now-a.at>2*LN.TTL then LN.applied[id]=nil end end
     if clock-(LN.otherSyncAt or 0)>=GW.OTHER_WINDOW then LN.otherSync=GW.OTHER_SYNC;LN.otherSyncAt=clock end
     if not needGateway(clock)then
@@ -812,7 +828,13 @@ function LN.GatewayTick(clock)
     end
 end
 -- Server side
-local function refuse(id,reason)stat("gatewayRefused");return queueValues(id,"GB",{reason},LN.PRIORITY_GATEWAY,"GB:"..id)end
+-- A refusal is an answer too: at most one per requester every PAGE_GAP seconds.
+local function refuse(id,reason)
+    local clock=A.Clock();local at=LN.serve.refused[id]
+    if at and clock>=at and clock-at<LN.PAGE_GAP then stat("rateLimited");return false end
+    LN.serve.refused[id]=clock
+    stat("gatewayRefused");return queueValues(id,"GB",{reason},LN.PRIORITY_GATEWAY,"GB:"..id)
+end
 local function newEpoch()LN.order=LN.order+1;return tostring(A.Now()).."."..tostring(LN.order%100000)end
 local function sendPage(id,c,page)
     local values={c.epoch,page,c.pages};local first=(page-1)*GW.PAGE+1
@@ -843,7 +865,10 @@ function H.GQ(id,wire,r)
         LN.serve.clients[id]=c;stat("snapshotsServed");trace("serve_snapshot",r.name,#list)
     end
     if page>c.pages then return refuse(id,"epoch")end
-    c.lastSeen=A.Clock()
+    -- Going on to a later page is free; asking for the same or an earlier page again needs PAGE_GAP seconds.
+    local clock=A.Clock()
+    if c.pagedAt and page<=c.lastPage and clock>=c.pagedAt and clock-c.pagedAt<LN.PAGE_GAP then stat("rateLimited");return false end
+    c.lastSeen=clock;c.pagedAt=clock;c.lastPage=page
     return sendPage(id,c,page)
 end
 function H.GL(id,wire,r)

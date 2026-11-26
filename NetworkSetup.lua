@@ -130,8 +130,8 @@ function S.ConnectionRows()
     local detection=not(type(settings)=="table"and settings.discovery==false)
     local function contacts(label,name,none)
         local row=part(name)
-        if not detection then add(label,"Presence, profile",row,"bad",tr("Detection off"))
-        elseif(row.online or 0)>0 then add(label,"Presence, profile",row,"ok",tr("Connected"))
+        if(row.online or 0)>0 then add(label,"Presence, profile",row,"ok",tr("Connected"))
+        elseif not detection then add(label,"Presence, profile",row,"bad",tr("Detection off"))
         else add(label,"Presence, profile",row,"idle",tr(none))end
     end
     contacts("Guild","guild",A.Call(IsInGuild)==true and"Nobody reachable"or"No guild")

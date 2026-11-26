@@ -1,9 +1,13 @@
--- ZXF1 carrier layer: bytes <-> one chat line of 1-4 letter words. Pure logic, no WoW API.
+-- ZXF carrier layer, version 2: bytes <-> one chat line of 1-4 letter words. Pure logic, no WoW API.
 -- Word length carries 2 bits (L = value + 1), the capitalisation of its letters carries the next L bits.
+-- The letters carry nothing. They come from a small alphabet (consonants bdfnrv, vowels aeiou, consonant first, alternating),
+-- so a word is one of C, CV, CVC, CVCV: every possible word is checked against a list of offensive words in the tests.
+-- Version 1 lines (marker 'zENi AlxF', the old alphabet) are no longer read; IsLegacyLine only recognises them.
 local Z=ZenialCommunity
-local C={MAX_LINE=255,MARKER='zENi AlxF',LENGTH_BITS=2,MAX_UNKNOWN=2};Z.CrossFactionCodec=C
-local MARKER_PATTERNS={'0110','1001'}
-local CONSONANTS,VOWELS='bdfgklmnrstvz','aeiou'
+local C={VERSION=2,MAX_LINE=255,MARKER='BAdo feRU',LENGTH_BITS=2,MAX_UNKNOWN=2,CONSONANTS='bdfnrv',VOWELS='aeiou'};Z.CrossFactionCodec=C
+local MARKER_PATTERNS={'1100','0011'}
+local LEGACY_MARKER_PATTERNS={'0110','1001'}
+local CONSONANTS,VOWELS=C.CONSONANTS,C.VOWELS
 local floor=math.floor
 local function xor(a,b)
     local r,p=0,1
@@ -57,12 +61,23 @@ local function split(text)
         words[#words+1]=text:sub(from,at-1);from=at+1
     end
 end
-local function markerOk(words)
+local function markerOk(words,patterns)
     for w=1,2 do
         local word=words[w]
         if not word or #word~=4 or word:find('[^A-Za-z]')then return false end
         local pattern=word:gsub('%u','1'):gsub('%l','0')
-        if pattern~=MARKER_PATTERNS[w]then return false end
+        if pattern~=patterns[w]then return false end
+    end
+    return true
+end
+-- A line of the retired version 1 (old marker, words of 1-4 letters): recognised by shape only, never decoded.
+function C.IsLegacyLine(text)
+    if type(text)~='string'or#text>C.MAX_LINE then return false end
+    local words=split(text)
+    if not markerOk(words,LEGACY_MARKER_PATTERNS)then return false end
+    for w=3,#words do
+        local word=words[w]
+        if #word<1 or#word>4 or word:find('[^A-Za-z]')then return false end
     end
     return true
 end
@@ -72,7 +87,7 @@ end
 function C.DecodeLine(text)
     if type(text)~='string'then return nil,'no_marker'end
     local words=split(text)
-    if not markerOk(words)then return nil,'no_marker'end
+    if not markerOk(words,MARKER_PATTERNS)then return nil,'no_marker'end
     if #text>C.MAX_LINE then return nil,'bad_word'end
     local bits,total,unknown={},0,{}
     for w=3,#words do

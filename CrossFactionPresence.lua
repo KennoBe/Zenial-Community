@@ -7,7 +7,7 @@ local R=Z.CrossFactionRegistry
 -- works when BNET_UNLOCKED is true (set by hand after test G10 and decision E-07) and the bnetDiscovery switch is on.
 local N={PREFIX='ZENIALXF1',PROTO=1,BNET_UNLOCKED=false,
     RATE={hello=30,bundle=1.5,ping=300,pingGap=2,beacon=15,reply=60,await=10,pendingTTL=600,pendingMax=64,awaitingMax=32,
-        bnetPing=1800,bnetGap=10,bnetReply=60},
+        bnetPing=1800,bnetGap=10,bnetReply=60,replyGap=1,replyQueue=64,repliedMax=1000},
     pending={},awaiting={},
     stats={sent={H=0,P=0,A=0,B=0,BP=0,BA=0},failed={H=0,P=0,A=0,B=0,BP=0,BA=0}}}
 Z.CrossFactionPresence=N
@@ -16,9 +16,12 @@ local KINDS={H=true,P=true,A=true,B=true}
 -- Channels whose senders are certainly of our own faction. Groups and guilds may be mixed on some clients, so only
 -- an addon whisper counts; everywhere else the faction stays unknown until a chat line shows the language.
 local OWN_FACTION={WHISPER=true}
-local helloAt,helloDone,beaconAt,pingAt,replyAt,lastPing={},{},{},{},{}
+local helloAt,beaconAt,pingAt,replyAt,lastPing={},{},{},{}
 local bnetPingAt,bnetReplyAt,bnetLast={},{},nil
 local dueAt
+-- Greetings still to send per kind (group, guild), the group members already greeted, and the answers waiting for the shared budget.
+local due,roster,guildGreeted={}
+local replied,repliedCount,replyQueue,lastReply={},0,{}
 local registered,listening
 local hooked={}
 
@@ -139,7 +142,8 @@ local function accept(guid,sender,proto,caps,channel)
     if proto==N.PROTO then
         local confirmed=XF.Confirm(guid,{name=sender,proto=proto,caps=caps,xfChat=caps%2==1,source='addon',faction=f})
         -- A confirmed ZENIAL signal is a local-network candidate; the whisper handshake decides everything else.
-        if confirmed and Z.LocalNetwork and Z.LocalNetwork.OnPresenceSignal then pcall(Z.LocalNetwork.OnPresenceSignal,sender,channel)end
+        -- only with the detection switched on: otherwise nobody is whispered because of a foreign greeting
+        if confirmed and discovery()and Z.LocalNetwork and Z.LocalNetwork.OnPresenceSignal then pcall(Z.LocalNetwork.OnPresenceSignal,sender,channel)end
         return confirmed
     end
     XF.MarkIncompatible(guid,{name=sender,proto=proto,source='addon',faction=f})
@@ -154,6 +158,29 @@ local function addPending(guid,entry)
     N.pending[guid]=entry
 end
 function N.HasPending()return next(N.pending)~=nil end
+-- Answer to a greeting or ping. Greetings are answered once per sender and session, pings at most every RATE.reply seconds;
+-- all answers together leave at one per RATE.replyGap, the rest waits in a short queue (N.Tick).
+local function sendReply(target)
+    lastReply=A.Clock()
+    send('A','WHISPER',target)
+end
+local function maybeReply(kind,guid,sender,proto)
+    if(kind~='H'and kind~='P')or proto~=N.PROTO or not discovery()then return end
+    local now=A.Clock()
+    if kind=='H'then
+        if replied[guid]then return end
+        if repliedCount>=N.RATE.repliedMax then replied,repliedCount={},0 end
+        replied[guid]=true;repliedCount=repliedCount+1
+    elseif within(replyAt[guid],now,N.RATE.reply)then return end
+    replyAt[guid]=now
+    local target=whisperTarget(sender)
+    if#replyQueue==0 and(not lastReply or now<lastReply or now-lastReply>=N.RATE.replyGap)then return sendReply(target)end
+    if#replyQueue>=N.RATE.replyQueue then
+        local dropped=table.remove(replyQueue,1)
+        if dropped.kind=='H'and replied[dropped.guid]then replied[dropped.guid]=nil;repliedCount=repliedCount-1 end
+    end
+    replyQueue[#replyQueue+1]={guid=guid,kind=kind,target=target}
+end
 -- Called when a chat line, unit or target shows this GUID with a name.
 function N.Resolve(guid,name)
     if not A.Safe(guid,name)or type(guid)~='string'or type(name)~='string'or name==''then return false end
@@ -163,7 +190,10 @@ function N.Resolve(guid,name)
     if not seen or not held then return false end -- form not classifiable: the entry stays until it expires
     N.pending[guid]=nil
     if seen~=held then return false end
-    return accept(guid,p.name,p.proto,p.caps,p.channel)
+    local ok=accept(guid,p.name,p.proto,p.caps,p.channel)
+    -- the greeting that had to wait for the name is answered now, like one from a known sender
+    if ok then maybeReply(p.kind,guid,p.name,p.proto)end
+    return ok
 end
 
 -- ===== Receiving =====
@@ -203,13 +233,7 @@ function N.OnAddon(prefix,text,channel,sender)
     end
     if not keys[mineKey]then return false end
     if not accept(msg.guid,sender,msg.proto,msg.caps,channel)then return false end
-    if(msg.kind=='H'or msg.kind=='P')and msg.proto==N.PROTO and discovery()then
-        local now=A.Clock()
-        if not within(replyAt[msg.guid],now,N.RATE.reply)then
-            replyAt[msg.guid]=now
-            send('A','WHISPER',whisperTarget(sender))
-        end
-    end
+    maybeReply(msg.kind,msg.guid,sender,msg.proto)
     return true
 end
 
@@ -220,24 +244,45 @@ local function groupChannel()
     if A.Call(IsInRaid)==true then return'RAID'end
     if A.Call(IsInGroup)==true then return'PARTY'end
 end
+-- The other group members (raidN or partyN units) by GUID; identity key when the GUID cannot be read.
+local function groupGuids()
+    local out,mine={},ownGuid()
+    local raid=A.Call(IsInRaid)==true
+    local total=A.Call(GetNumGroupMembers)
+    for i=1,type(total)=='number'and(raid and total or total-1)or 0 do
+        local unit=(raid and'raid'or'party')..i
+        local guid=readableGuid(A.Call(UnitGUID,unit))or(A.UnitIdentity(unit))
+        if guid and guid~=mine and A.Call(UnitIsUnit,unit,'player')~=true then out[guid]=true end
+    end
+    return out
+end
 -- Only notes that a greeting is due; N.Tick sends it once the triggers have been quiet for RATE.bundle.
+-- A group change greets the group channel again only when someone new joined; the guild is greeted once per session.
 function N.Announce()
     if not discovery()then return end
-    dueAt=A.Clock();helloDone={}
+    if groupChannel()then
+        local now=groupGuids()
+        for guid in pairs(now)do if not(roster and roster[guid])then due.group=true;break end end
+        roster=now
+    else roster=nil end
+    if not guildGreeted then due.guild=true end
+    if due.group or due.guild then dueAt=A.Clock()end
 end
 local function flushHello(now)
-    if not discovery()then dueAt=nil;return end
-    local channels={}
-    local group=groupChannel()
-    if group then channels[#channels+1]=group end
-    if A.Call(IsInGuild)==true then channels[#channels+1]='GUILD'end
+    if not discovery()then dueAt=nil;due={};return end
     local blocked=false
-    for _,channel in ipairs(channels)do
-        if not helloDone[channel]then
-            if within(helloAt[channel],now,N.RATE.hello)then blocked=true
-            else helloAt[channel]=now;helloDone[channel]=true;send('H',channel)end
+    local function greet(kind,channel)
+        if not due[kind]then return end
+        if not channel then due[kind]=nil
+        elseif within(helloAt[channel],now,N.RATE.hello)then blocked=true
+        else
+            helloAt[channel]=now;due[kind]=nil
+            if kind=='guild'then guildGreeted=true end
+            send('H',channel)
         end
     end
+    greet('group',groupChannel())
+    greet('guild',A.Call(IsInGuild)==true and'GUILD'or nil)
     if not blocked then dueAt=nil end
 end
 
@@ -424,6 +469,10 @@ function N.Tick()
     if dueAt then
         if now<dueAt then dueAt=now end
         if now-dueAt>=N.RATE.bundle then flushHello(now)end
+    end
+    if#replyQueue>0 then
+        if not discovery()then replyQueue={}
+        elseif not lastReply or now<lastReply or now-lastReply>=N.RATE.replyGap then sendReply(table.remove(replyQueue,1).target)end
     end
     local XF=Z.CrossFaction
     for guid,at in pairs(N.awaiting)do

@@ -158,14 +158,4 @@ function R.Expire(now)
     table.sort(list)
     return list
 end
-function R.Forget(guid)
-    if not validGuid(guid) then return end
-    removeStored(guid)
-    if incompat[guid] then incompat[guid]=nil;incompatCount=incompatCount-1 end
-end
-function R.Reset()
-    if players then for g in pairs(players)do players[g]=nil end end
-    count=0
-    resetSession()
-end
 function R.Count()return count or 0 end

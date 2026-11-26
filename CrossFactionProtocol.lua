@@ -1,4 +1,5 @@
 -- ZXF1 frame layer: header, CRC-16, fragmentation and reassembly on top of CrossFactionCodec. Pure logic, no WoW API.
+-- VERSION is the version of this frame layout; the wire format of the lines is versioned by CrossFactionCodec (VERSION, marker).
 local Z=ZenialCommunity
 local P={VERSION=1,MAX_FRAGMENTS=16,SAFE_PAYLOAD=30,LIMITS={maxTextBytes=120,maxFragments=4,rateLines=8,rateWindow=10,timeout=20,echoTimeout=5}};Z.CrossFactionProtocol=P
 local C=Z.CrossFactionCodec
