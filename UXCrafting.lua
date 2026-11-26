@@ -721,6 +721,7 @@ local function refreshCraftOrders()
         for _, b in ipairs(U.craftOrderButtons) do
             b:Hide()
         end
+        U.craftOrderAbandon:Hide()
         return
     end
     if Z.Notifications then
@@ -747,6 +748,7 @@ local function refreshCraftOrders()
     for _, b in ipairs(U.craftOrderButtons) do
         b:Hide()
     end
+    U.craftOrderAbandon:Hide()
     local actions = selected.direction == 'incoming'
             and (selected.state == 'REQUESTED' and { { tr('Accept'), 'ACCEPT' }, { tr('Ablehnen'), 'DECLINE' } } or selected.state == 'ACCEPTED' and {
                 { tr('Mark as ready'), 'READY' },
@@ -766,6 +768,14 @@ local function refreshCraftOrders()
             refreshCraftOrders()
         end)
         b:Show()
+    end
+    if Z.CraftOrders.CanAbandon(selected) then
+        U.craftOrderAbandon:SetScript('OnClick', function()
+            local ok, err = Z.CraftOrders.Abandon(selected.key)
+            U.Message(ok and tr('Auftrag aktualisiert.') or err)
+            refreshCraftOrders()
+        end)
+        U.craftOrderAbandon:Show()
     end
 end
 S.refreshCraftOrders = refreshCraftOrders

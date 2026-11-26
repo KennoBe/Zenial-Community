@@ -10,7 +10,6 @@ local function account()
 end
 local function transfer(dst,src)
     for _,name in ipairs({'visible','shareProfessions','minimapHidden'})do if type(src[name])=='boolean'then dst[name]=src[name]end end
-    if type(src.scale)=='number'and src.scale>=.65 and src.scale<=1.4 then dst.scale=src.scale end
     if type(src.minimapAngle)=='number'and src.minimapAngle>=-360 and src.minimapAngle<=360 then dst.minimapAngle=src.minimapAngle end
     if src.position==false then dst.position=nil
     elseif type(src.position)=='table'and L.Int(src.position.x,-10000,10000)and L.Int(src.position.y,-10000,10000)then dst.position={x=src.position.x,y=src.position.y}end

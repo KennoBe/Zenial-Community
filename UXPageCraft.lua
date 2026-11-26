@@ -351,6 +351,9 @@ function S.createCraftPage(f)
         U.OpenOrderMaterials(order)
     end)
     U.craftOrderPlan:SetEnabled(false)
+    -- Only offered by refreshCraftOrders for an own order the crafter can no longer close (CraftOrders.CanAbandon).
+    U.craftOrderAbandon = button(U.craftOrdersFrame, tr('Give up order'), 495, -347, 325, function() end, 'danger')
+    U.craftOrderAbandon:Hide()
     U.craftOrdersFrame:Hide()
     U.craftView = 'search'
     U.materialOrderForm = panel(U.frame)

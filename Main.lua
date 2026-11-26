@@ -628,7 +628,7 @@ SlashCmdList.ZENIALCOMMUNITY=function(text)
             else missing=missing+1;say("ZENIAL finder art: "..row.id..(row.listed>0 and" - listed client texture not found"or" - no picture (neutral tile)"))end
         end
         say(("ZENIAL finder art: %d client, %d DungeonJournal, %d neutral. DungeonJournal %s."):format(client,journal,missing,Z.DungeonJournalLink and Z.DungeonJournalLink.Available()and"found"or"not loaded"))
-    elseif text=="resetpos" then Z.db.position=nil; Z.db.scale=1; if Z.UI and Z.UI.frame then Z.UI.frame:SetScale(1); Z.UI.frame:ClearAllPoints(); Z.UI.frame:SetPoint("CENTER") end
+    elseif text=="resetpos" then Z.db.position=nil; if Z.UI and Z.UI.frame then Z.UI.frame:ClearAllPoints(); Z.UI.frame:SetPoint("CENTER") end
     elseif text=="pvptest" then
         local on=Z.PvPHelp and Z.PvPHelp.ToggleTestMode();local line="ZENIAL: PvP test mode "..(on and"on until /reload."or"off.")
         if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then DEFAULT_CHAT_FRAME:AddMessage(line)else print(line)end

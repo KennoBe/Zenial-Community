@@ -15,8 +15,7 @@ local incomingEvents={'CHAT_MSG_PARTY','CHAT_MSG_PARTY_LEADER','CHAT_MSG_RAID','
 local incomingSet={};for _,event in ipairs(incomingEvents)do incomingSet[event]=true end
 local defaultCategories={position=true,inventory=true,quests=true,character=true,community=true,activities=true}
 local function changed()if C.RefreshUI then C.RefreshUI()end end
--- The chat-log transport is gone: the pixel strip is the only way out. Events.lua still asks.
-function C.IsPixel()return true end
+-- The chat-log transport is gone: the pixel strip is the only way out.
 function C.Status()
     return{state=C.state or'disabled',reason=C.reason or'',sent=C.stats and C.stats.sent or 0,automatic=C.stats and C.stats.automatic or 0,queued=C.pendingCount or 0,
         session=C.session or'',lastSend=C.lastSend or 0,transport='pixel',pixelPackets=C.Pixel and C.Pixel.packets or 0}
@@ -151,10 +150,10 @@ function C.SendEvents(slots)
 end
 -- Seconds between full inventories. The pixel stream is one-way and slow, so between two full
 -- comparisons only changes are sent; the full one repairs a lost change or a late receiver.
-local function inventoryFullAfter()return C.IsPixel()and 180 or 60 end
+local function inventoryFullAfter()return 180 end
 function C.Queue(topic,data,force)
     -- The read time changes every second, so with it every unchanged inventory would look new.
-    local pixelInventory=topic=='inventory'and C.IsPixel();local observedAt=pixelInventory and data.observedAt
+    local pixelInventory=topic=='inventory';local observedAt=pixelInventory and data.observedAt
     if pixelInventory then data.observedAt=nil end
     local ok,signature=pcall(P.Json,data)
     if pixelInventory then data.observedAt=observedAt end
@@ -241,7 +240,7 @@ function C.Job(topic)
     local data=row.data
     if topic=='chat'and data.available~=false then
         local prior=C.finished.chat;local previous=prior and prior.data
-        local replay=C.IsPixel()and prior and A.Clock()-(prior.fullAt or 0)>=15
+        local replay=prior and A.Clock()-(prior.fullAt or 0)>=15
         local after=not replay and previous and previous.lastCounter or 0
         local entries=P.Array();local more=false;local last=after;local missed=previous and previous.missed or 0
         for _,entry in ipairs(data.entries or{})do if entry.counter>after then
@@ -285,7 +284,7 @@ local function choose()
         end
     end
     -- The rotation alone leaves the largest topic about one line per second.
-    if C.bootstrapTurn%4==2 and C.IsPixel()and(C.jobs.inventory or C.latest.inventory or C.inventoryParts)then return'inventory'end
+    if C.bootstrapTurn%4==2 and(C.jobs.inventory or C.latest.inventory or C.inventoryParts)then return'inventory'end
     local order={'identity','policy','heartbeat'};for _,topic in ipairs(C.TOPICS)do if topic~='position'then order[#order+1]=topic end end
     for _=1,#order do local topic=order[C.cursor];C.cursor=C.cursor%#order+1
         if C.jobs[topic]or C.latest[topic]or topic=='inventory'and C.inventoryParts then return topic end
@@ -325,17 +324,17 @@ function C.Tick()
                 local ok,data=pcall(T[topic]);if ok and type(data)=='table'then
                     local renew=topic=='position'and clock>=(C.positionRenewAt or 0)
                     local prior=C.finished[topic]
-                    local replay=C.IsPixel()and topic~='inventory'and prior and clock-(prior.sentAt or 0)>=20
+                    local replay=topic~='inventory'and prior and clock-(prior.sentAt or 0)>=20
                     C.Queue(topic,data,renew or topic=='identity'or replay or topic=='inventory'and not C.inventoryParts and C.finished.inventory and clock-C.finished.inventory.fullAt>=inventoryFullAfter())
-                    if renew then C.positionRenewAt=clock+(C.IsPixel()and 1 or 5)end
+                    if renew then C.positionRenewAt=clock+1 end
                 elseif not ok then C.reason='Data unavailable: '..topic end
             end
         end
     end
-    if clock<C.nextSend then return end;C.nextSend=clock+(C.IsPixel()and .15 or .5)
-    if C.IsPixel()then C.Pixel.BeginBatch()end
-    local slots=C.IsPixel()and 3 or 1
-    if C.IsPixel()then local used=C.SendEvents(slots);if not used then return end;slots=slots-used end
+    if clock<C.nextSend then return end;C.nextSend=clock+.15
+    C.Pixel.BeginBatch()
+    local slots=3
+    local used=C.SendEvents(slots);if not used then return end;slots=slots-used
     for _=1,slots do
         local topic=choose();local job=C.Job(topic);if not job then break end
         local line=job.lines[job.next]
@@ -343,14 +342,14 @@ function C.Tick()
         job.next=job.next+1
         if job.next>#job.lines then
             if not job.partial then C.finished[topic]={data=job.data,sequence=job.sequence,fullAt=job.fullAt,sentAt=clock,snapshot=job.snapshot}end;C.jobs[topic]=nil
-            if C.IsPixel()and topic=='identity'then
+            if topic=='identity'then
                 -- A receiver may start at any time. Every repeated identity is
                 -- immediately followed by a fresh consent policy, without a reply.
                 C.finished.policy=nil;C.jobs.policy=nil;C.latest.policy=nil;C.due.policy=0
             end
         end
     end
-    if C.IsPixel()then C.Pixel.Commit()end
+    C.Pixel.Commit()
     C.pendingCount=L.Count(C.jobs)+L.Count(C.latest);changed()
 end
 local function debugSnapshot()

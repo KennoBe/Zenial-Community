@@ -29,7 +29,7 @@ function Z.MigrateForeverLive(root)
         table.sort(keys);sourceKey=keys[1]
     end
     local profile=profiles[sourceKey]or{}
-    for _,name in ipairs({'visible','shareProfessions','scale','minimapAngle','minimapHidden','position'})do
+    for _,name in ipairs({'visible','shareProfessions','minimapAngle','minimapHidden','position'})do
         if preferences[name]==nil then preferences[name]=copy(profile[name])end
     end
     local view=type(ui.characters)=='table'and ui.characters[sourceKey]or{}
