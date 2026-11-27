@@ -75,7 +75,7 @@ local function finderProfiles(raw)
         local name=type(entry)=="table"and text(entry.name,24)or""
         if #out<MAX_FINDER_FILTERS and name~=""and not seen[name:lower()]then
             seen[name:lower()]=true
-            out[#out+1]={name=name,filter=finderFilter(entry.filter),languages=finderLanguages(entry.languages),roles=seekerRoles(entry.roles)}
+            out[#out+1]={name=name,filter=finderFilter(entry.filter),roles=seekerRoles(entry.roles)}
         end
     end
     return out

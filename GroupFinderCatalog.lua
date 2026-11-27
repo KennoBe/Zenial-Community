@@ -29,15 +29,15 @@ end
 local D, R, P = 'DUNGEON', 'RAID', 'PVP'
 local ENTRIES = {
     -- New WoW: Forever dungeons
-    ['Hall of Thanes'] = entry(D, 13, 18, 5, 'Dun Morogh', 1, { new = true, journal = 'Hall of Thanes' }),
-    ['Ruins of Lordaeron'] = entry(D, 15, 20, 5, 'Tirisfal Glades', 85, { new = true, journal = 'Ruins of Lordaeron' }),
+    ['Hall of Thanes'] = entry(D, 13, 18, 5, 'Dun Morogh', 1, { new = true, journal = 'Hall of Thanes', art = { { kind = 'wide', file = 7963781 } } }),
+    ['Ruins of Lordaeron'] = entry(D, 15, 20, 5, 'Tirisfal Glades', 85, { new = true, journal = 'Ruins of Lordaeron', art = { { kind = 'wide', file = 7963782 } } }),
     ['Excavation Site'] = entry(D, 24, 29, 5, 'Wetlands', 11, { new = true, journal = 'Excavation Site: Wetlands', art = { { kind = 'wide', file = 7963777 } } }),
     ['City of Dalaran'] = entry(D, 28, 33, 5, 'Alterac Mountains', 36, { new = true, journal = 'City of Dalaran', art = { { kind = 'wide', file = 7963775 } } }),
     ['The Drowned City'] = entry(D, 35, 40, 5, 'Stranglethorn Vale', 33, { new = true, journal = 'The Drowned City' }),
-    ["Krol'dok"] = entry(D, 40, 45, 5, 'Riverglades', nil, { new = true, journal = "Krol'dok Stronghold" }),
+    ["Krol'dok"] = entry(D, 40, 45, 5, 'Riverglades', nil, { new = true, journal = "Krol'dok Stronghold", art = { { kind = 'wide', file = 7963780 } } }),
     ['Alcaz Prison'] = entry(D, 48, 53, 5, 'Dustwallow Marsh', 15, { new = true, journal = 'Alcaz Prison' }),
-    ['Blackmaw Hold'] = entry(D, 55, 60, 5, 'Azshara', 16, { new = true, journal = 'Blackmaw Hold' }),
-    ["Shaper's Terrace"] = entry(D, 58, 60, 5, "Un'Goro Crater", 490, { new = true, journal = "Shaper's Terrace" }),
+    ['Blackmaw Hold'] = entry(D, 55, 60, 5, 'Azshara', 16, { new = true, journal = 'Blackmaw Hold', art = { { kind = 'wide', file = 7963784 } } }),
+    ["Shaper's Terrace"] = entry(D, 58, 60, 5, "Un'Goro Crater", 490, { new = true, journal = "Shaper's Terrace", art = { { kind = 'wide', file = 7963783 } } }),
     -- Classic dungeons
     ['Ragefire Chasm'] = entry(D, 13, 18, 5, 'Orgrimmar', 1637, { journal = 'Ragefire Chasm', art = with(ej('RagefireChasm'), 'screen', SCREEN .. 'RagefireChasm') }),
     ['Wailing Caverns'] = entry(D, 15, 24, 5, 'The Barrens', 17, { journal = 'Wailing Caverns', art = with(ej('WailingCaverns'), 'screen', SCREEN .. 'WailingCaverns') }),

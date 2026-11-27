@@ -4,8 +4,8 @@
 -- withdraw, invite). Public groups come from PublicLFG.lua, live in memory only and are contacted through
 -- their leader. This file adds what the finder needs for the second source:
 --   - the card of a public group or of a single player,
---   - the bar of an instance: source choice, "Only fitting", the own roles, the filters (groups, players and the
---     languages of the public search) and the refresh button with the age of the list,
+--   - the bar of an instance: source choice, "Only fitting", the own roles, the languages of the public search,
+--     the further filters (groups and players) and the refresh button with the age of the list,
 --   - merging both sources of one instance into one list, best fitting first,
 --   - the figures for the tiles and the public section of the tabs without tiles.
 -- UXFinder.lua calls in at fixed places. A search starts from a click only (the client takes nothing else):
@@ -105,9 +105,10 @@ function FP.SetFitting(on)
 end
 
 -- ---------------------------------------------------------------------------------------------
--- Filters of the bar: groups (free places, present roles, play style), players (roles, level, classes) and the
--- language of the search, kept per character, plus saved filters. They only narrow the lists the bar belongs to
--- (FP.barOn) and never start a search; the roles of the players are the role icons of their section header.
+-- Filters of the bar ("More filters"): groups (free places, present roles, play style) and players (roles, level,
+-- classes), kept per character, plus saved filters. They only narrow the lists the bar belongs to (FP.barOn) and
+-- never start a search; the roles of the players are the role icons of their section header. The language of the
+-- search is no filter: it has its own button and window.
 -- ---------------------------------------------------------------------------------------------
 local S = Z.UIState
 local MAX_PROFILES = S and S.MAX_FINDER_FILTERS or 10
@@ -195,22 +196,20 @@ function FP.ToggleFilterRole(role)
 end
 
 -- How many parts of the filter are set: free places, present roles, play style, roles of the players, level,
--- classes, language.
+-- classes.
 function FP.FilterCount()
     local filter, n = FP.Filter(), 0
     n = n + (next(filter.free) and 1 or 0) + (next(filter.has) and 1 or 0) + (filter.style > 0 and 1 or 0)
     local roles = F.SeekerRoles()
     n = n + ((roles.TANK and roles.HEALER and roles.DAMAGER) and 0 or 1)
     n = n + ((filter.minLevel or filter.maxLevel) and 1 or 0) + (filter.classes and 1 or 0)
-    n = n + (FP.Languages().mode ~= 'DEFAULT' and 1 or 0)
     return n
 end
 
--- Back to no filter; the language goes back to the default of the game (and so changes the query, never searches).
+-- Back to no filter; the language of the search stays as it is.
 function FP.ResetFilters()
     if Z.uiCharacter then
         Z.uiCharacter.finderFilter = S.FinderFilter(nil)
-        Z.uiCharacter.finderLanguages = S.FinderLanguages(nil)
     end
     if Z.db then
         Z.db.finderSeekerRoles = nil
@@ -219,7 +218,7 @@ function FP.ResetFilters()
     U.RefreshFinder()
 end
 
--- Saved filters: a name and every value of the filter (also the language and the roles of the players).
+-- Saved filters: a name, every value of the filter and the roles of the players (not the language).
 local function cleanName(name)
     name = tostring(name or ''):gsub('[%z\1-\31\127|]', ''):gsub('^%s+', ''):gsub('%s+$', '')
     return name:sub(1, 24)
@@ -231,7 +230,7 @@ function FP.SaveProfile(name)
     if name == '' or not Z.uiCharacter then
         return false, 'NAME'
     end
-    local entry = { name = name, filter = copyFilter(FP.Filter()), languages = S.FinderLanguages(FP.Languages()), roles = S.SeekerRoles(F.SeekerRoles()) }
+    local entry = { name = name, filter = copyFilter(FP.Filter()), roles = S.SeekerRoles(F.SeekerRoles()) }
     for index, saved in ipairs(list) do
         if saved.name:lower() == name:lower() then
             list[index] = entry
@@ -254,7 +253,6 @@ function FP.ApplyProfile(index)
         return false
     end
     Z.uiCharacter.finderFilter = copyFilter(entry.filter)
-    Z.uiCharacter.finderLanguages = S.FinderLanguages(entry.languages)
     if Z.db then
         Z.db.finderSeekerRoles = S.SeekerRoles(entry.roles)
     end
@@ -483,7 +481,7 @@ function FP.Status()
 end
 
 -- ---------------------------------------------------------------------------------------------
--- Bar: source choice, "Only fitting", role, language, refresh
+-- Bar: source choice, "Only fitting", role, language, more filters, refresh
 -- ---------------------------------------------------------------------------------------------
 local function roleCaption()
     local roles, names = Q.OwnRoles(), {}
@@ -494,42 +492,75 @@ local function roleCaption()
     end
     return Z.T('Role: %s', table.concat(names, ', '))
 end
--- The small window below the role or the filter button. It lies over the lists, so opening it moves nothing.
--- left: where the role window starts inside the bar, so it never leaves the page. The filter window starts at the
--- left edge of the bar.
-local FILTER_WIDTH = 834
-local COLUMN = { 12, 286, 560 }
-local CHIP, STEP, LINE = 82, 88, 28
+local function languageCaption()
+    local languages, value = FP.Languages(), tr('Game default')
+    if languages.mode == 'ALL' then
+        value = tr('All')
+    elseif languages.mode == 'CUSTOM' then
+        local labels = {}
+        for _, language in ipairs(P.Languages()) do
+            if languages.codes[language.code] then
+                labels[#labels + 1] = language.label
+            end
+        end
+        value = #labels == 0 and '–' or #labels <= 2 and table.concat(labels, ', ') or Z.T('%d languages', #labels)
+    end
+    return Z.T('Language: %s', value)
+end
+
+-- The small window below the role, the language or the filter button. It lies over the lists, so opening it moves
+-- nothing. left: where the role and language windows start inside the bar, so they never leave the page. The
+-- filter window starts at the left edge of the bar.
+local FILTER_WIDTH = 702
+local LANGUAGE_WIDTH, FILTER_BUTTON = 182, 136
+local PAD = 16
+local COLUMN = { PAD, 366 } -- left edge of the group and the player column; both are 320 wide
+local COLUMN_WIDTH = 320
+local DIVIDER = 351
+local LINE = 28
+local ROLE_STEP = 106
+local STYLE_STEP = 162
+local CLASS_STEP = 108
+local SAVED_CHIP, SAVED_STEP = 106, 111
 
 local function place(widget, x, y)
     widget:ClearAllPoints()
     widget:SetPoint('TOPLEFT', x, -y)
 end
--- Chips of a row list, three to a line, from (x, y); returns the y below the last line.
-local function chipGrid(chips, x, y, perLine)
+-- Chips of a row list, perLine to a line, from (x, y); returns the y below the last line.
+local function chipGrid(chips, x, y, perLine, step)
     for index, chip in ipairs(chips) do
-        place(chip, x + ((index - 1) % perLine) * STEP, y + math.floor((index - 1) / perLine) * LINE)
+        place(chip, x + ((index - 1) % perLine) * step, y + math.floor((index - 1) / perLine) * LINE)
     end
     return y + math.ceil(#chips / perLine) * LINE
 end
 
+-- The filter window: two columns (groups, players), the saved filters, a footer with a line above it. Returns
+-- the height of the window.
 local function layoutFilter()
     local panel = FP.panel
     local f, filter = panel.f, FP.Filter()
-    local public = FP.Source() ~= 'ZENIAL'
-    -- Groups
-    place(f.groupsLabel, COLUMN[1], 12)
-    place(f.freeLabel, COLUMN[1], 32)
-    place(f.hasLabel, COLUMN[1], 80)
-    place(f.styleLabel, COLUMN[1], 128)
+    local left, right = COLUMN[1], COLUMN[2]
+    -- Headers and the divider between the columns
+    place(f.groupsIcon, left, 14)
+    place(f.groupsLabel, left + 22, 18)
+    place(f.groupsRule, left, 38)
+    place(f.playersIcon, right, 14)
+    place(f.playersLabel, right + 22, 18)
+    place(f.playersRule, right, 38)
+    place(f.divider, DIVIDER, 14)
+    -- Groups: free place, present roles, play style
+    place(f.freeLabel, left, 46)
+    place(f.hasLabel, left, 96)
+    place(f.styleLabel, left, 146)
     for _, chip in ipairs(f.free) do
         chip:SetChecked(filter.free[chip.zenialRole] == true)
     end
     for _, chip in ipairs(f.has) do
         chip:SetChecked(filter.has[chip.zenialRole] == true)
     end
-    chipGrid(f.free, COLUMN[1], 48, 3)
-    chipGrid(f.has, COLUMN[1], 96, 3)
+    chipGrid(f.free, left, 62, 3, ROLE_STEP)
+    chipGrid(f.has, left, 112, 3, ROLE_STEP)
     FP.styles = FP.styles or P.Playstyles()
     for index, chip in ipairs(f.styles) do
         local item = FP.styles[index - 1]
@@ -537,20 +568,19 @@ local function layoutFilter()
         chip:SetShown(index == 1 or item ~= nil)
         chip:SetChecked(filter.style == index - 1)
     end
-    local bottom = chipGrid(f.styles, COLUMN[1], 144, 3)
-    -- Players
-    place(f.playersLabel, COLUMN[2], 12)
-    place(f.rolesLabel, COLUMN[2], 32)
-    place(f.levelLabel, COLUMN[2], 80)
-    place(f.classesLabel, COLUMN[2], 128)
+    local bottom = chipGrid(f.styles, left, 162, 2, STYLE_STEP)
+    -- Players: roles, level, classes
+    place(f.rolesLabel, right, 46)
+    place(f.levelLabel, right, 96)
+    place(f.classesLabel, right, 146)
     local roles = F.SeekerRoles()
     for _, chip in ipairs(f.roles) do
         chip:SetChecked(roles[chip.zenialRole] == true)
     end
-    chipGrid(f.roles, COLUMN[2], 48, 3)
-    place(f.minLevel, COLUMN[2], 96)
-    place(f.dash, COLUMN[2] + 66, 100)
-    place(f.maxLevel, COLUMN[2] + 82, 96)
+    chipGrid(f.roles, right, 62, 3, ROLE_STEP)
+    place(f.minLevel, right, 112)
+    place(f.dash, right + 84, 118)
+    place(f.maxLevel, right + 100, 112)
     for _, pair in ipairs({ { f.minLevel, filter.minLevel }, { f.maxLevel, filter.maxLevel } }) do
         local edit, value = pair[1], pair[2]
         if not edit:HasFocus() and edit:GetText() ~= (value and tostring(value) or '') then
@@ -558,55 +588,21 @@ local function layoutFilter()
         end
         edit.hint:SetShown((edit:GetText() or '') == '')
     end
-    place(f.classesAll, COLUMN[2] + 150, 124)
-    place(f.classesNone, COLUMN[2] + 206, 124)
+    place(f.classesNone, right + COLUMN_WIDTH - 44, 142)
+    place(f.classesAll, right + COLUMN_WIDTH - 44 - 48, 142)
+    f.classesAll:SetChecked(filter.classes == nil)
+    f.classesNone:SetChecked(filter.classes ~= nil and next(filter.classes) == nil)
     for _, chip in ipairs(f.classes) do
         chip:SetChecked(FP.ClassOn(chip.zenialClass))
     end
-    bottom = math.max(bottom, chipGrid(f.classes, COLUMN[2], 148, 3))
-    -- Language (a parameter of the search) and the saved filters
-    f.languagesLabel:SetShown(public)
-    f.mode:SetShown(public)
-    local y = 12
-    local languages = FP.Languages()
-    local offered = public and P.Languages() or {}
-    if public then
-        place(f.languagesLabel, COLUMN[3], 12)
-        place(f.mode, COLUMN[3], 30)
-        f.mode:Select(languages.mode)
-        for index, language in ipairs(offered) do
-            local chip = f.languages[index]
-            if not chip then
-                chip = T.Chip(f.box, '', CHIP, 22, function(self)
-                    FP.ToggleLanguage(self.zenialCode)
-                end)
-                f.languages[index] = chip
-            end
-            chip.zenialCode = language.code
-            chip.text:SetText(language.label)
-            chip:SetChecked(languages.mode == 'CUSTOM' and languages.codes[language.code] == true)
-            chip:SetEnabled(languages.mode == 'CUSTOM')
-            chip:Show()
-        end
-        -- Only as many chips as the client offers languages.
-        local shown = {}
-        for index = 1, #offered do
-            shown[index] = f.languages[index]
-        end
-        y = chipGrid(shown, COLUMN[3], 64, 3) + 10
-    end
-    for index = #offered + 1, #f.languages do
-        f.languages[index]:Hide()
-    end
+    bottom = math.max(bottom, chipGrid(f.classes, right, 162, 3, CLASS_STEP))
+    -- Saved filters
     local profiles = FP.Profiles()
     f.savedLabel:SetShown(#profiles > 0)
-    if #profiles > 0 then
-        place(f.savedLabel, COLUMN[3], y)
-    end
     for index = 1, MAX_PROFILES do
         local chip = f.saved[index]
         if not chip then
-            chip = T.Chip(f.box, '', CHIP, 22, function(self)
+            chip = T.Chip(f.box, '', SAVED_CHIP, 24, function(self)
                 FP.ApplyProfile(self.zenialIndex)
             end)
             f.saved[index] = chip
@@ -619,25 +615,25 @@ local function layoutFilter()
             chip:SetChecked(FP.selected == entry.name)
         end
     end
-    local savedBottom = y
     if #profiles > 0 then
+        place(f.savedLabel, left, bottom + 4)
         local shown = {}
         for index = 1, #profiles do
             shown[index] = f.saved[index]
         end
-        savedBottom = chipGrid(shown, COLUMN[3], y + 18, 3)
+        bottom = chipGrid(shown, left, bottom + 22, 6, SAVED_STEP)
     end
-    bottom = math.max(bottom, savedBottom)
-    -- Footer: save, reset and delete; the name is asked inside the window.
-    local footer = bottom + 12
-    place(f.save, COLUMN[1], footer)
+    -- Footer: the line, then save (left) and delete and reset (right); the name is asked inside the window.
+    place(f.footerRule, PAD, bottom + 8)
+    local footer = bottom + 20
+    place(f.save, left, footer)
     f.name:SetShown(FP.naming == true)
     f.confirm:SetShown(FP.naming == true)
     if FP.naming then
-        place(f.name, COLUMN[1] + 130, footer)
-        place(f.confirm, COLUMN[1] + 130 + 196, footer)
+        place(f.name, left + 156, footer)
+        place(f.confirm, left + 156 + 196, footer)
     end
-    place(f.reset, FILTER_WIDTH - 12 - 130, footer)
+    place(f.reset, FILTER_WIDTH - PAD - 150, footer)
     f.reset:SetEnabled(FP.FilterCount() > 0)
     local selected
     for index, entry in ipairs(profiles) do
@@ -647,13 +643,14 @@ local function layoutFilter()
     end
     f.delete.zenialIndex = selected
     f.delete:SetShown(selected ~= nil)
-    place(f.delete, FILTER_WIDTH - 12 - 130 - 6 - 130, footer)
-    return footer + 24 + 12
+    place(f.delete, FILTER_WIDTH - PAD - 150 - 6 - 140, footer)
+    return footer + 24 + PAD
 end
 
+-- left: where the window of the role or the language button starts inside the bar.
 local function layoutPopup(left)
     local panel = FP.panel
-    local role = FP.popup == 'ROLE'
+    local role, language, filter = FP.popup == 'ROLE', FP.popup == 'LANGUAGE', FP.popup == 'FILTER'
     panel.rolesLabel:SetShown(role)
     panel.rolesHint:SetShown(role)
     local roles = Q.OwnRoles()
@@ -661,23 +658,47 @@ local function layoutPopup(left)
         chip:SetShown(role)
         chip:SetChecked(roles[chip.zenialRole] == true)
     end
-    panel.f.box:SetShown(not role)
-    if role then
+    panel.languagesLabel:SetShown(language)
+    panel.mode:SetShown(language)
+    panel.f.box:SetShown(filter)
+    local width, height = 330, 88
+    if language then
+        local languages = FP.Languages()
+        panel.mode:Select(languages.mode)
+        local offered = P.Languages()
+        for index, entry in ipairs(offered) do
+            local chip = panel.languages[index]
+            if not chip then
+                chip = T.Chip(panel, '', 96, 22, function(self)
+                    FP.ToggleLanguage(self.zenialCode)
+                end)
+                panel.languages[index] = chip
+            end
+            chip.zenialCode = entry.code
+            chip.text:SetText(entry.label)
+            chip:ClearAllPoints()
+            chip:SetPoint('TOPLEFT', 12 + ((index - 1) % 4) * 102, -(70 + math.floor((index - 1) / 4) * 28))
+            chip:SetChecked(languages.mode == 'CUSTOM' and languages.codes[entry.code] == true)
+            chip:SetEnabled(languages.mode == 'CUSTOM')
+            chip:Show()
+        end
+        for index = #offered + 1, #panel.languages do
+            panel.languages[index]:Hide()
+        end
+        width, height = 432, 78 + math.max(1, math.ceil(#offered / 4)) * 28
+    else
         -- What the other window draws is hidden by its own flag too, not only through the hidden frame.
-        panel.f.mode:Hide()
-        panel.f.languagesLabel:Hide()
-        for _, chip in ipairs(panel.f.languages) do
+        for _, chip in ipairs(panel.languages) do
             chip:Hide()
         end
-        panel:SetSize(330, 88)
-        panel:ClearAllPoints()
-        panel:SetPoint('TOPLEFT', FP.bar, 'TOPLEFT', left, -(ROW - 2))
-        return
     end
-    local height = layoutFilter()
-    panel:SetSize(FILTER_WIDTH, height)
+    if filter then
+        width, height = FILTER_WIDTH, layoutFilter()
+        left = 0
+    end
+    panel:SetSize(width, height)
     panel:ClearAllPoints()
-    panel:SetPoint('TOPLEFT', FP.bar, 'TOPLEFT', 0, -(ROW - 2))
+    panel:SetPoint('TOPLEFT', FP.bar, 'TOPLEFT', left, -(ROW - 2))
 end
 
 -- "I am looking for a group": the role chips of the search bar start with the roles chosen under "Role", so
@@ -717,7 +738,7 @@ function FP.LayoutBar(y, width, detailed)
     bar.source:SetPoint('TOPLEFT', 0, 0)
     bar.source:Select(source)
     local x = 240
-    local roleLeft = x
+    local roleLeft, languageLeft = x, x
     bar.fitting:SetShown(detailed == true)
     bar.role:SetShown(detailed == true)
     if detailed then
@@ -734,13 +755,25 @@ function FP.LayoutBar(y, width, detailed)
     elseif FP.popup == 'ROLE' then
         FP.popup = nil
     end
-    -- The filters (groups, players, language) narrow the lists of both sources.
+    bar.language:SetShown(public)
+    if public then
+        -- The window of the languages is wider than its button: it ends where the button ends.
+        languageLeft = math.max(0, x + LANGUAGE_WIDTH - 432)
+        bar.language:ClearAllPoints()
+        bar.language:SetPoint('TOPLEFT', x, -1)
+        bar.language:SetText(languageCaption())
+        T.SetSelected(bar.language, FP.popup == 'LANGUAGE')
+        x = x + LANGUAGE_WIDTH + 6
+    elseif FP.popup == 'LANGUAGE' then
+        FP.popup = nil
+    end
+    -- The further filters (groups, players) narrow the lists of both sources.
     bar.filter:ClearAllPoints()
     bar.filter:SetPoint('TOPLEFT', x, -1)
     local count = FP.FilterCount()
-    bar.filter:SetText(count > 0 and Z.T('Filter (%d)', count) or tr('Filter'))
+    bar.filter:SetText(count > 0 and Z.T('More filters (%d)', count) or tr('More filters'))
     T.SetSelected(bar.filter, FP.popup == 'FILTER')
-    x = x + 120 + 6
+    x = x + FILTER_BUTTON + 6
     if public then
         -- The whisper texts of the player (UXWhisperDesigner.lua); in the overview of an instance on the
         -- second line beside the assistant.
@@ -783,7 +816,7 @@ function FP.LayoutBar(y, width, detailed)
     local panel = FP.panel
     panel:SetShown(FP.popup ~= nil)
     if FP.popup then
-        layoutPopup(roleLeft)
+        layoutPopup(FP.popup == 'LANGUAGE' and languageLeft or roleLeft)
     end
     return rows * ROW
 end
@@ -812,9 +845,17 @@ function FP.Create(frame)
     bar.role = T.Button(bar, '', 170, 24, function()
         toggle('ROLE')
     end, 'secondary')
-    bar.filter = T.Button(bar, tr('Filter'), 120, 24, function()
+    bar.language = T.Button(bar, '', LANGUAGE_WIDTH, 24, function()
+        toggle('LANGUAGE')
+    end, 'secondary')
+    bar.filter = T.Button(bar, tr('More filters'), FILTER_BUTTON, 24, function()
         toggle('FILTER')
     end, 'secondary')
+    bar.filter.glyph = K.Icon(bar.filter, 'filter', 14, 'textSoft')
+    bar.filter.glyph:SetPoint('LEFT', 10, 0)
+    if T.AlignButtonText then
+        T.AlignButtonText(bar.filter, 30, 8)
+    end
     bar.texts = T.Button(bar, tr('Texts'), 90, 24, function()
         if U.WhisperDesigner then
             U.WhisperDesigner.Open('group')
@@ -887,7 +928,7 @@ function FP.Create(frame)
     bar:Hide()
     FP.bar = bar
 
-    -- The window of the role button and of the filter button.
+    -- The window of the role, the language and the filter button.
     local panel = CreateFrame('Frame', nil, frame)
     if panel.SetFrameLevel and frame.GetFrameLevel then
         panel:SetFrameLevel((frame:GetFrameLevel() or 1) + 40)
@@ -915,61 +956,105 @@ function FP.Create(frame)
     panel.rolesHint:SetHeight(24)
     panel.rolesHint:SetJustifyH('LEFT')
 
-    -- The filter window: groups, players, language, saved filters.
+    -- The window of the language button (a parameter of the search, not a filter).
+    panel.languagesLabel = K.Text(panel, tr('Languages of the public search'), 'overline', 'goldDim')
+    panel.languagesLabel:SetPoint('TOPLEFT', 12, -12)
+    panel.mode = K.Segmented(panel, { { key = 'DEFAULT', label = tr('Game default') }, { key = 'ALL', label = tr('All') }, { key = 'CUSTOM', label = tr('Selection') } }, function(key)
+        FP.SetLanguageMode(key)
+    end)
+    panel.mode:SetSegmentWidth(120)
+    panel.mode:SetPoint('TOPLEFT', 12, -30)
+    panel.languages = {}
+
+    -- The filter window: groups and players side by side, saved filters, footer.
     local box = CreateFrame('Frame', nil, panel)
     box:SetAllPoints(panel)
-    local f = { box = box, free = {}, has = {}, styles = {}, roles = {}, classes = {}, languages = {}, saved = {} }
+    local f = { box = box, free = {}, has = {}, styles = {}, roles = {}, classes = {}, saved = {} }
     panel.f = f
     local function head(text)
-        return K.Text(box, tr(text), 'overline', 'goldDim')
+        return K.Text(box, tr(text), 'overline', 'gold')
     end
     local function caption(text)
         return K.Text(box, tr(text), 'caption', 'dim')
     end
+    local function rule(key, alpha)
+        local line = box:CreateTexture(nil, 'ARTWORK')
+        T.Tint(line, 'SetColorTexture', key, alpha)
+        return line
+    end
+    f.groupsIcon, f.playersIcon = K.Icon(box, 'activities', 16, 'gold'), K.Icon(box, 'members', 16, 'gold')
     f.groupsLabel, f.playersLabel = head('Groups'), head('Players')
-    f.languagesLabel = head('Languages of the public search')
+    f.groupsRule, f.playersRule = rule('line'), rule('line')
+    f.groupsRule:SetSize(COLUMN_WIDTH, 1)
+    f.playersRule:SetSize(COLUMN_WIDTH, 1)
+    f.divider = rule('line')
+    f.divider:SetSize(1, 232)
+    f.footerRule = rule('line')
+    f.footerRule:SetSize(FILTER_WIDTH - 2 * PAD, 1)
     f.freeLabel, f.hasLabel, f.styleLabel = caption('Free place for'), caption('Already has'), caption('Play style')
     f.rolesLabel, f.levelLabel, f.classesLabel = caption('Roles'), caption('Level'), caption('Classes')
     f.savedLabel = caption('Saved filters')
+    -- A chip with a small picture in front of its text.
+    local function picture(chip)
+        chip.icon = chip:CreateTexture(nil, 'ARTWORK')
+        chip.icon:SetSize(14, 14)
+        chip.icon:SetPoint('LEFT', 7, 0)
+        chip.text:ClearAllPoints()
+        chip.text:SetPoint('LEFT', 25, 0)
+        chip.text:SetPoint('RIGHT', -4, 0)
+        chip.text:SetJustifyH('LEFT')
+        return chip
+    end
+    local function roleChip(role, onClick)
+        local chip = picture(T.Chip(box, Z.Locale.Role(role), 100, 24, onClick))
+        F.SetRoleIcon(chip.icon, role)
+        chip.zenialRole = role
+        return chip
+    end
     for index, role in ipairs(ROLES) do
-        local label = Z.Locale.Role(role)
-        f.free[index] = T.Chip(box, label, CHIP, 22, function()
+        f.free[index] = roleChip(role, function()
             FP.ToggleGroupRole('free', role)
         end)
-        f.free[index].zenialRole = role
-        f.roles[index] = T.Chip(box, label, CHIP, 22, function(self)
+        f.roles[index] = roleChip(role, function(self)
             FP.ToggleFilterRole(self.zenialRole)
             self:SetChecked(F.SeekerRoles()[self.zenialRole] == true)
         end)
-        f.roles[index].zenialRole = role
     end
     for index, role in ipairs(GROUP_ROLES.has) do
-        f.has[index] = T.Chip(box, Z.Locale.Role(role), CHIP, 22, function()
+        f.has[index] = roleChip(role, function()
             FP.ToggleGroupRole('has', role)
         end)
-        f.has[index].zenialRole = role
     end
     for index = 1, 5 do
-        f.styles[index] = T.Chip(box, '', CHIP, 22, function()
+        f.styles[index] = T.Chip(box, '', 156, 24, function()
             FP.SetStyle(index - 1)
         end)
     end
     for index, class in ipairs(C.CLASSES) do
-        local chip = T.Chip(box, L.ClassName(nil, class) or class, CHIP, 22, function()
+        local chip = picture(T.Chip(box, '', 104, 24, function()
             FP.ToggleClass(class)
-        end)
+        end))
+        local name = L.ClassName(nil, class) or class
+        local hex = T.ClassColorHex and T.ClassColorHex(class)
+        chip.text:SetText(hex and ('|cff' .. hex .. name .. '|r') or name)
+        local spec = T.ClassIcon(class)
+        if spec and T.SetTexture(chip.icon, spec) then
+            T.Tint(chip.icon, 'SetVertexColor', 'text')
+        else
+            T.SetIcon(chip.icon, 'members', 'muted')
+        end
         chip.zenialClass = class
         f.classes[index] = chip
     end
-    f.classesAll = T.Button(box, tr('All'), 52, 20, function()
+    f.classesAll = T.Chip(box, tr('All'), 44, 20, function()
         FP.SetClasses(true)
-    end, 'secondary')
-    f.classesNone = T.Button(box, tr('None'), 52, 20, function()
+    end)
+    f.classesNone = T.Chip(box, tr('None'), 44, 20, function()
         FP.SetClasses(false)
-    end, 'secondary')
-    -- Level range: two small number fields, empty is open. The value is taken when the field is left or Enter is pressed.
+    end)
+    -- Level range: two number fields with a hint, empty is open. The value is taken when the field is left or Enter is pressed.
     local function levelField(which, hint)
-        local edit = F.CreateEdit(box, 60, 3, tr(hint))
+        local edit = F.CreateEdit(box, 76, 3, tr(hint))
         if edit.SetNumeric then
             edit:SetNumeric(true)
         end
@@ -988,18 +1073,23 @@ function FP.Create(frame)
     end
     f.minLevel, f.maxLevel = levelField('minLevel', 'From'), levelField('maxLevel', 'To')
     f.dash = K.Text(box, '–', 'caption', 'dim')
-    f.mode = K.Segmented(box, { { key = 'DEFAULT', label = tr('Game default') }, { key = 'ALL', label = tr('All') }, { key = 'CUSTOM', label = tr('Selection') } }, function(key)
-        FP.SetLanguageMode(key)
-    end)
-    f.mode:SetSegmentWidth(86)
-    -- Footer. The name of a new saved filter is asked in place.
-    f.save = T.Button(box, tr('Save filter'), 120, 24, function()
+    -- Footer: buttons with a picture in front of the caption. The name of a new saved filter is asked in place.
+    local function footerButton(text, width, icon, onClick)
+        local button = T.Button(box, tr(text), width, 24, onClick, 'secondary')
+        button.glyph = K.Icon(button, icon, 14, 'textSoft')
+        button.glyph:SetPoint('LEFT', 10, 0)
+        if T.AlignButtonText then
+            T.AlignButtonText(button, 30, 8)
+        end
+        return button
+    end
+    f.save = footerButton('Save filter', 150, 'plus', function()
         FP.naming = not FP.naming or nil
         U.RefreshFinder()
         if FP.naming then
             f.name:SetFocus()
         end
-    end, 'secondary')
+    end)
     f.name = F.CreateEdit(box, 190, 24, tr('Name'))
     f.name:SetScript('OnTextChanged', function(self)
         self.hint:SetShown((self:GetText() or '') == '')
@@ -1022,15 +1112,14 @@ function FP.Create(frame)
         U.RefreshFinder()
     end)
     f.confirm = T.Button(box, tr('Save'), 70, 24, confirm, 'secondary')
-    f.delete = T.Button(box, tr('Delete filter'), 130, 24, function(self)
+    f.delete = footerButton('Delete filter', 140, 'close', function(self)
         if self.zenialIndex then
             FP.DeleteProfile(self.zenialIndex)
         end
-    end, 'secondary')
-    f.reset = T.Button(box, tr('Reset filters'), 130, 24, function()
+    end)
+    f.reset = footerButton('Reset filters', 150, 'refresh', function()
         FP.ResetFilters()
-    end, 'secondary')
-    panel.languagesLabel, panel.mode, panel.languages = f.languagesLabel, f.mode, f.languages
+    end)
     panel:Hide()
     FP.panel = panel
 end
