@@ -583,6 +583,7 @@ local REASON_CONTACT = {
     GONE = 'This listing is no longer available.',
     NO_LEADER = 'The name of the leader is not known yet.',
     UNAVAILABLE = 'Whisper is unavailable.',
+    EMPTY = 'This text is empty.',
 }
 local CONTACT_BADGE = { OPENED = { 'Chat opened', 'info' }, SENT = { 'Message sent', 'success' }, JOINED = { 'In the group', 'success' } }
 
@@ -599,13 +600,15 @@ local function displayName(name)
 end
 
 -- The values of the placeholders for a row (WhisperTexts.Expand). To a single player the activity is the
--- open instance, to a group the activity of its listing.
+-- open instance, to a group the activity of its listing: its catalog id (an English name that can be
+-- translated), the name of the client only when there is none.
 function FP.WhisperValues(row)
     local me = Z.me or {}
+    local listed = row and (type(row.activities) == 'table' and row.activities[1] or row.activityName) or nil
     return {
         level = tonumber(me.level), roles = Q.OwnRoles(), classFile = me.classFile, me = displayName(me.target),
         name = displayName(row and row.leader),
-        activity = row and (row.solo and F.activity or row.activityName) or F.activity or (row and row.activityName),
+        activity = row and (row.solo and F.activity or listed) or F.activity or listed,
     }
 end
 
@@ -623,7 +626,14 @@ end
 -- Opens the chat box for the leader with the message in it. The player sends it. The text id that was
 -- used (or the last used one) is remembered only once the chat box is open.
 function FP.Contact(row, text, id)
-    local ok, reason = X.Prepare(row, text or FP.Message(row, id))
+    local message = text or FP.Message(row, id)
+    local ok, reason
+    -- An empty text would open an empty chat box and still lock the group: nothing happens instead.
+    if message == '' then
+        ok, reason = false, 'EMPTY'
+    else
+        ok, reason = X.Prepare(row, message)
+    end
     if ok then
         local kind = kindOf(row)
         local used = id and Z.WhisperTexts.Get(kind, id) or Z.WhisperTexts.Last(kind)
@@ -1009,6 +1019,10 @@ end
 
 -- Called at the start of every refresh: what was noted about the rows of the last one is forgotten.
 function FP.Begin()
+    -- The list of whisper texts belongs to a card; the cards are drawn anew, so it closes.
+    if U.WhisperDesigner then
+        U.WhisperDesigner.CloseMenu()
+    end
     -- The window of the role or language button belongs to the view it was opened in.
     local place = tostring(F.view) .. '|' .. tostring(F.activity)
     if FP.place ~= place then
