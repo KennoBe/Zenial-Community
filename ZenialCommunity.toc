@@ -110,6 +110,7 @@ ScheduledGroupsUI.lua
 CommunityHomeUI.lua
 UXFinder.lua
 UXFinderPublic.lua
+UXWhisperDesigner.lua
 UXFinderAssistant.lua
 GroupFormUI.lua
 ActivityFormsUI.lua

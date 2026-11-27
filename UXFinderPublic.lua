@@ -617,8 +617,17 @@ function FP.Contact(row, text, id)
     U.RefreshFinder()
     return ok, reason
 end
-local function whisper(row)
-    FP.Contact(row)
+-- The whisper action of a card: the main part writes with the last used text, the arrow lists the texts.
+local function whisperAction(row)
+    local kind = kindOf(row)
+    local last = Z.WhisperTexts.Last(kind)
+    return { text = Z.T('Whisper · %s', last and last.name or '?'), width = 150, enabled = X.CanContact(row) == true,
+        click = function()
+            FP.Contact(row)
+        end,
+        menu = { kind = kind, pick = function(id)
+            FP.Contact(row, nil, id)
+        end } }
 end
 local function invite(row)
     local ok, why = false, nil
@@ -689,9 +698,7 @@ function FP.Describe(row, context)
         d.actions[1] = { text = tr('Invite'), enabled = not gone and row.leader ~= nil and A.GroupState().canInvite == true, click = function()
             invite(row)
         end }
-        d.actions[2] = { text = tr('Whisper'), enabled = X.CanContact(row) == true, click = function()
-            whisper(row)
-        end }
+        d.actions[2] = whisperAction(row)
     else
         d.title = context.named and row.activityName or who
         if context.named and row.activityName then
@@ -759,9 +766,7 @@ function FP.Describe(row, context)
             d.roles = paint('dim', tr('Role needs unknown'))
         end
         tierBadge(d, FP.fits[row.key])
-        d.actions[1] = { text = tr('Whisper'), enabled = X.CanContact(row) == true, click = function()
-            whisper(row)
-        end }
+        d.actions[1] = whisperAction(row)
     end
     -- What is known about a contact with this leader replaces the fit label.
     local contact = CONTACT_BADGE[X.State(row)]

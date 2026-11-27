@@ -810,9 +810,14 @@ local function createCard(parent)
     card.badge:SetPoint('TOPRIGHT', -8, -8)
     -- Source of the entry (ZENIAL or public), shown while both sources stand side by side.
     card.source = K.Badge(card, '', 'neutral')
-    card.actions = {}
+    card.actions, card.arrows = {}, {}
     for index = 1, 2 do
         card.actions[index] = T.Button(card, '', 116, 22, nil, 'secondary')
+        -- The arrow of an action with a list (the whisper texts of a public card).
+        local arrow = T.Button(card, '', 22, 22, nil, 'secondary')
+        T.StyleDropdown(arrow)
+        arrow:Hide()
+        card.arrows[index] = arrow
     end
     card.chips = {}
     for index, role in ipairs(ROLES) do
@@ -1021,8 +1026,10 @@ local function updateCard(card, item, width, context)
     local right = 8
     local shown = 0
     for index = #card.actions, 1, -1 do
-        local button, action = card.actions[index], actions[index]
+        local button, action, arrow = card.actions[index], actions[index], card.arrows[index]
         button:SetShown(action ~= nil)
+        local menu = action and action.menu
+        arrow:SetShown(menu ~= nil)
         if action then
             shown = shown + 1
             if button.zenialVariant ~= (action.variant or 'secondary') then
@@ -1032,8 +1039,21 @@ local function updateCard(card, item, width, context)
             button:SetEnabled(action.enabled ~= false)
             button:SetScript('OnClick', action.click)
             button:ClearAllPoints()
-            button:SetPoint('BOTTOMRIGHT', -right, 8)
-            right = right + 116 + 6
+            local width = action.width or 116
+            if menu then
+                -- Main part and arrow side by side in the width of the action.
+                arrow:ClearAllPoints()
+                arrow:SetPoint('BOTTOMRIGHT', -right, 8)
+                arrow:SetScript('OnClick', function(self)
+                    U.WhisperDesigner.Menu(self, menu.kind, action.enabled ~= false, menu.pick)
+                end)
+                button:SetWidth(width - 24)
+                button:SetPoint('BOTTOMRIGHT', -(right + 24), 8)
+            else
+                button:SetWidth(width)
+                button:SetPoint('BOTTOMRIGHT', -right, 8)
+            end
+            right = right + width + 6
         end
     end
     local note = d.note or ''
