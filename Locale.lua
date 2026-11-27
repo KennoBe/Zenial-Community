@@ -1593,10 +1593,22 @@ function I.Activity(value)
     if extra then return extra end
     return german and(ACTIVITY_DE[id]or id)or id or""
 end
+local CLASS_EN={WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
 function I.Class(value,token)
-    local id=token or value;local english=({WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"})[id]
+    local id=token or value;local english=CLASS_EN[id]
     if not english then return value or I.Text("Unknown")end
     return german and(Z.Logic.CLASS_DE[id]or english)or english
+end
+-- Names in a given language ('de' or 'en'), whatever the language of the client: for texts to other players.
+function I.ClassIn(language,classFile)
+    local english=CLASS_EN[classFile];if not english then return nil end
+    return language=="de"and(Z.Logic.CLASS_DE[classFile]or english)or english
+end
+function I.ActivityIn(language,value)
+    local id=Z.Logic and Z.Logic.ActivityID(value)or value
+    if type(id)~="string"or id==""then return nil end
+    if ACTIVITY_DE[id]then return language=="de"and ACTIVITY_DE[id]or id end
+    return Z.PublicLFGMap and Z.PublicLFGMap.ExtraName(id)or id
 end
 
 Z.Locale=I

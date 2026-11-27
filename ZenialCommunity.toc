@@ -59,6 +59,7 @@ PublicLFGMap.lua
 PublicLFG.lua
 PublicLFGMatch.lua
 PublicLFGContact.lua
+WhisperTexts.lua
 PublicLFGListing.lua
 DungeonJournalLink.lua
 GroupFinderArt.lua

@@ -26,6 +26,8 @@ local TEXT = {
         solo = 'Hi, we are looking for one more for %s. Are you interested?', TANK = 'tank', HEALER = 'healer', DAMAGER = 'DPS', join = ' or ' },
 }
 local ORDER = { 'TANK', 'HEALER', 'DAMAGER' }
+-- Role words of the texts per language, for the whisper texts of the player (WhisperTexts.lua).
+X.WORDS, X.ROLE_ORDER = TEXT, ORDER
 
 local contacts = {}
 
