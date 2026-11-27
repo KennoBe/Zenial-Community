@@ -392,6 +392,14 @@ local REFUSED = {
     BLOCKED = 'The game refused the search.',
     BUSY = 'Another search is still running. Click Refresh afterwards.',
 }
+-- What stays on the line when the search of the open view was refused and no list came since: the reason,
+-- so the player sees why the list is empty, and that Refresh searches.
+local NOT_SEARCHED = {
+    COMBAT = 'Not searched: you were in combat. Click Refresh.',
+    LOCKDOWN = 'Not searched: the game did not allow it right then. Click Refresh.',
+    COOLDOWN = 'Not searched: a search had just run. Click Refresh.',
+    BUSY = 'Not searched: another search was running. Click Refresh.',
+}
 
 -- Starts the public search for the open view. Runs from a click only.
 function FP.Search()
@@ -403,7 +411,7 @@ function FP.Search()
     if query then
         ok, reason = P.Search(query)
     end
-    FP.refused = not ok and reason ~= 'BUSY' and { reason = reason, at = A.Clock() } or nil
+    FP.refused = not ok and reason ~= 'BUSY' and { reason = reason, at = A.Clock(), signature = query and P.Signature(query) } or nil
     U.RefreshFinder()
     return ok
 end
@@ -426,7 +434,7 @@ function FP.OnOpen(activity)
     local ok, reason = P.Search(query)
     -- A running search refuses the new one: the status says so while it runs (a click on Refresh searches
     -- this instance afterwards; the game takes a search only from a click, so nothing starts by itself).
-    FP.refused = not ok and { reason = reason, at = A.Clock() } or nil
+    FP.refused = not ok and { reason = reason, at = A.Clock(), signature = P.Signature(query) } or nil
 end
 
 -- How long ago a list arrived.
@@ -467,6 +475,9 @@ function FP.Status()
     end
     local _, info = listing()
     if not info then
+        if refused and NOT_SEARCHED[refused.reason] and signature and refused.signature == signature then
+            return tr(NOT_SEARCHED[refused.reason]), true
+        end
         return tr(query and 'Public groups are not loaded yet.' or 'The group search of the game offers nothing here.'), query ~= nil
     end
     if languagePart(info.signature) ~= languagePart(signature) then
@@ -1622,10 +1633,6 @@ end
 
 -- Called at the start of every refresh: what was noted about the rows of the last one is forgotten.
 function FP.Begin()
-    -- The list of whisper texts belongs to a card; the cards are drawn anew, so it closes.
-    if U.WhisperDesigner then
-        U.WhisperDesigner.CloseMenu()
-    end
     -- The window of the role or filter button belongs to the view it was opened in.
     local place = tostring(F.view) .. '|' .. tostring(F.activity)
     if FP.place ~= place then
@@ -1638,6 +1645,11 @@ end
 
 -- Called at the end of every refresh: the merged entries of this refresh are dropped.
 function FP.End()
+    -- The list of whisper texts stays open while its card still shows the same entry (it closed on every redraw,
+    -- and the finder redraws whenever community data changes, often several times a minute).
+    if U.WhisperDesigner and U.WhisperDesigner.KeepMenu then
+        U.WhisperDesigner.KeepMenu()
+    end
     FP.cache = nil
 end
 

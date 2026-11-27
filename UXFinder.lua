@@ -1071,14 +1071,20 @@ local function updateCard(card, item, width, context)
             button:ClearAllPoints()
             local width = action.width or 116
             if menu then
-                -- Main part and arrow side by side in the width of the action.
+                -- Main part and arrow side by side in the width of the action. The arrow takes the height of
+                -- the main part (the client draws buttons taller than their nominal size), so both line up.
+                button:SetWidth(width - 24)
+                button:SetPoint('BOTTOMRIGHT', -(right + 24), 8)
                 arrow:ClearAllPoints()
-                arrow:SetPoint('BOTTOMRIGHT', -right, 8)
+                arrow:SetPoint('TOPLEFT', button, 'TOPRIGHT', 2, 0)
+                arrow:SetPoint('BOTTOMLEFT', button, 'BOTTOMRIGHT', 2, 0)
+                arrow:SetWidth(22)
+                -- The open list of texts belongs to the entry of this card, not to the card frame: a redraw
+                -- that keeps the entry keeps the list open (UXFinderPublic.lua FP.End).
+                arrow.zenialMenuKey = (item.public and item.public.key) or (r and r.key) or nil
                 arrow:SetScript('OnClick', function(self)
                     U.WhisperDesigner.Menu(self, menu.kind, action.enabled ~= false, menu.pick)
                 end)
-                button:SetWidth(width - 24)
-                button:SetPoint('BOTTOMRIGHT', -(right + 24), 8)
             else
                 button:SetWidth(width)
                 button:SetPoint('BOTTOMRIGHT', -right, 8)

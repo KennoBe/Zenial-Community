@@ -58,7 +58,7 @@ function WD.Menu(anchor, kind, canContact, pick, selected)
             return
         end
     end
-    WD.menuState = { anchor = anchor, kind = kind, canContact = canContact == true, pick = pick }
+    WD.menuState = { anchor = anchor, key = anchor and anchor.zenialMenuKey, kind = kind, canContact = canContact == true, pick = pick }
     local options = {}
     for _, entry in ipairs(W.List(kind)) do
         options[#options + 1] = 'T' .. entry.id
@@ -69,6 +69,20 @@ function WD.Menu(anchor, kind, canContact, pick, selected)
     popup:ClearAllPoints()
     popup:SetPoint('TOPRIGHT', anchor, 'BOTTOMRIGHT', 0, -2)
     menu.button:GetScript('OnClick')(menu.button)
+end
+
+-- After a redraw of the finder: the list stays open while its arrow still shows the same entry, and closes when
+-- the entry left the screen or another entry took its place.
+function WD.KeepMenu()
+    local state = WD.menuState
+    if not (WD.menu and WD.menu.popup:IsShown() and state) then
+        return
+    end
+    local anchor = state.anchor
+    local visible = anchor and anchor.IsVisible and anchor:IsVisible()
+    if not visible or state.key == nil or anchor.zenialMenuKey ~= state.key then
+        WD.CloseMenu()
+    end
 end
 
 function WD.CloseMenu()
@@ -224,7 +238,8 @@ function WD.Build()
     T.Tint(f.fill, 'SetColorTexture', 'panelRaised')
     f.edges = T.Edges(f, 'BORDER')
     T.TintEdges(f.edges, 'goldDim')
-    f.title = f:CreateFontString(nil, 'OVERLAY')
+    -- The client refuses SetText on a font string without a font: the title gets one from the start.
+    f.title = T.Text(f, '', 'GameFontNormalLarge')
     f.header = K.DialogHeader(f, f.title, WD.Close)
     f.title:SetText(tr('Texts'))
     f.kinds = K.Segmented(f, { { key = 'group', label = tr('To groups') }, { key = 'solo', label = tr('To players') } }, function(key)
