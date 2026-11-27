@@ -273,7 +273,62 @@ function P.Show(run, title)
     return true
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- "Rate player" in the right-click menu of a player (target, party, raid, chat names): the same card for that
+-- one player. Raids and battlegrounds get no card after the fight; this is the way to rate somebody there.
+-- ---------------------------------------------------------------------------------------------
+local MENUS = { 'MENU_UNIT_PLAYER', 'MENU_UNIT_TARGET', 'MENU_UNIT_PARTY', 'MENU_UNIT_RAID_PLAYER', 'MENU_UNIT_RAID', 'MENU_UNIT_FRIEND' }
+-- The player a menu belongs to: { key, target, classFile, level }, or nil (not a player, the player self, blocked).
+function P.MenuPlayer(context)
+    local D = diary()
+    if type(context) ~= 'table' or not D or not D.store or not Z.db then return nil end
+    local unit, m = context.unit, nil
+    if type(unit) == 'string' and A.Safe(unit) and A.Call(UnitIsPlayer, unit) == true then
+        if A.Call(UnitIsUnit, unit, 'player') == true then return nil end
+        local key, target = D.UnitKey(unit)
+        if key then
+            local info = D.UnitDetails(unit)
+            m = { key = key, target = target, classFile = info.classFile, level = info.level }
+        end
+    end
+    if not m and type(context.name) == 'string' and A.Safe(context.name) then
+        local key, target = D.KeyForName(context.name)
+        if key then
+            local p = D.Get(key)
+            m = { key = key, target = target or context.name, classFile = p and p.classFile, level = p and p.level }
+        end
+    end
+    if not m or m.key == Z.me.key or Z.db.blocked[m.key] then return nil end
+    return m
+end
+-- Opens the card for one player, outside combat. Also used by the menu.
+function P.OpenFor(m)
+    if not m or not diary() or diary().readOnly then return false end
+    if A.Call(InCombatLockdown) == true then
+        if Z.UI and Z.UI.Message then Z.UI.Message(tr('Not possible in combat.')) end
+        return false
+    end
+    m.seq = m.seq or 0
+    return P.Show({ members = { [m.key] = m } }, tr('Rate player'))
+end
+function P.AttachMenu()
+    if P.menuAttached or type(Menu) ~= 'table' or type(Menu.ModifyMenu) ~= 'function' then return end
+    P.menuAttached = true
+    for _, tag in ipairs(MENUS) do
+        pcall(Menu.ModifyMenu, tag, function(_, root, context)
+            local ok, m = pcall(P.MenuPlayer, context)
+            if not ok or not m or type(root) ~= 'table' or type(root.CreateButton) ~= 'function' then return end
+            local stars = diary().Rating(m.key)
+            if root.CreateDivider then root:CreateDivider() end
+            root:CreateButton(stars and tr('Rate player (%d/5)', stars) or tr('Rate player'), function() P.OpenFor(m) end)
+        end)
+    end
+end
+
 local events = CreateFrame('Frame')
 for _, event in ipairs(EVENTS) do pcall(events.RegisterEvent, events, event) end
-events:SetScript('OnEvent', function(_, event) P.OnEvent(event) end)
+events:SetScript('OnEvent', function(_, event)
+    if not P.menuAttached then pcall(P.AttachMenu) end
+    P.OnEvent(event)
+end)
 return P
