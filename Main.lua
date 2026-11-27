@@ -546,6 +546,7 @@ local function initializeGameplayModules(d)
         -- Public group search: on unless the player switched it off (account-wide).
         if Z.SetPublicLFG then Z.SetPublicLFG(not Z.ui or Z.ui.finderPublic~=false)end
         if Z.PublicLFGContact then Z.PublicLFGContact.Initialize()end
+        if Z.WhisperTexts then Z.WhisperTexts.Ensure()end
         if Z.PublicLFGListing then Z.PublicLFGListing.Initialize()end
         Z.Notifications.Initialize()
     end

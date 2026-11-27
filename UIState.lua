@@ -47,6 +47,21 @@ local function finderTemplates(raw)
     for _,language in ipairs({"de","en"})do if text(raw[language],255)==raw[language]and raw[language]~=""then out[language]=raw[language]end end
     return out
 end
+-- The player's whisper texts (WhisperTexts.lua): per kind at most 12 valid entries with unique ids.
+local function whisperTexts(raw)
+    if type(raw)~="table"then return nil end
+    local out={}
+    for _,kind in ipairs({"group","solo"})do
+        local section=type(raw[kind])=="table"and raw[kind]or{};local list,seen={},{}
+        for _,e in ipairs(type(section.list)=="table"and section.list or{})do
+            if #list<12 and type(e)=="table"and L.Int(e.id,1,100000)and not seen[e.id]and L.Text(e.name,32)and L.Text(e.text,255,true)and(e.language=="de"or e.language=="en")then
+                seen[e.id]=true;list[#list+1]={id=e.id,name=e.name,text=e.text,language=e.language}
+            end
+        end
+        out[kind]={list=list,last=L.Int(section.last,1,100000)and section.last or nil}
+    end
+    return out
+end
 local function questCategories(raw)
     local out,count={},0
     for name,collapsed in pairs(type(raw)=="table"and raw or{})do
@@ -57,7 +72,7 @@ end
 function S.Initialize(root,characterKey,legacy)
     local raw=type(root.ui)=="table"and root.ui or{};local window=type(raw.window)=="table"and raw.window or{}
     -- Account-wide navigation preference; existing installations show the manager by default.
-    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,finderTemplates=finderTemplates(raw.finderTemplates),window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
+    local ui={version=S.VERSION,showAddonManager=raw.showAddonManager~=false,memberGrouping=raw.memberGrouping~=false,finderNotices=raw.finderNotices~=false,finderPublic=raw.finderPublic~=false,finderTemplates=finderTemplates(raw.finderTemplates),whisperTexts=whisperTexts(raw.whisperTexts),window={width=L.Int(window.width,900,1280)and window.width or 1060,height=L.Int(window.height,610,860)and window.height or 690},characters={}}
     ui.window.width=math.max(900,math.min(1280,math.floor(ui.window.width)));ui.window.height=math.max(610,math.min(860,math.floor(ui.window.height)))
     for key,value in pairs(type(raw.characters)=="table"and raw.characters or{})do
         if type(value)=="table"and L.ValidIdentityKey(key)then
