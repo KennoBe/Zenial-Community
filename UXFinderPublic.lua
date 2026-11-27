@@ -573,16 +573,46 @@ function FP.Me()
     return { roles = Q.OwnRoles(), level = tonumber(Z.me and Z.me.level) }
 end
 
--- The message for a row: to the leader of a group, or to a single player with the name of the activity.
-function FP.Message(row)
-    local me = FP.Me()
-    me.activity = F.activity and Z.Locale.Activity(F.activity) or row.activityName
-    return X.Template(X.Language(FP.Languages()), row.solo and 'solo' or 'group', me)
+local function kindOf(row)
+    return row.solo and 'solo' or 'group'
+end
+local function displayName(name)
+    return type(name) == 'string' and select(2, L.Identity(name)) or nil
 end
 
--- Opens the chat box for the leader with the message in it. The player sends it.
-function FP.Contact(row, text)
-    local ok, reason = X.Prepare(row, text or FP.Message(row))
+-- The values of the placeholders for a row (WhisperTexts.Expand). To a single player the activity is the
+-- open instance, to a group the activity of its listing.
+function FP.WhisperValues(row)
+    local me = Z.me or {}
+    return {
+        level = tonumber(me.level), roles = Q.OwnRoles(), classFile = me.classFile, me = displayName(me.target),
+        name = displayName(row and row.leader),
+        activity = row and (row.solo and F.activity or row.activityName) or F.activity or (row and row.activityName),
+    }
+end
+
+-- The message for a row: the text id of its kind (to the leader of a group, or to a single player), the
+-- last used one when no id is given, with its placeholders filled.
+function FP.Message(row, id)
+    local kind = kindOf(row)
+    local entry = id and Z.WhisperTexts.Get(kind, id) or Z.WhisperTexts.Last(kind)
+    if not entry then
+        return ''
+    end
+    return Z.WhisperTexts.Fit(Z.WhisperTexts.Expand(entry.text, entry.language, FP.WhisperValues(row)))
+end
+
+-- Opens the chat box for the leader with the message in it. The player sends it. The text id that was
+-- used (or the last used one) is remembered only once the chat box is open.
+function FP.Contact(row, text, id)
+    local ok, reason = X.Prepare(row, text or FP.Message(row, id))
+    if ok then
+        local kind = kindOf(row)
+        local used = id and Z.WhisperTexts.Get(kind, id) or Z.WhisperTexts.Last(kind)
+        if used then
+            Z.WhisperTexts.SetLast(kind, used.id)
+        end
+    end
     U.Message(tr(ok and 'The chat box is ready. Press Enter to send.' or REASON_CONTACT[reason] or 'Whisper is unavailable.'))
     U.RefreshFinder()
     return ok, reason
