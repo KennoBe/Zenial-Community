@@ -71,7 +71,9 @@ function P.TryShow()
     if not D or not D.PromptEnabled() then P.pending, P.leavers = nil, nil; return end
     if A.Call(InCombatLockdown) == true or A.Call(UnitAffectingCombat, 'player') == true then return end
     if run then
-        -- The end-of-run card lists everyone not handled yet, leavers included.
+        -- The end-of-run card lists everyone not handled yet, leavers included; leavers still waiting for the
+        -- end of a fight (removed from the run as handled) come along.
+        for _, m in ipairs(leavers or {}) do run.members[m.key] = run.members[m.key] or m end
         P.pending, P.leavers = nil, nil
         P.Show(run)
     else
@@ -226,19 +228,40 @@ local function build()
     P.frame = f
     return f
 end
--- Shows the card for a finished run: up to four members, the latest seen.
+-- Shows the card for a finished run or for leavers: up to four members, the latest seen.
+-- While the card is still open, new leavers and the rest of the run are added to it instead of replacing it,
+-- so members who leave one after another (the end of a dungeon) all stay on one card.
 function P.Show(run, title)
     local f = build()
     if not f then return false end
-    f.title:SetText(title or tr('Rate your group'))
     local list = {}
     for _, m in pairs(run.members) do list[#list + 1] = m end
     table.sort(list, function(a, b) if a.seq ~= b.seq then return a.seq > b.seq end; return a.key < b.key end)
-    while #list > P.MAX do table.remove(list) end
-    table.sort(list, function(a, b) if a.seq ~= b.seq then return a.seq < b.seq end; return a.key < b.key end)
-    P.members, P.selected, P.noteError = list, 1, nil
+    local open = f:IsShown() and P.members and #P.members > 0
+    local kind = title and 'LEAVE' or 'END'
+    if open then
+        local merged, seen = {}, {}
+        for _, m in ipairs(P.members) do merged[#merged + 1] = m; seen[m.key] = true end
+        for _, m in ipairs(list) do
+            if not seen[m.key] and #merged < P.MAX then merged[#merged + 1] = m; seen[m.key] = true end
+        end
+        list = merged
+        -- A card that only names leavers becomes the card of the group once the run ends.
+        if P.kind == 'END' or kind == 'END' then
+            kind, title = 'END', nil
+        elseif #list > 1 then
+            title = tr('Players left the group')
+        end
+    else
+        while #list > P.MAX do table.remove(list) end
+        table.sort(list, function(a, b) if a.seq ~= b.seq then return a.seq < b.seq end; return a.key < b.key end)
+    end
+    f.title:SetText(title or tr('Rate your group'))
+    local keep = open and P.members[P.selected] and P.members[P.selected].key
+    P.members, P.selected, P.noteError, P.kind = list, 1, nil, kind
     for i, m in ipairs(list) do
-        if not diary().Rating(m.key) then P.selected = i; break end
+        if keep and m.key == keep then P.selected = i; break end
+        if not keep and not diary().Rating(m.key) then P.selected = i; break end
     end
     local n = #list
     f:SetHeight(184 + n * ROW)
