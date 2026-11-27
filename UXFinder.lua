@@ -494,7 +494,19 @@ local function pendingRequests(r)
         end
         return n
     end
-    return (L.ApplicationCounts(Z.db, r.kind == 'QUEST' and 'quest' or 'group', r.id))
+    local open = L.ApplicationCounts(Z.db, r.kind == 'QUEST' and 'quest' or 'group', r.id)
+    -- Whisper requests of the own open group count like applications.
+    if r.own and r.kind == 'LIVE' and Z.WhisperInbox then
+        open = open + Z.WhisperInbox.Pending()
+    end
+    return open
+end
+-- The warning badge of a poorly rated player: it takes the place of no badge and of the "New" and "Full" marks,
+-- never of a contact or application state (Request pending, Invited, Waitlist, Rejected ...).
+local function warnPoorly(d, text)
+    if d.badge == nil or d.badge == tr('New') or d.badge == tr('Full') then
+        d.badge, d.tone = text, 'danger'
+    end
 end
 local function whisperAction(r, state)
     return { text = tr('Whisper'), enabled = state.whisper == true, click = function()
@@ -571,6 +583,12 @@ local function describe(r, context)
         local classFile, class = ownerFacts(r)
         local hex = T.ClassColorHex and T.ClassColorHex(classFile, class)
         d.title = hex and ('|cff' .. hex .. r.ownerName .. '|r') or r.ownerName
+        -- The private rating of the player: stars behind the name, a red badge for 1-2 stars, stars and comment on hover.
+        local rating = not r.own and U.PlayerRating(r.ownerName) or nil
+        if rating then
+            d.title = d.title .. ' ' .. rating.markup
+            d.hover = { title = r.ownerName, lines = { U.RatingTipText(rating) } }
+        end
         local who = Z.T('Level %d', g.min) .. (classFile and ' · ' .. L.ClassName(class, classFile) or '')
         local wanted = C.SearchActivities(g)
         if context.named then
@@ -598,6 +616,9 @@ local function describe(r, context)
                 U.InviteFinderSeeker(r.key)
             end }
             d.actions[2] = whisperAction(r, state)
+            if rating and rating.low then
+                warnPoorly(d, tr('Poorly rated'))
+            end
         end
         return d
     end
@@ -609,9 +630,12 @@ local function describe(r, context)
         local classFile, class = ownerFacts(r)
         local hex = T.ClassColorHex and T.ClassColorHex(classFile, class)
         local owner = hex and ('|cff' .. hex .. r.ownerName .. '|r') or r.ownerName
+        -- The private rating of the organizer: stars behind the name, a red badge for 1-2 stars, stars and comment on hover.
+        local rating = not r.own and U.PlayerRating(r.ownerName) or nil
+        local ownerShown = rating and owner .. ' ' .. rating.markup or owner
         local present = partySize(r)
         local levels = g.min == g.max and Z.T('Level %d', g.min) or Z.T('Level %d–%d', g.min, g.max)
-        d.title = context.named and name or owner
+        d.title = context.named and name or ownerShown
         d.meta = (context.named and not r.own and r.ownerName .. ' · ' or '') .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels
         -- Play style and "new players welcome" of the group, as on the card of a public group.
         local manner, mannerWords = C.Manner(g), {}
@@ -656,7 +680,10 @@ local function describe(r, context)
         end
         d.hover = { title = owner, lines = { name .. ' · ' .. Z.T('%d/%d players', present, g.size) .. ' · ' .. levels } }
         if #facts > 0 then
-            d.hover.pair = { owner, table.concat(facts, ' · ') }
+            d.hover.pair = { rating and ownerShown or owner, table.concat(facts, ' · ') }
+        end
+        if rating then
+            d.hover.lines[#d.hover.lines + 1] = U.RatingTipText(rating)
         end
         if #mannerWords > 0 then
             d.hover.lines[#d.hover.lines + 1] = table.concat(mannerWords, paint('dim', ' · '))
@@ -695,6 +722,9 @@ local function describe(r, context)
             d.badge, d.tone = tr('Full'), 'neutral'
         elseif not d.badge and g.start and g.start > A.Now() - 600 then
             d.badge, d.tone = tr('New'), 'gold'
+        end
+        if rating and rating.low then
+            warnPoorly(d, tr('Poorly rated player in the group'))
         end
         if state.withdraw then
             d.actions[1] = { text = tr('Withdraw'), click = function()
@@ -1132,8 +1162,10 @@ local function offeredRoles(row)
     return nil
 end
 -- New list of the seekers that offer at least one switched-on role (or whose roles are unknown), order kept.
-function F.FilterSeekers(rows)
+-- withFilters: the views with the filter bar also apply its level and class filters (FinderPublic.SeekerKeeps).
+function F.FilterSeekers(rows, withFilters)
     local roles, out = F.SeekerRoles(), {}
+    local FP = withFilters and U.FinderPublic or nil
     for _, row in ipairs(rows) do
         local offered, fits = offeredRoles(row), false
         if offered then
@@ -1141,7 +1173,7 @@ function F.FilterSeekers(rows)
                 fits = fits or (offered[role] == true and roles[role])
             end
         end
-        if not offered or fits then
+        if (not offered or fits) and (not FP or FP.SeekerKeeps(row)) then
             out[#out + 1] = row
         end
     end
@@ -1270,14 +1302,20 @@ local function renderStream(stream, width, height, items, columns, context)
     stream:Fit(width, height, y)
 end
 -- opts.seekerRoles: the section of players looking for a group, filtered by the role icons in its header.
+-- opts.seekerFilters: the level and class filters of the bar apply too. opts.cut: how many rows the group
+-- filters of the bar took out of this section.
 local function addSection(items, text, rows, emptyText, limit, opts)
     local seekerRoles = opts ~= nil and opts.seekerRoles == true or nil
     if seekerRoles then
         local all = #rows
-        rows = F.FilterSeekers(rows)
+        local filters = opts.seekerFilters == true
+        rows = F.FilterSeekers(rows, filters)
         if all > 0 and #rows == 0 then
-            emptyText = tr('Nobody with this role is looking right now.')
+            local FP = U.FinderPublic
+            emptyText = tr(filters and FP and FP.SeekerFilterOn() and 'Nothing matches your filters.' or 'Nobody with this role is looking right now.')
         end
+    elseif opts ~= nil and (opts.cut or 0) > 0 and #rows == 0 then
+        emptyText = tr('Nothing matches your filters.')
     end
     items[#items + 1] = { type = 'section', text = text, count = #rows, seekerRoles = seekerRoles }
     if #rows == 0 then
@@ -1667,22 +1705,26 @@ local function renderCategory(snap, top, width, height)
         end
         addSection(items, tr('Quest assistance'), help, tr('Nobody asks for quest help right now.'))
     end
-    addSection(items, tr('Open groups'), ofCategory(snap.groups, category), tr(quest and 'No questing or levelling group is open.' or 'No other group is open.'))
+    local open, cut = ofCategory(snap.groups, category), 0
+    if U.FinderPublic then
+        open, cut = U.FinderPublic.FilterGroups(open)
+    end
+    addSection(items, tr('Open groups'), open, tr(quest and 'No questing or levelling group is open.' or 'No other group is open.'), nil, { cut = cut })
     -- Sections without entries are left out here; the open groups above keep their hint.
     local looking, planned = ofCategory(snap.seekers, category), ofCategory(snap.planned, category)
     if #looking > 0 then
-        addSection(items, tr('Players looking for a group'), looking, nil, nil, { seekerRoles = true })
+        addSection(items, tr('Players looking for a group'), looking, nil, nil, { seekerRoles = true, seekerFilters = true })
     end
     if #planned > 0 then
         addSection(items, tr('Planned'), planned)
     end
     -- Groups and single players of the public group search of the game in this category.
-    local public, loaded = nil, false
+    local public, loaded, publicCut = nil, false, 0
     if U.FinderPublic then
-        public, loaded = U.FinderPublic.CategoryRows()
+        public, loaded, publicCut = U.FinderPublic.CategoryRows()
     end
     if public then
-        addSection(items, tr('Public groups'), public, tr(loaded and 'No public group is listed right now.' or 'Load the public groups to see what is listed in the game.'))
+        addSection(items, tr('Public groups'), public, tr(loaded and 'No public group is listed right now.' or 'Load the public groups to see what is listed in the game.'), nil, { cut = publicCut })
     end
     F.stream:ClearAllPoints()
     F.stream:SetPoint('TOPLEFT', 0, -top)
@@ -1781,18 +1823,20 @@ local function renderDetail(snap, top, width, height)
     end
     -- Public group search: its field between the head and the lists, its rows behind the ZENIAL rows.
     local FP = U.FinderPublic
+    local groupsCut = 0
     if FP then
         y = y + FP.LayoutBar(top + y, width, true)
-        groups, seekers = FP.Merge(groups, e.id, 'groups'), FP.Merge(seekers, e.id, 'seekers')
+        groups, groupsCut = FP.Merge(groups, e.id, 'groups')
+        seekers = FP.Merge(seekers, e.id, 'seekers')
     end
     local columnWidth = math.floor((width - GAP) / 2)
     local listHeight = math.max(60, height - y)
     local left, right = {}, {}
-    addSection(left, tr('Open groups'), groups, tr('No group is open for this instance. Create one, or look for a group and let others find you.'))
+    addSection(left, tr('Open groups'), groups, tr('No group is open for this instance. Create one, or look for a group and let others find you.'), nil, { cut = groupsCut })
     if #stats.rows.planned > 0 then
         addSection(left, tr('Planned'), stats.rows.planned)
     end
-    addSection(right, tr('Players looking for a group'), seekers, tr('Nobody is looking for this instance right now.'), nil, { seekerRoles = true })
+    addSection(right, tr('Players looking for a group'), seekers, tr('Nobody is looking for this instance right now.'), nil, { seekerRoles = true, seekerFilters = true })
     detail.left:ClearAllPoints()
     detail.left:SetPoint('TOPLEFT', 0, -y)
     renderStream(detail.left, columnWidth, listHeight, left, 1, { named = false, thumbs = false })

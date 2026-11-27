@@ -6,7 +6,7 @@ local uiDirty=false
 -- links, i.e. nothing the member list model reads. Their changes still refresh
 -- the visible page at once and invalidate every other view cache; only the
 -- member list model is reused. Unknown or missing kinds invalidate everything.
-local MEMBER_INDEPENDENT={guild=true,order=true,history=true,materials=true,materialOffers=true,search=true,questHelper=true,scheduled=true,party=true}
+local MEMBER_INDEPENDENT={guild=true,order=true,history=true,materials=true,materialOffers=true,search=true,questHelper=true,scheduled=true,party=true,whispers=true}
 function Z.MarkDirty(kind)
     Z.viewRevision=(Z.viewRevision or 0)+1
     if not MEMBER_INDEPENDENT[kind]then Z.memberRevision=(Z.memberRevision or 0)+1 end
@@ -351,7 +351,7 @@ function Z.SaveGroup(g,now)
     now=now or A.Now();Z.ExpireFinder(now);local editing=Z.db.lfg[1]and Z.db.lfg[1].id==g.id;local id,err=L.SaveGroup(Z.db,g,now);if id and H then H.RecordOwn("group",editing and"group_updated"or"group_created",g)end;if id and Z.UIState then Z.UIState.Draft("group",false)end;if id and Z.ActivityParty then Z.ActivityParty.SyncLive()end;return id,err
 end
 function Z.CloseGroup(id)
-    local g=Z.db.lfg[1];if not g or g.id~=id then return false end;if H then H.RecordOwn("group","group_closed",g)end;local closed=L.CloseGroup(Z.db,id);if closed and Z.Network3 then Z.Network3.Retract("G",id,Z.db.rev)end;return closed
+    local g=Z.db.lfg[1];if not g or g.id~=id then return false end;if H then H.RecordOwn("group","group_closed",g)end;local closed=L.CloseGroup(Z.db,id);if closed and Z.Network3 then Z.Network3.Retract("G",id,Z.db.rev)end;if closed and Z.WhisperInbox then Z.WhisperInbox.Reset()end;return closed
 end
 function Z.SaveQuest(q,now)
     now=now or A.Now();Z.ExpireFinder(now);local editing=Z.db.quest and Z.db.quest.id==q.id;local id,err=L.SaveQuest(Z.db,q,now);if id and H then H.RecordOwn("quest",editing and"quest_updated"or"quest_created",q)end;if id and Z.UIState then Z.UIState.Draft("quest",false)end;return id,err
@@ -512,7 +512,10 @@ end
 
 -- Step 4: load and normalise the character record. Returns it.
 local function loadCharacterData()
-    local d=L.Load(ZenialCommunityDB.characters[Z.storageKey])
+    local saved=ZenialCommunityDB.characters[Z.storageKey]
+    local d=L.Load(saved)
+    -- Whisper requests are no part of the record the loader rebuilds; they are taken over here (WhisperInbox.lua).
+    if Z.WhisperInbox then pcall(Z.WhisperInbox.Load,d,type(saved)=="table"and saved.whisperRequests or nil)end
     if Z.AccountPreferences then Z.AccountPreferences.Apply(d)end
     if Z.offlineOnly then d.consent=false end
     L.Touch(d)
@@ -713,6 +716,8 @@ frame:SetScript("OnEvent",function(_,event,...)
     if event=="GUILD_ROSTER_UPDATE" then return end
     -- Contact record of the public group search: the player's own whisper to a leader, a leader joining the group.
     if(event=="CHAT_MSG_WHISPER_INFORM"or event=="GROUP_ROSTER_UPDATE")and Z.db and Z.PublicLFGContact then publicCall(Z.PublicLFGContact.OnEvent,event,...)end
+    -- Whisper requests to the own open group (WhisperInbox.lua); the whisper still goes on to the presence handling below.
+    if(event=="CHAT_MSG_WHISPER"or event=="GROUP_ROSTER_UPDATE")and Z.db and Z.WhisperInbox then pcall(Z.WhisperInbox.OnEvent,event,...)end
     if(event=="PLAYER_TARGET_CHANGED"or event=="PLAYER_REGEN_ENABLED")and Z.CrossFactionTargetBadge then pcall(Z.CrossFactionTargetBadge.Refresh)end
     -- Presence messages (XF3-T06): greetings, pings to targets and whisper partners; a whisper event has no other consumer.
     local presence=Z.CrossFactionPresence

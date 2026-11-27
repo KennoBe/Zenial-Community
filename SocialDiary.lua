@@ -14,7 +14,7 @@ local SOURCES={"target","mouseover","nameplate","group"}
 local MAX_TIME=4102444800
 
 local function defaults()
-    return{version=D.VERSION,enabled=false,sources={target=true,mouseover=true,nameplate=true,group=true},players={}}
+    return{version=D.VERSION,enabled=false,prompt=true,sources={target=true,mouseover=true,nameplate=true,group=true},players={}}
 end
 local function changed()
     D.revision=(D.revision or 0)+1
@@ -33,18 +33,21 @@ local function sanitizePlayer(key,raw,now)
     if L.Int(raw.since,1,MAX_TIME)then p.since=raw.since end
     if type(raw.classFile)=="string"and raw.classFile:match("^[A-Z]+$")and #raw.classFile<=16 then p.classFile=raw.classFile end
     if L.Int(raw.level,1,100)then p.level=raw.level end
+    if L.Int(raw.rating,1,5)then p.rating=raw.rating;if L.Int(raw.ratedAt,1,MAX_TIME)then p.ratedAt=raw.ratedAt end end
     for _,e in ipairs(type(raw.events)=="table"and raw.events or{})do
         if #p.events>=D.MAX_EVENTS*2 then break end
         if validEvent(e,now)then p.events[#p.events+1]={at=e.at,kind=e.kind,zone=e.zone or"",detail=e.detail}end
     end
     table.sort(p.events,function(a,b)return a.at<b.at end)
     while #p.events>D.MAX_EVENTS do table.remove(p.events,1)end
-    if not p.known and p.count==0 and #p.events==0 then return nil end
+    if not p.known and not p.rating and p.count==0 and #p.events==0 then return nil end
     return p
 end
+-- A row that holds nothing (no encounter, no mark, no rating) is not kept.
+local function empty(p)return not p.known and not p.rating and p.count==0 and #p.events==0 end
 local function protected(key,p)
     local S=Z.Social
-    return p.known==true or S and S.IsFavorite(key)or S and S.GetNote(key)~=""
+    return p.known==true or p.rating~=nil or S and S.IsFavorite(key)or S and S.GetNote(key)~=""
 end
 local function recount()
     local n=0;for _ in pairs(D.store.players)do n=n+1 end;D.count=n
@@ -61,6 +64,7 @@ function D.Initialize()
         -- The former opt-in switch and source choices are carried along unchanged for older addon versions;
         -- this version no longer reads them.
         store.enabled=raw.enabled==true
+        store.prompt=raw.prompt~=false
         if type(raw.sources)=="table"then for _,id in ipairs(SOURCES)do store.sources[id]=raw.sources[id]~=false end end
         local inspected=0
         for key,row in pairs(type(raw.players)=="table"and raw.players or{})do
@@ -142,6 +146,8 @@ local function details(unit)
     local _,classFile=A.Call(UnitClass,unit);local level=A.Call(UnitLevel,unit)
     return{classFile=classFile,level=level,zone=zoneText()}
 end
+D.UnitKey=function(unit)return identity(unit)end
+D.UnitDetails=function(unit)return details(unit)end
 local function instance()
     local name,instanceType=A.Call(GetInstanceInfo)
     if(instanceType=="party"or instanceType=="raid")and L.Text(name,96)then return name end
@@ -181,11 +187,70 @@ function D.SetKnown(key,target,value)
         if not p then local _,clean=L.Identity(target);if not clean then return nil,"Invalid player."end;p=row(key,clean,A.Now());if not p then return nil,"The social diary is full."end end
         p.known=true
     elseif p then
-        p.known=nil;if p.count==0 and #p.events==0 then D.store.players[key]=nil;D.count=D.count-1 end
+        p.known=nil;if empty(p)then D.store.players[key]=nil;D.count=D.count-1 end
     end
     changed();return true
 end
 function D.IsKnown(key)local p=D.store and D.store.players[key];return p~=nil and p.known==true end
+-- Private star rating 1-5 for any player, grouped with or not; nil removes it.
+function D.SetRating(key,target,stars)
+    if not D.store or D.readOnly then return nil,"The social diary uses a newer format."end
+    if not L.ValidIdentityKey(key)or key==Z.me.key or Z.db.blocked[key]then return nil,"Invalid player."end
+    if stars~=nil and not L.Int(stars,1,5)then return nil,"Invalid rating."end
+    local p=D.store.players[key]
+    if stars then
+        if not p then local _,clean=L.Identity(target);if not clean then return nil,"Invalid player."end;p=row(key,clean,A.Now());if not p then return nil,"The social diary is full."end end
+        p.rating=stars;local at=A.Now();p.ratedAt=L.Int(at,1,MAX_TIME)and at or nil
+    elseif p then
+        p.rating,p.ratedAt=nil,nil;if empty(p)then D.store.players[key]=nil;D.count=D.count-1 end
+    end
+    changed();return true
+end
+-- Stars (1-5, or nil) and the time they were given.
+function D.Rating(key)local p=D.store and D.store.players[key];return p and p.rating,p and p.ratedAt end
+-- The diary key of a player name, as ObserveGroup writes it: this realm, own faction unless another is given.
+-- A name with a realm suffix is the same player; a ready-made key is returned unchanged.
+function D.KeyForName(name,faction)
+    if type(name)~="string"then return nil end
+    if name:find("@",1,true)then return L.ValidIdentityKey(name)and name or nil end
+    local id,clean=L.Identity(name);if not id then return nil end
+    return L.ScopeKey(clean,Z.me and Z.me.realm or"",faction or Z.me and Z.me.faction),clean
+end
+-- Stars, private comment and key of a player by name, for cards and applicant rows. Stars are nil when unrated.
+function D.RatingForName(name,faction)
+    local key=D.KeyForName(name,faction);if not key or not D.store then return nil,"",nil end
+    local p=D.store.players[key];local S=Z.Social
+    return p and p.rating,S and S.GetNote(key)or"",key
+end
+-- Rating of a player by character name for rows and cards: stars (nil when unrated), the private comment and
+-- whether the rating is a warning (1-2 stars). The own faction is tried first, then the other one.
+function D.RatingInfo(name)
+    local stars,comment=D.RatingForName(name)
+    if not stars then
+        local own=string.lower(Z.me and Z.me.faction or"")
+        for _,faction in ipairs({"Alliance","Horde"})do
+            if not stars and string.lower(faction)~=own then stars,comment=D.RatingForName(name,faction)end
+        end
+    end
+    if not stars then return nil,"",false end
+    return stars,comment or"",stars<=2
+end
+-- Whether any player has a rating of 1-2: the cheap check before cards read the members of public groups.
+-- Cached until the diary changes.
+function D.HasLowRating()
+    local store=D.store;if not store then return false end
+    local c=D.lowCache
+    if c and c.store==store and c.revision==D.revision then return c.value end
+    local found=false
+    for _,p in pairs(store.players)do if p.rating and p.rating<=2 then found=true;break end end
+    D.lowCache={store=store,revision=D.revision,value=found}
+    return found
+end
+function D.PromptEnabled()return D.Enabled()and D.store.prompt~=false end
+function D.SetPrompt(on)
+    if not D.store or D.readOnly then return nil end
+    D.store.prompt=on==true;return true
+end
 function D.Get(key)return D.store and D.store.players[key]end
 function D.Forget(key)
     if D.store and not D.readOnly and D.store.players[key]then D.store.players[key]=nil;D.count=D.count-1;changed();return true end
@@ -216,15 +281,17 @@ function D.List(filter)
         if key~=Z.me.key and not Z.db.blocked[key]and L.ValidIdentityKey(key)then
             local p=D.store and D.store.players[key];local note=Z.Social.GetNote(key)
             local r={key=key,target=p and p.target or displayTarget(key),first=p and p.first,last=p and p.last,count=p and p.count or 0,
-                known=p and p.known==true or false,favorite=Z.Social.IsFavorite(key),note=note,classFile=p and p.classFile,level=p and p.level,
+                known=p and p.known==true or false,favorite=Z.Social.IsFavorite(key),note=note,classFile=p and p.classFile,level=p and p.level,rating=p and p.rating,ratedAt=p and p.ratedAt,
                 grouped=grouped(p),lastZone=p and p.events[#p.events]and p.events[#p.events].zone or""}
-            local include=r.grouped or r.known or r.favorite or note~=""
-            include=include and(mode=="ALL"or mode=="KNOWN"and r.known or mode=="FAVORITES"and r.favorite or mode=="NOTES"and note~=""or mode=="GROUPED"and r.grouped)
+            local include=r.grouped or r.known or r.favorite or note~=""or r.rating~=nil
+            include=include and(mode=="ALL"or mode=="KNOWN"and r.known or mode=="FAVORITES"and r.favorite or mode=="NOTES"and note~=""
+                or mode=="RATED"and r.rating~=nil or mode=="LOW"and r.rating~=nil and r.rating<=2)
             if include and query~=""then include=string.lower(r.target.." "..note.." "..r.lastZone):find(query,1,true)~=nil end
             if include then out[#out+1]=r end
         end
     end
     table.sort(out,function(a,b)
+        if sort=="RATING"and(a.rating or 0)~=(b.rating or 0)then return(a.rating or 0)>(b.rating or 0)end
         if sort=="COUNT"and a.count~=b.count then return a.count>b.count end
         if sort~="NAME"and(a.last or 0)~=(b.last or 0)then return(a.last or 0)>(b.last or 0)end
         local an,bn=string.lower(a.target),string.lower(b.target);if an~=bn then return an<bn end

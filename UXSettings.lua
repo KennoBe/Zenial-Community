@@ -267,6 +267,23 @@ function U.CreateSettings(helpers)
     plate(U.settingsDataFrame, 0, 0, 850, 96)
     heading(U.settingsDataFrame, 'History and categories', 16, -14, 400)
     button(U.settingsDataFrame, tr('History'), 16, -52, 240, function() U.OpenHistory() end)
+    -- Social diary: the rating card that follows a dungeon together (RatingPrompt.lua). The diary itself is always on.
+    plate(U.settingsDataFrame, 0, 108, 850, 66)
+    heading(U.settingsDataFrame, 'Social diary', 16, -122, 400)
+    U.diaryPromptOption = checkbox(U.settingsDataFrame, tr('Ask for a rating after dungeons'), 12, -140, 520, function(self)
+        local diary = Z.SocialDiary
+        if diary and diary.SetPrompt then
+            diary.SetPrompt(self:GetChecked() == true)
+        end
+        U.RefreshDiarySettings()
+    end)
+    function U.RefreshDiarySettings()
+        local diary = Z.SocialDiary
+        local available = diary ~= nil and diary.Enabled ~= nil and diary.Enabled()
+        U.diaryPromptOption:SetChecked(available and diary.PromptEnabled())
+        U.diaryPromptOption:SetEnabled(available)
+    end
+    U.settingsDataFrame:HookScript('OnShow', U.RefreshDiarySettings)
     -- Rivalry: banner of the private PvP history and deleting this character's history (Rivalry.lua, RivalryBanner.lua).
     U.settingsRivalryFrame = CreateFrame('Frame', nil, p)
     U.settingsRivalryFrame:SetPoint('TOPLEFT', 0, -42)

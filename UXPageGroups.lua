@@ -187,18 +187,35 @@ function S.createGroupsPage(f)
     -- Below the template row (its dropdown ends at 154): the heading no longer sits under the dropdown.
     U.groupApplicantCount = label(U.groupMineSummary, tr('Eigene Bewerber (0)'), 0, -164, 350, 'GameFontNormal')
     U.groupApplicantList = list(U.groupMineSummary, 0, -186, 545, 193)
+    -- With a whisper request selected the first two buttons invite or remove it (labels set in refreshGroupApplicants).
     U.groupAccept = button(U.groupMineSummary, tr('Annehmen & einladen'), 565, -143, 200, function()
-        decideGroup('eingeladen')
+        if U.groupWhisperId then
+            U.InviteWhisperRequest(U.groupWhisperId)
+        else
+            decideGroup('eingeladen')
+        end
     end)
     U.groupReject = button(U.groupMineSummary, tr('Ablehnen'), 565, -177, 125, function()
-        decideGroup('abgelehnt')
+        if U.groupWhisperId then
+            U.RemoveWhisperRequest(U.groupWhisperId)
+        else
+            decideGroup('abgelehnt')
+        end
     end)
     U.groupApplicantWhisper = button(U.groupMineSummary, tr('Anflüstern'), 565, -211, 125, function()
+        if U.groupWhisperId then
+            U.WhisperToRequest(U.groupWhisperId)
+            return
+        end
         local c = Z.db.contacts[U.groupApplicantKey]
         if c then
             A.Whisper(c.target)
         end
     end)
+    U.groupWhisperClear = button(U.groupMineSummary, tr('Clear whispers'), 700, -211, 150, function()
+        U.ClearWhisperRequests()
+    end)
+    U.groupWhisperClear:Hide()
     U.groupApplicantLocation =
         label(U.groupMineSummary, tr('Aufenthaltsort\nWähle einen Bewerber aus.'), 565, -250, 285, 'GameFontHighlightSmall')
     U.groupApplicantLocation:SetHeight(35)

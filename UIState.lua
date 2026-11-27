@@ -41,6 +41,46 @@ local function finderLanguages(raw)
     end
     return out
 end
+-- Finder filters (group and player filters of the bar, saved filters). A role set keeps only valid roles that are on;
+-- no class set means every class, an empty one means none; a level is empty or a whole number.
+local FILTER_CLASSES={"WARRIOR","PALADIN","HUNTER","ROGUE","PRIEST","SHAMAN","MAGE","WARLOCK","DRUID"}
+local MAX_FINDER_FILTERS=10
+local function roleSet(raw,list)
+    local out={};if type(raw)~="table"then return out end
+    for _,role in ipairs(list)do if raw[role]==true then out[role]=true end end
+    return out
+end
+local function seekerRoles(raw)
+    local out,any={},false
+    for _,role in ipairs({"TANK","HEALER","DAMAGER"})do out[role]=type(raw)~="table"or raw[role]~=false;any=any or out[role]end
+    if not any then for _,role in ipairs({"TANK","HEALER","DAMAGER"})do out[role]=true end end
+    return out
+end
+local function finderFilter(raw)
+    raw=type(raw)=="table"and raw or{}
+    local out={free=roleSet(raw.free,{"TANK","HEALER","DAMAGER"}),has=roleSet(raw.has,{"TANK","HEALER"}),style=L.Int(raw.style,1,4)and raw.style or 0}
+    if L.Int(raw.minLevel,1,100)then out.minLevel=raw.minLevel end
+    if L.Int(raw.maxLevel,1,100)then out.maxLevel=raw.maxLevel end
+    if out.minLevel and out.maxLevel and out.minLevel>out.maxLevel then out.minLevel,out.maxLevel=out.maxLevel,out.minLevel end
+    if type(raw.classes)=="table"then
+        local set,count={},0
+        for _,class in ipairs(FILTER_CLASSES)do if raw.classes[class]==true then set[class]=true;count=count+1 end end
+        if count<#FILTER_CLASSES then out.classes=set end
+    end
+    return out
+end
+local function finderProfiles(raw)
+    local out,seen={},{};if type(raw)~="table"then return out end
+    for _,entry in ipairs(raw)do
+        local name=type(entry)=="table"and text(entry.name,24)or""
+        if #out<MAX_FINDER_FILTERS and name~=""and not seen[name:lower()]then
+            seen[name:lower()]=true
+            out[#out+1]={name=name,filter=finderFilter(entry.filter),languages=finderLanguages(entry.languages),roles=seekerRoles(entry.roles)}
+        end
+    end
+    return out
+end
+S.FinderFilter,S.FinderProfiles,S.SeekerRoles,S.MAX_FINDER_FILTERS,S.FinderLanguages=finderFilter,finderProfiles,seekerRoles,MAX_FINDER_FILTERS,finderLanguages
 -- The player's own wording of the message to a public group, per language of the message.
 local function finderTemplates(raw)
     local out={};if type(raw)~="table"then return out end
@@ -80,7 +120,7 @@ function S.Initialize(root,characterKey,legacy)
         for area,allowed in pairs(SUBVIEWS)do local selected=type(value.subviews)=="table"and value.subviews[area];subviews[area]=allowed[selected]and selected or DEFAULT_SUBVIEW[area]end
         for kind,draft in pairs(type(value.drafts)=="table"and value.drafts or{})do if kind=="offer"or kind=="profile"then drafts[kind]=copyDraft(draft)end end
         section=section=="groups"and(subviews.groups=="today"and"today"or"activities")or section=="quests"and((subviews.quests=="shared"or subviews.quests=="questgroups")and"today"or"activities")or(section=="profile"or section=="history"or section=="addons")and"settings"or section
-        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,mapDeaths=value.mapDeaths~=false,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications),finderSource=finderSource(value.finderSource),finderRoles=finderRoles(value.finderRoles),finderLanguages=finderLanguages(value.finderLanguages or raw.finderLanguages),finderFitting=value.finderFitting==true,finderPublish=value.finderPublish~=false,finderPlaystyle=L.Int(value.finderPlaystyle,1,4)and value.finderPlaystyle or 0,finderBeginners=value.finderBeginners==true}
+        ui.characters[key]={section=section,subviews=subviews,drafts=drafts,memberStatus=value.memberStatus=="ONLINE"and"ONLINE"or"ALL",mapMembers=value.mapMembers~=false,mapGuildOnly=value.mapGuildOnly==true,mapDeaths=value.mapDeaths~=false,questCategories=questCategories(value.questCategories),notifications=Z.Notifications.Normalize(value.notifications),finderSource=finderSource(value.finderSource),finderRoles=finderRoles(value.finderRoles),finderLanguages=finderLanguages(value.finderLanguages or raw.finderLanguages),finderFitting=value.finderFitting==true,finderPublish=value.finderPublish~=false,finderPlaystyle=L.Int(value.finderPlaystyle,1,4)and value.finderPlaystyle or 0,finderBeginners=value.finderBeginners==true,finderFilter=finderFilter(value.finderFilter),finderFilters=finderProfiles(value.finderFilters)}
         end
     end
     ui.characters[characterKey]=ui.characters[characterKey]or{section="today",memberStatus="ALL",subviews={craft="search",groups="browse",quests="shared",trade="browse",profile="public",rivalry="overview"},drafts={}}

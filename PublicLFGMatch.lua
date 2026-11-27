@@ -83,6 +83,28 @@ function Q.SetOwnRoles(roles)
     Z.uiCharacter.finderRoles = any(roles) and { TANK = roles.TANK == true, HEALER = roles.HEALER == true, DAMAGER = roles.DAMAGER == true } or nil
 end
 
+-- Roles that are already in a ZENIAL group, from the role part of its `have` field ("TANK=1;HEALER=1"); nil while the
+-- record does not list any role (a group of one, or an old client).
+local HAVE_ROLE = { TANK = 'TANK', HEALER = 'HEALER', DAMAGER = 'DAMAGER', DD = 'DAMAGER' }
+local function presentFromHave(have)
+    local C = Z.GroupFinderCatalog
+    local roles, _, manner = 'SOLO', nil, { style = 0 }
+    if C and C.SplitHave then
+        roles, _, manner = C.SplitHave(have)
+    end
+    local out, known = {}, false
+    for token, count in tostring(roles):gmatch('(%u+)=(%d+)') do
+        local role = HAVE_ROLE[token]
+        if role then
+            known = true
+            if tonumber(count) > 0 then
+                out[role] = true
+            end
+        end
+    end
+    return known and out or nil, manner and manner.style or 0
+end
+
 -- View of a ZENIAL group (live record of the activity board). `started` is the negative age like in public
 -- views (older = smaller), so both sources sort by the same measure.
 function Q.FromBoard(r)
@@ -90,7 +112,9 @@ function Q.FromBoard(r)
     local wanted = { TANK = g.tank or 0, HEALER = g.healer or 0, DAMAGER = g.dd or 0 }
     local open = wanted.TANK + wanted.HEALER + wanted.DAMAGER
     local size = type(g.size) == 'number' and g.size or nil
+    local present, style = presentFromHave(g.have)
     return {
+        present = present, stylePos = style,
         source = 'ZENIAL', key = r.key, own = r.own == true, zenial = true, size = size,
         members = size and math.max(1, size - open) or nil, wanted = wanted,
         levelMin = g.min, levelMax = g.max, started = type(g.start) == 'number' and g.start - A.Now() or 0,
@@ -102,7 +126,15 @@ end
 -- A public group has no upper level: the game asks for a lowest level only, what lies above is a suggestion.
 function Q.FromPublic(row, facts)
     facts = facts or {}
+    local present
+    if type(row.counts) == 'table' then
+        present = {}
+        for _, role in ipairs(ROLES) do
+            present[role] = (row.counts[role] or 0) > 0 or nil
+        end
+    end
     return {
+        present = present, playstyle = row.playstyle,
         source = 'PUBLIC', key = row.key, own = false, zenial = row.zenial == true, size = row.size, members = row.members,
         wanted = row.remaining, levelMin = facts.levelMin,
         started = -(row.age or 0), gone = row.delisted == true, contacted = row.contacted == true,
@@ -152,13 +184,69 @@ function Q.Fit(view, me)
     return fit
 end
 
--- Local filter "Only fitting": only groups that fit or might fit. The own group always stays.
+-- Filters of the finder bar (group part). f = { free = { TANK = true }, has = { TANK = true }, style = 0..4 }.
+-- A value the entry does not tell (open roles, present roles, play style) never hides it.
+function Q.GroupFilterActive(f)
+    return type(f) == 'table' and (next(f.free or {}) ~= nil or next(f.has or {}) ~= nil or (f.style or 0) > 0)
+end
+-- styleValue: the value of the chosen play style as the client numbers it (public groups); ZENIAL groups carry
+-- the position 1..4 itself.
+function Q.GroupKept(view, f, styleValue)
+    if view.own or not Q.GroupFilterActive(f) then
+        return true
+    end
+    if next(f.free or {}) and type(view.wanted) == 'table' then
+        local place = false
+        for role in pairs(f.free) do
+            place = place or (view.wanted[role] or 0) > 0
+        end
+        if not place then
+            return false
+        end
+    end
+    if next(f.has or {}) and type(view.present) == 'table' then
+        for role in pairs(f.has) do
+            if not view.present[role] then
+                return false
+            end
+        end
+    end
+    if (f.style or 0) > 0 then
+        if view.source == 'PUBLIC' then
+            if view.playstyle and styleValue and view.playstyle ~= styleValue then
+                return false
+            end
+        elseif (view.stylePos or 0) > 0 and view.stylePos ~= f.style then
+            return false
+        end
+    end
+    return true
+end
+-- Filters of the finder bar (player part): level range and classes. Unknown level or class keeps the player.
+function Q.SeekerFilterActive(f)
+    return type(f) == 'table' and (f.minLevel ~= nil or f.maxLevel ~= nil or f.classes ~= nil)
+end
+function Q.SeekerKept(f, level, class)
+    if type(level) == 'number' and ((f.minLevel and level < f.minLevel) or (f.maxLevel and level > f.maxLevel)) then
+        return false
+    end
+    if type(f.classes) == 'table' and type(class) == 'string' and class ~= '' and not f.classes[class] then
+        return false
+    end
+    return true
+end
+
+-- Local filter "Only fitting" and the group filters of the bar (filters.group, filters.styleValue). The own group
+-- always stays. A second result 'FILTER' says that the group filters hid it.
 function Q.Passes(view, fit, filters)
     if view.own then
         return true
     end
     if filters.fitting and (fit.tier == 'POOR' or fit.tier == 'FULL') then
         return false
+    end
+    if filters.group and not Q.GroupKept(view, filters.group, filters.styleValue) then
+        return false, 'FILTER'
     end
     return true
 end

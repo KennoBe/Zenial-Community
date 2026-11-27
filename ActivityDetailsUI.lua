@@ -17,6 +17,8 @@ local function state(r)
 end
 local function whisperTarget(r)
     if not r then return end
+    -- A whisper request selected in the list of the own group: the sender is the target.
+    if r.own and r.kind=='LIVE'and U.activityWhisperId then local req=Z.WhisperInbox and Z.WhisperInbox.Get(U.activityWhisperId);return req and req.name or nil end
     local key=r.own and U.activityParticipantKey or r.owner
     if not key or key==Z.me.key or Z.db.blocked[key]then return end
     local c=Z.db.contacts[key]
@@ -116,7 +118,7 @@ function U.OpenActivity(key)
     if Z.db.blocked[r.owner]then return N.Fail('target-unavailable')end
     if U.activityDetailKey==key and U.activityDetails:IsShown()then U.RefreshActivityDetails();return true end
     if N.UnsavedInput()then return N.Fail('unsaved-input')end
-    U.CloseDialogs();U.activityDetailKey=key;U.activityParticipantKey=nil;U.activityDetailNote:SetText('')
+    U.CloseDialogs();U.activityDetailKey=key;U.activityParticipantKey=nil;U.activityWhisperId=nil;U.activityDetailNote:SetText('')
     U.activityDetailRole:SetText(Z.Logic.Role(Z.db.roles)or'DAMAGER')
     if r.kind=='EVENT'and not r.own then S.Query(r.owner,r.id)elseif r.kind=='PVP'and not r.own then Z.PvPHelp.RequestDetails(r.owner,r.id)end
     U.activityDetails:Show();U.RefreshActivityDetails()
@@ -150,8 +152,10 @@ end
 function U.RefreshActivityDetails()
     if not U.activityDetails then return end
     local r=current()
-    for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction,U.activityDiary})do b:SetEnabled(false)end
+    for _,b in ipairs({U.activityJoin,U.activityWithdraw,U.activityAccept,U.activityReject,U.activityWaitlist,U.activityEdit,U.activityWhisper,U.activityInvite,U.activityInviteAll,U.activityArchiveAction,U.activityDiary,U.activityWhisperClear})do b:SetEnabled(false)end
+    local W=Z.WhisperInbox
     U.activityArchiveAction:SetShown(r~=nil and r.own and U.ActivityActionState(r).archive)
+    U.activityWhisperClear:Hide()
     if not r then U.activityDetailTitle:SetText(tr('This activity is no longer available.'));H.rows(U.activityInformation,{},44);H.rows(U.activityParticipants,{},42);U.LayoutActivityDetails(nil,0,0);return end
     local actionState=U.ActivityActionState(r)
     U.activityArchiveAction:SetText(tr(r.kind=='EVENT'and'Cancel event'or'Archive activity'))
@@ -213,6 +217,9 @@ function U.RefreshActivityDetails()
     H.showControl(U.activityDetailNote,not r.own and(r.kind=='LIVE'or r.kind=='QUEST'))
     U.activityJoin:SetShown(not r.own);U.activityWithdraw:SetShown(not r.own);U.activityEdit:SetShown(r.own and r.kind~="PVP")
     U.activityParticipants:SetShown(r.own)
+    -- Whisper requests of the own group: one button removes them all.
+    local whisperCount=r.own and r.kind=='LIVE'and W and W.Count()or 0
+    U.activityWhisperClear:SetShown(whisperCount>0);U.activityWhisperClear:SetEnabled(whisperCount>0)
     U.activityAccept:SetShown(r.own);U.activityReject:SetShown(r.own and r.kind~='PVP')
     U.activityWaitlist:SetShown(r.own and r.kind=='EVENT')
     U.activityInvite:SetShown(r.own and r.kind=='EVENT')
@@ -228,11 +235,32 @@ function U.RefreshActivityDetails()
     local source=r.kind=='EVENT'and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e.responses or Z.db.interests[r.id]
     local people={};local keys={};for key in pairs(source or{})do keys[#keys+1]=key end;table.sort(keys)
     for _,key in ipairs(keys)do local p=source[key];local who=key;local c=Z.db.contacts[key]
-        people[#people+1]={selected=key==U.activityParticipantKey,text=(c and c.target or r.kind=='EVENT'and p.target or key)..' · '..(r.kind=='EVENT'and S.StateLabel(p.state)or Z.Locale.State(p.state))..(r.kind=='EVENT'and p.via and' · '..Z.T('Handed over by %s',Z.db.contacts[p.via]and Z.db.contacts[p.via].target or p.via)or'')..'\n'..(p.role and Z.Locale.Role(p.role)or''),height=44,click=function()
+        local name=c and c.target or r.kind=='EVENT'and p.target or key
+        local rating=U.PlayerRating(name)
+        local tail=' · '..(r.kind=='EVENT'and S.StateLabel(p.state)or Z.Locale.State(p.state))..(r.kind=='EVENT'and p.via and' · '..Z.T('Handed over by %s',Z.db.contacts[p.via]and Z.db.contacts[p.via].target or p.via)or'')..'\n'..(p.role and Z.Locale.Role(p.role)or'')
+        -- The private rating: stars (red mark for 1-2 stars) behind the name, stars and comment on hover.
+        people[#people+1]={selected=key==U.activityParticipantKey,text=name..U.RatingRowText(rating,true)..tail,display=rating and U.RatingDisplay(name,rating,tail)or nil,tooltip=rating and U.RatingTipText(rating)or nil,height=44,click=function()
             U.SelectActivityParticipant(who)
         end}
     end
+    -- Whisper requests stand below the ZENIAL applicants (only the own live group has them).
+    local whisper
+    if r.kind=='LIVE'and W then
+        for _,req in ipairs(W.List())do local id=req.id;if id==U.activityWhisperId then whisper=req end
+            people[#people+1]=U.WhisperRequestItem(req,id==U.activityWhisperId,function()U.SelectActivityWhisper(id)end)
+        end
+        local open=0;for _,p in pairs(source or{})do if p.state=='applied'then open=open+1 end end
+        U.activityParticipantLabel:SetText(Z.T('Requests (%d)',open+W.Pending()))
+    else U.activityParticipantLabel:SetText(tr('Participants'))end
+    if not whisper then U.activityWhisperId=nil end
     H.rows(U.activityParticipants,people,44);U.LayoutActivityDetails(r,infoHeight,#people*44)
+    if whisper then
+        -- Invite or remove the selected whisper request; the other buttons stay as they are.
+        U.activityAccept:SetText(tr('Invite'));U.activityReject:SetText(tr('Remove'))
+        U.activityAccept:SetEnabled(whisper.state~='joined');U.activityReject:SetEnabled(true)
+        return
+    end
+    U.activityReject:SetText(tr('Decline'))
     local p=source and source[U.activityParticipantKey]
     local ready=false
     if p and not Z.db.blocked[U.activityParticipantKey]then
@@ -254,11 +282,16 @@ function U.SelectActivityParticipant(key)
     local e=r.kind=='EVENT'and S.GetOwned(r.id)or r.data
     local source=r.kind=='EVENT'and e and e.participants or r.kind=='QUEST'and Z.db.questInterests[r.id]or r.kind=='PVP'and e and e.responses or Z.db.interests[r.id]
     local p=source and source[key];if not p then return end
-    U.activityParticipantKey=key;U.activityParticipantRevision=p.revision
+    U.activityParticipantKey=key;U.activityParticipantRevision=p.revision;U.activityWhisperId=nil
     if r.kind=='EVENT'then Z.Notifications.Read('schedule:'..Z.me.key..':'..r.id..':'..key)
     elseif r.kind=='LIVE'or r.kind=='QUEST'then Z.Logic.MarkApplicationsRead(Z.db,r.kind=='QUEST'and'quest'or'group',r.id,key)end
     if r.kind=='LIVE'or r.kind=='QUEST'then Z.Notifications.Read('application:'..(r.kind=='QUEST'and'quest'or'group')..':'..r.id..':'..key)end
     U.RefreshActivityDetails();U.UpdateBadges()
+end
+function U.SelectActivityWhisper(id)
+    local r=current();if not r or not r.own or r.kind~='LIVE'or not id then return end
+    U.activityWhisperId=id;U.activityParticipantKey=nil
+    U.RefreshActivityDetails()
 end
 function U.JoinActivity(key)
     local r=actionRecord(key or U.activityDetailKey);if not r or r.own then return end
@@ -284,7 +317,12 @@ function U.EditActivity(key)
     if r.kind=='EVENT'then U.OpenScheduledEditor(S.GetOwned(r.id))elseif r.kind=='LIVE'then U.OpenGroupEditor(r.data)elseif r.kind=='QUEST'then U.OpenQuestEditor(r.data)end
 end
 function U.DecideActivity(decision)
-    local r=current();if not r or not r.own or not U.activityParticipantKey or Z.db.blocked[U.activityParticipantKey]then return end
+    local r=current()
+    if r and r.own and r.kind=='LIVE'and U.activityWhisperId then
+        if decision=='CONFIRMED'then U.InviteWhisperRequest(U.activityWhisperId)else U.RemoveWhisperRequest(U.activityWhisperId)end
+        U.RefreshActivityDetails();return
+    end
+    if not r or not r.own or not U.activityParticipantKey or Z.db.blocked[U.activityParticipantKey]then return end
     if r.kind=='EVENT'then
         local ok,why=S.Decide(r.id,U.activityParticipantKey,decision,U.activityParticipantRevision)
         if ok then U.activityParticipantRevision=S.GetOwned(r.id).participants[U.activityParticipantKey].revision end
@@ -315,6 +353,8 @@ function U.CreateActivityDetails(helpers)
     U.activityAccept=H.button(f,tr('Confirm participant'),16,-448,196,function()U.DecideActivity('CONFIRMED')end,'primary')
     U.activityWaitlist=H.button(f,tr('Waitlist'),224,-448,196,function()U.DecideActivity('WAITLIST')end)
     U.activityReject=H.button(f,tr('Decline'),432,-448,202,function()U.DecideActivity('DECLINED')end,'danger')
+    -- Free place of the waitlist button: it only exists for scheduled events.
+    U.activityWhisperClear=H.button(f,tr('Clear whispers'),224,-448,196,function()U.ClearWhisperRequests()end);U.activityWhisperClear:Hide()
     U.activityJoin=H.button(f,tr('Apply'),432,-512,202,function()U.JoinActivity()end,'primary')
     U.activityWithdraw=H.button(f,tr('Withdraw'),224,-512,196,function()U.WithdrawActivity()end)
     U.activityInvite=H.button(f,tr('Invite'),224,-512,196,function()U.InviteConfirmedParticipants(false)end)

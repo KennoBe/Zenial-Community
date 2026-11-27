@@ -681,6 +681,80 @@ local function priorContactsText(key, currentID)
     return table.concat(lines, '\n')
 end
 S.priorContactsText = priorContactsText
+-- Whisper requests (WhisperInbox.lua) in the lists of the own group: one row per sender with a class-coloured
+-- name, level and class when known, time, number of messages and the last message. The ZENIAL symbol marks an
+-- addon user, the guild shield a guild member; somebody else has no symbol.
+local MEDIA = 'Interface\\AddOns\\ZenialCommunity\\Media\\'
+local function whisperClassName(req)
+    if req.className then
+        return req.className
+    end
+    local names = _G.LOCALIZED_CLASS_NAMES_MALE
+    return req.classFile and type(names) == 'table' and names[req.classFile] or nil
+end
+function U.WhisperRequestItem(req, selected, click)
+    local K = Z.Kit
+    local info = {}
+    if req.level then
+        info[#info + 1] = tr('Level') .. ' ' .. req.level
+    end
+    local class = whisperClassName(req)
+    if class then
+        info[#info + 1] = class
+    end
+    local rest = (#info > 0 and ' · ' .. table.concat(info, ' ') or '') .. ' · ' .. date('%H:%M', req.last)
+        .. (req.count > 1 and ' · ' .. Z.T('%d messages', req.count) or '')
+        .. (req.state == 'invited' and ' · ' .. tr('Invited') or req.state == 'joined' and ' · ' .. tr('In group') or '')
+    local item = {
+        selected = selected,
+        height = 44,
+        noWrap = true,
+        text = req.name .. rest .. '\n' .. req.message,
+        click = click,
+    }
+    if req.count > 1 then
+        item.tooltip = req.message .. '\n' .. table.concat(req.earlier, '\n')
+    end
+    -- The private rating: stars (and the red mark for 1-2 stars) behind the name, stars and comment on hover.
+    local rating = U.PlayerRating(req.name)
+    if rating then
+        item.text = req.name .. U.RatingRowText(rating, true) .. rest .. '\n' .. req.message
+        item.tooltip = (item.tooltip and item.tooltip .. '\n' or '') .. U.RatingTipText(rating)
+    end
+    if K then
+        local hex = T and T.ClassColorHex and T.ClassColorHex(req.classFile, req.className)
+        local name = hex and '|cff' .. hex .. req.name .. '|r' or K.Paint('text', req.name)
+        local marks = (req.zenial and '|T' .. MEDIA .. 'Icon.tga:14:14|t ' or '') .. (req.guild and '|T' .. MEDIA .. 'Guild.tga:14:14|t ' or '')
+        item.display = marks .. name .. U.RatingRowText(rating) .. K.Paint('dim', rest) .. '\n' .. K.Paint('textSoft', req.message)
+    end
+    return item
+end
+function U.InviteWhisperRequest(id)
+    local ok, err = Z.WhisperInbox.Invite(id)
+    U.Message(ok and tr('Invitation submitted; awaiting response.') or tr(err or 'Whisper is unavailable.'))
+    U.Refresh()
+end
+function U.RemoveWhisperRequest(id)
+    Z.WhisperInbox.Remove(id)
+    if U.groupWhisperId == id then
+        U.groupWhisperId = nil
+    end
+    if U.activityWhisperId == id then
+        U.activityWhisperId = nil
+    end
+    U.Refresh()
+end
+function U.ClearWhisperRequests()
+    Z.WhisperInbox.Clear()
+    U.groupWhisperId, U.activityWhisperId = nil, nil
+    U.Refresh()
+end
+function U.WhisperToRequest(id)
+    local req = Z.WhisperInbox.Get(id)
+    if req and not A.Whisper(req.name) then
+        U.Message(tr('Whisper is unavailable.'))
+    end
+end
 local function refreshGroupApplicants()
     local g = Z.db.lfg[1]
     local bucket = g and Z.db.interests[g.id] or {}
@@ -697,15 +771,21 @@ local function refreshGroupApplicants()
         end
         local target = Z.db.contacts[key] and Z.db.contacts[key].target or key
         local applicantKey = key
+        local rating = U.PlayerRating(target)
+        local tail = (r.role and ' · ' .. roleName(r.role) or '') .. ' · ' .. stateName(r.state) .. '\n' .. peerLocationLine(
+            key,
+            'Location'
+        ) .. (r.note ~= '' and '\n' .. r.note or '')
         items[#items + 1] = {
             selected = key == U.groupApplicantKey,
             icon = T and T.RoleIcon(r.role),
-            text = target .. (r.role and ' · ' .. roleName(r.role) or '') .. ' · ' .. stateName(r.state) .. '\n' .. peerLocationLine(
-                key,
-                'Location'
-            ) .. (r.note ~= '' and '\n' .. r.note or ''),
+            text = target .. U.RatingRowText(rating, true) .. tail,
+            -- The private rating: stars (red mark for 1-2 stars) behind the name, stars and comment on hover.
+            ratedDisplay = rating and U.RatingDisplay(target, rating, tail) or nil,
+            tooltip = rating and U.RatingTipText(rating) or nil,
             click = function()
                 U.groupApplicantKey = applicantKey
+                U.groupWhisperId = nil
                 if g then
                     L.MarkApplicationsRead(Z.db, 'group', g.id, applicantKey)
                     Z.Notifications.ReadVisible('groups', 'mine', 'groups:mine:' .. applicantKey .. ':' .. g.id)
@@ -718,10 +798,47 @@ local function refreshGroupApplicants()
     if not valid then
         U.groupApplicantKey = nil
     end
-    U.groupApplicantCount:SetText(tr('Incoming applicants') .. ' (' .. open .. ')')
-    U.SetEmptyHint(U.groupApplicantList, 'No applicants yet. They appear here as soon as someone applies to your group.')
     weigh(items)
+    for _, item in ipairs(items) do
+        item.display, item.ratedDisplay = item.ratedDisplay or item.display, nil
+    end
+    -- Whisper requests stand below the ZENIAL applicants.
+    local whisper
+    for _, req in ipairs(Z.WhisperInbox and Z.WhisperInbox.List() or {}) do
+        local id = req.id
+        if id == U.groupWhisperId then
+            whisper = req
+        end
+        items[#items + 1] = U.WhisperRequestItem(req, id == U.groupWhisperId, function()
+            U.groupWhisperId, U.groupApplicantKey = id, nil
+            refreshGroupApplicants()
+        end)
+    end
+    if not whisper then
+        U.groupWhisperId = nil
+    end
+    local pending = Z.WhisperInbox and Z.WhisperInbox.Pending() or 0
+    U.groupApplicantCount:SetText(tr('Incoming applicants') .. ' (' .. (open + pending) .. ')')
+    U.SetEmptyHint(U.groupApplicantList, 'No applicants yet. They appear here as soon as someone applies to your group.')
     rows(U.groupApplicantList, items, 64)
+    if U.groupWhisperClear then
+        U.groupWhisperClear:SetShown(whisper ~= nil or (Z.WhisperInbox and Z.WhisperInbox.Count() or 0) > 0)
+    end
+    U.groupAccept:SetText(tr(whisper and 'Invite' or 'Annehmen & einladen'))
+    U.groupReject:SetText(tr(whisper and 'Remove' or 'Ablehnen'))
+    if whisper then
+        U.groupAccept:SetEnabled(whisper.state ~= 'joined')
+        U.groupReject:SetEnabled(true)
+        U.groupApplicantWhisper:SetEnabled(true)
+        U.groupApplicantLocation:SetText(tr('Last message') .. '\n' .. whisper.message)
+        local earlier = { tr('Earlier messages') }
+        for index = 1, math.min(3, #whisper.earlier) do
+            earlier[#earlier + 1] = whisper.earlier[index]
+        end
+        U.groupPriorContacts:SetText(table.concat(earlier, '\n'))
+        U.groupHistoryOpen:SetEnabled(false)
+        return
+    end
     local r = U.groupApplicantKey and bucket[U.groupApplicantKey]
     if r and g then
         Z.Notifications.ReadVisible('groups', 'mine', 'groups:mine:' .. U.groupApplicantKey .. ':' .. g.id)
