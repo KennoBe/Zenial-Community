@@ -119,12 +119,9 @@ local function record(row, state)
     return entry
 end
 
--- 'de' or 'en' for the text: the chosen override, the one language that was searched, otherwise the
--- language of the interface.
+-- 'de' or 'en': the one language that was searched, otherwise the language of the interface. Used once for
+-- the preselected whisper text of a first start (WhisperTexts.lua).
 function X.Language(searched)
-    if X.language == 'de' or X.language == 'en' then
-        return X.language
-    end
     local one, count = nil, 0
     for code, on in pairs(type(searched) == 'table' and searched.mode == 'CUSTOM' and searched.codes or {}) do
         if on == true then
@@ -153,26 +150,6 @@ function X.DefaultText(language, kind, me)
         return string.format(t.group, level, role)
     end
     return string.format(t.group, role, level)
-end
-
--- The text for a contact: the player's own wording for that language when there is one, else the standard.
-function X.Template(language, kind, me)
-    local saved = Z.ui and type(Z.ui.finderTemplates) == 'table' and Z.ui.finderTemplates[language == 'de' and 'de' or 'en'] or nil
-    if kind ~= 'solo' and L.Text(saved, 255) then
-        return saved
-    end
-    return X.DefaultText(language, kind, me)
-end
-
--- Keeps the player's own wording for a language; the standard text (or nothing) removes it again.
-function X.SetTemplate(language, text, me)
-    if not Z.ui then
-        return
-    end
-    language = language == 'de' and 'de' or 'en'
-    local templates = type(Z.ui.finderTemplates) == 'table' and Z.ui.finderTemplates or {}
-    templates[language] = L.Text(text, 255) and text ~= X.DefaultText(language, 'group', me) and text or nil
-    Z.ui.finderTemplates = templates
 end
 
 -- Opens the chat box for the leader of the row with the text in it. Nothing is sent: the player does that.

@@ -23,8 +23,9 @@ local function optionId(value)
 end
 
 -- Opens the list of texts below anchor. canContact: whether picking a text may write now; pick(id) writes.
--- "Edit texts…" opens the designer on the same kind in any case. A second click on the same arrow closes it.
-function WD.Menu(anchor, kind, canContact, pick)
+-- selected: the text marked in the list (the last used one when nil). "Edit texts…" opens the designer on
+-- the same kind in any case. A second click on the same arrow closes it.
+function WD.Menu(anchor, kind, canContact, pick, selected)
     local parent = U.Finder and U.Finder.frame
     if not parent then
         return
@@ -63,8 +64,8 @@ function WD.Menu(anchor, kind, canContact, pick)
         options[#options + 1] = 'T' .. entry.id
     end
     options[#options + 1] = EDIT
-    local last = W.Last(kind)
-    menu:SetOptions(options, last and 'T' .. last.id or nil)
+    local mark = W.Get(kind, selected) or W.Last(kind)
+    menu:SetOptions(options, mark and 'T' .. mark.id or nil)
     popup:ClearAllPoints()
     popup:SetPoint('TOPRIGHT', anchor, 'BOTTOMRIGHT', 0, -2)
     menu.button:GetScript('OnClick')(menu.button)

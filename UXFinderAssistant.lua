@@ -65,14 +65,19 @@ local function wantedRoles(item)
     return out
 end
 
-local function message()
-    local me = FP.Me()
-    return X.Template(X.Language(FP.Languages()), 'group', me), me
+-- The text for the public groups of this run: an existing group text, the last used one at first.
+local function chosenText()
+    local W = Z.WhisperTexts
+    local s = FA.state
+    local entry = s and W.Get('group', s.textId) or W.Last('group')
+    if s and entry then
+        s.textId = entry.id
+    end
+    return entry
 end
 
 function FA.Close()
     FA.state = nil
-    X.language = nil
     if FA.frame then
         FA.frame:Hide()
     end
@@ -91,9 +96,9 @@ function FA.Open()
     for _, item in ipairs(items) do
         item.selected = item.fit.tier ~= 'UNKNOWN'
     end
-    FA.state = { step = 'LIST', activity = F.activity, items = items, text = (message()), done = 0, group = A.GroupState().total }
+    FA.state = { step = 'LIST', activity = F.activity, items = items, done = 0, group = A.GroupState().total }
+    chosenText()
     FA.Build()
-    FA.frame.edit:SetText(FA.state.text)
     FA.Refresh()
     return true
 end
@@ -132,10 +137,9 @@ end
 
 local function start()
     local s = FA.state
-    local text, me = FA.frame.edit:GetText(), FP.Me()
-    if L.Text(text, 255) then
-        s.text = text
-        X.SetTemplate(X.Language(FP.Languages()), text, me)
+    local entry = chosenText()
+    if entry then
+        Z.WhisperTexts.SetLast('group', entry.id)
     end
     s.queue, s.index, s.step = selected(), 0, 'RUN'
     advance()
@@ -153,7 +157,8 @@ local function act()
         end
         advance()
     else
-        local ok = FP.Contact(item.row, s.text)
+        -- Filled for each group: the name of its leader and its activity.
+        local ok = FP.Contact(item.row, FP.Message(item.row, s.textId))
         if ok then
             s.waiting = true
         else
@@ -219,22 +224,18 @@ function FA.Build()
         frame.rows[index] = chip
     end
     frame.textLabel = K.Text(frame, tr('Message to public groups'), 'overline', 'goldDim')
-    frame.edit = F.CreateEdit(frame, WIDTH - 32, 255, '')
-    frame.language = K.Segmented(frame, { { key = 'de', label = 'Deutsch' }, { key = 'en', label = 'English' } }, function(key)
-        X.language = key
-        local text = (message())
-        FA.state.text = text
-        frame.edit:SetText(text)
-        U.RefreshFinder()
-    end)
-    frame.language:SetSegmentWidth(90)
-    frame.standard = T.Button(frame, tr('Standard text'), 130, 24, function()
-        local me = FP.Me()
-        local language = X.Language(FP.Languages())
-        X.SetTemplate(language, nil, me)
-        FA.state.text = X.DefaultText(language, 'group', me)
-        frame.edit:SetText(FA.state.text)
+    -- The group text of this run; the list also leads to the designer (UXWhisperDesigner.lua).
+    frame.textChoice = T.Button(frame, '', 260, 24, function(self)
+        local entry = chosenText()
+        U.WhisperDesigner.Menu(self, 'group', true, function(id)
+            if FA.state then
+                FA.state.textId = id
+            end
+            U.RefreshFinder()
+        end, entry and entry.id)
     end, 'secondary')
+    T.StyleDropdown(frame.textChoice)
+    T.AlignButtonText(frame.textChoice, 8, 28)
     frame.who = K.Text(frame, '', 'heading', 'text')
     frame.roles = {}
     for index, role in ipairs(Q.ROLES) do
@@ -294,9 +295,7 @@ function FA.Refresh()
     local shownRows = list and math.min(#s.items, ROWS) or 0
     local y = 74 + shownRows * 28
     show(frame.textLabel, list)
-    show(frame.edit, list)
-    show(frame.language, list)
-    show(frame.standard, list)
+    show(frame.textChoice, list)
     show(frame.who, run)
     for _, chip in ipairs(frame.roles) do
         show(chip, false)
@@ -307,14 +306,11 @@ function FA.Refresh()
             or tr('Pick the groups to contact. Each one is contacted with one click of yours, one after the other.'))
         frame.textLabel:ClearAllPoints()
         frame.textLabel:SetPoint('TOPLEFT', 16, -(y + 8))
-        frame.edit:ClearAllPoints()
-        frame.edit:SetPoint('TOPLEFT', 18, -(y + 26))
-        frame.language:ClearAllPoints()
-        frame.language:SetPoint('TOPLEFT', 16, -(y + 58))
-        frame.language:Select(X.Language(FP.Languages()))
-        frame.standard:ClearAllPoints()
-        frame.standard:SetPoint('TOPLEFT', 206, -(y + 58))
-        y = y + 92
+        local entry = chosenText()
+        frame.textChoice:SetText(entry and entry.name or '')
+        frame.textChoice:ClearAllPoints()
+        frame.textChoice:SetPoint('TOPLEFT', 16, -(y + 26))
+        y = y + 60
         frame.go:SetText(Z.T('Start (%d)', count))
         frame.go:SetEnabled(count > 0)
     elseif run then
