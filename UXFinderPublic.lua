@@ -390,9 +390,17 @@ function FP.LayoutBar(y, width, detailed)
         bar.language:SetText(languageCaption())
         T.SetSelected(bar.language, FP.popup == 'LANGUAGE')
         x = x + 190 + 6
+        -- The whisper texts of the player (UXWhisperDesigner.lua); in the overview of an instance on the
+        -- second line beside the assistant.
+        if not detailed then
+            bar.texts:ClearAllPoints()
+            bar.texts:SetPoint('TOPLEFT', x, -1)
+            x = x + 90 + 6
+        end
     elseif FP.popup == 'LANGUAGE' then
         FP.popup = nil
     end
+    bar.texts:SetShown(public)
     local text, enabled = FP.Status()
     bar.status:SetShown(public)
     bar.refresh:SetShown(public)
@@ -405,6 +413,11 @@ function FP.LayoutBar(y, width, detailed)
     if detailed then
         -- Second line: the assistant on the left, the age of the list and the refresh button on the right.
         rows, line, left = 2, ROW, 236
+        if public then
+            bar.texts:ClearAllPoints()
+            bar.texts:SetPoint('TOPLEFT', 236, -ROW)
+            left = 236 + 90 + 6
+        end
         local candidates = #FP.Candidates()
         bar.assist:ClearAllPoints()
         bar.assist:SetPoint('TOPLEFT', 0, -ROW)
@@ -450,6 +463,11 @@ function FP.Create(frame)
     end, 'secondary')
     bar.language = T.Button(bar, '', 190, 24, function()
         toggle('LANGUAGE')
+    end, 'secondary')
+    bar.texts = T.Button(bar, tr('Texts'), 90, 24, function()
+        if U.WhisperDesigner then
+            U.WhisperDesigner.Open('group')
+        end
     end, 'secondary')
     bar.assist = T.Button(bar, '', 230, 24, function()
         if U.FinderAssistant then
